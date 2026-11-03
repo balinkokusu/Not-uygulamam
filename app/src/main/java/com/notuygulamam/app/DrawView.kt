@@ -62,6 +62,10 @@ class DrawView(context: Context) : View(context) {
     private var baseCanvas: Canvas? = null
     private var drawnUpTo = 0
     private var lastInfoMs = 0L
+    private var picking = false
+    private var pickX = 0f
+    private var pickY = 0f
+    private var pickColor = Color.BLACK
 
     // Sayfa birimi -> ekran pikseli dönüşümü
     private var sc = 1f
@@ -147,6 +151,26 @@ class DrawView(context: Context) : View(context) {
             drawStroke(c, s)
             c.restore()
         }
+        if (picking) drawPickerLoupe(c)
+    }
+
+    /** Damlalık seçiliyken parmağın/kalemin üstünde, alınacak rengi gösteren daire çizer. */
+    private fun drawPickerLoupe(c: Canvas) {
+        val r = 30f * density
+        val cx = pickX
+        var cy = pickY - 90f * density
+        if (cy < r + 4f * density) cy = pickY + 90f * density
+        fillPaint.setColor(pickColor)
+        c.drawCircle(cx, cy, r, fillPaint)
+        linePaint.style = Paint.Style.STROKE
+        linePaint.alpha = 255
+        linePaint.setColor(Color.WHITE)
+        linePaint.strokeWidth = 5f * density
+        c.drawCircle(cx, cy, r, linePaint)
+        linePaint.setColor(Color.BLACK)
+        linePaint.strokeWidth = 1.5f * density
+        c.drawCircle(cx, cy, r + 3f * density, linePaint)
+        c.drawCircle(pickX, pickY, 5f * density, linePaint)
     }
 
     private fun drawPaper(c: Canvas) {
@@ -304,11 +328,26 @@ class DrawView(context: Context) : View(context) {
         }
 
         if (tool == Tool.PICKER) {
-            if (e.actionMasked == MotionEvent.ACTION_UP) {
-                val col = samplePixel(e.x, e.y)
-                penColor = col
-                tool = Tool.PEN
-                onColorPicked?.invoke(col)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    picking = true
+                    pickX = e.x
+                    pickY = e.y
+                    pickColor = samplePixel(e.x, e.y)
+                    invalidate()
+                }
+                MotionEvent.ACTION_UP -> {
+                    val col = samplePixel(e.x, e.y)
+                    picking = false
+                    penColor = col
+                    tool = Tool.PEN
+                    invalidate()
+                    onColorPicked?.invoke(col)
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    picking = false
+                    invalidate()
+                }
             }
             return true
         }

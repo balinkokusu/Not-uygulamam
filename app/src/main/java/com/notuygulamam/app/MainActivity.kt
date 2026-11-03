@@ -13,6 +13,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import java.io.File
 
 class MainActivity : Activity() {
@@ -256,6 +257,7 @@ class MainActivity : Activity() {
         draw.onColorPicked = { c ->
             rememberColor(c)
             refresh()
+            Toast.makeText(this, "Renk alındı, araç kaleme döndü", Toast.LENGTH_SHORT).show()
         }
 
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
