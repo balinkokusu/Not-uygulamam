@@ -30,7 +30,7 @@ class PreviewView(context: Context, private val draw: DrawView) : View(context) 
                 p.strokeCap = Paint.Cap.SQUARE
                 c.drawLine(12f * d, cy, width - 12f * d, cy, p)
             }
-            Tool.PEN -> {
+            Tool.PEN, Tool.PICKER -> {
                 p.setColor(draw.penColor)
                 p.alpha = 255
                 p.strokeWidth = draw.penWidthDp * d

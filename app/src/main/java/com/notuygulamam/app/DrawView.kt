@@ -13,29 +13,10 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
-enum class Tool { PEN, HIGHLIGHTER, ERASER }
-
-enum class Paper(val label: String) {
-    BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı")
-}
-
-class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sens: Float = 0f) {
-    val xs = ArrayList<Float>()
-    val ys = ArrayList<Float>()
-    val ps = ArrayList<Float>()
-    fun add(x: Float, y: Float, p: Float) {
-        xs.add(x); ys.add(y); ps.add(p)
-    }
-}
-
-private sealed class HistoryAction {
-    class Add(val stroke: Stroke) : HistoryAction()
-    class Erase(val removed: List<Pair<Int, Stroke>>) : HistoryAction()
-}
-
 /**
- * Sürüm 0.3: gecikmeyi azaltmak için sayfa (kağıt ve biten çizgiler) bir bitmap'te tutuluyor.
- * Yazarken yalnızca yeni çizgi parçaları bitmap'e eklenip değişen dikdörtgen yeniden çiziliyor.
+ * Tek bir defter sayfasını gösterir. Sayfa sabit bir mantıksal boyuta sahiptir (varsayılan 1200x1700)
+ * ve ekrana sığacak şekilde ortalanıp ölçeklenir; bu yüzden ekran dönse de çizimler yerinde kalır.
+ * Sayfa ve biten çizgiler bir bitmap'te tutulur, yazarken yalnızca yeni parçalar eklenir.
  */
 class DrawView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
@@ -51,19 +32,28 @@ class DrawView(context: Context) : View(context) {
     /** 0 ile 100 arası; 0'da çizgi kalınlığı basınçtan etkilenmez. */
     var pressureSensitivity = 70
 
-    /** Bu oturumda gözlenen en yüksek ham basınç. Tam basınç aralığını kullanmak için ölçek olarak alınır. */
+    /** Bu oturumda gözlenen en yüksek ham basınç; tam basınç ölçeği olarak kullanılır. */
     var maxPressure = 0.25f
         private set
-    var paper = Paper.RULED
-        set(value) {
-            field = value
-            rebuildBase()
-        }
-    var onInfo: ((String) -> Unit)? = null
 
-    private val strokes = ArrayList<Stroke>()
-    private val undoStack = ArrayList<HistoryAction>()
-    private val redoStack = ArrayList<HistoryAction>()
+    var onInfo: ((String) -> Unit)? = null
+    var onColorPicked: ((Int) -> Unit)? = null
+    var onChanged: (() -> Unit)? = null
+
+    var page: PageData = PageData()
+        private set
+    private var strokes: ArrayList<Stroke> = page.strokes
+    private var undoStack: ArrayList<HistoryAction> = page.undo
+    private var redoStack: ArrayList<HistoryAction> = page.redo
+
+    var paper: Paper
+        get() = page.paper
+        set(value) {
+            page.paper = value
+            rebuildBase()
+            onChanged?.invoke()
+        }
+
     private var current: Stroke? = null
     private var gestureErasing = false
     private val gestureRemoved = ArrayList<Pair<Int, Stroke>>()
@@ -72,6 +62,11 @@ class DrawView(context: Context) : View(context) {
     private var baseCanvas: Canvas? = null
     private var drawnUpTo = 0
     private var lastInfoMs = 0L
+
+    // Sayfa birimi -> ekran pikseli dönüşümü
+    private var sc = 1f
+    private var ox = 0f
+    private var oy = 0f
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -87,9 +82,28 @@ class DrawView(context: Context) : View(context) {
     }
     private val paperPaint = Paint().apply {
         setColor(Color.rgb(200, 205, 215))
-        strokeWidth = density
+        strokeWidth = 1.5f
     }
     private val path = Path()
+
+    fun showPage(p: PageData) {
+        page = p
+        strokes = p.strokes
+        undoStack = p.undo
+        redoStack = p.redo
+        current = null
+        gestureRemoved.clear()
+        computeTransform()
+        rebuildBase()
+    }
+
+    private fun computeTransform() {
+        if (width <= 0 || height <= 0) return
+        val m = 16f * density
+        sc = max(0.01f, min((width - 2 * m) / page.width, (height - 2 * m) / page.height))
+        ox = (width - page.width * sc) / 2f
+        oy = (height - page.height * sc) / 2f
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -97,37 +111,52 @@ class DrawView(context: Context) : View(context) {
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         base = bmp
         baseCanvas = Canvas(bmp)
+        computeTransform()
         rebuildBase()
     }
 
-    /** Kağıdı ve tüm biten çizgileri bitmap'e baştan çizer. */
+    private fun beginPage(c: Canvas) {
+        c.save()
+        c.translate(ox, oy)
+        c.scale(sc, sc)
+        c.clipRect(0f, 0f, page.width, page.height)
+    }
+
+    /** Arka planı, kağıdı ve tüm biten çizgileri bitmap'e baştan çizer. */
     private fun rebuildBase() {
         val c = baseCanvas ?: return
+        c.drawColor(Color.rgb(120, 124, 132))
+        beginPage(c)
         c.drawColor(Color.WHITE)
         drawPaper(c)
         for (s in strokes) drawStroke(c, s)
+        c.restore()
         invalidate()
     }
 
     override fun onDraw(c: Canvas) {
         val b = base
         if (b == null) {
-            c.drawColor(Color.WHITE)
+            c.drawColor(Color.rgb(120, 124, 132))
             return
         }
         c.drawBitmap(b, 0f, 0f, null)
         val s = current
-        if (s != null && s.highlighter) drawStroke(c, s)
+        if (s != null && s.highlighter) {
+            beginPage(c)
+            drawStroke(c, s)
+            c.restore()
+        }
     }
 
     private fun drawPaper(c: Canvas) {
-        val step = 30f * density
-        val w = width.toFloat()
-        val h = height.toFloat()
-        when (paper) {
+        val step = 40f
+        val w = page.width
+        val h = page.height
+        when (page.paper) {
             Paper.BLANK -> {}
             Paper.RULED -> {
-                var y = step * 1.5f
+                var y = step * 2f
                 while (y < h) {
                     c.drawLine(0f, y, w, y, paperPaint)
                     y += step
@@ -150,7 +179,7 @@ class DrawView(context: Context) : View(context) {
                 while (y < h) {
                     var x = step
                     while (x < w) {
-                        c.drawCircle(x, y, 1.6f * density, dotPaint)
+                        c.drawCircle(x, y, 2.2f, dotPaint)
                         x += step
                     }
                     y += step
@@ -166,6 +195,8 @@ class DrawView(context: Context) : View(context) {
         val p = (s.ps[i] + s.ps[i - 1]) / 2f
         return s.width * widthFactor(s, p)
     }
+
+    private fun clamp01(p: Float): Float = max(0f, min(1f, p))
 
     /** Ham basıncı, gözlenen en yüksek basınca göre 0..1 aralığına getirir. */
     private fun normP(p: Float): Float {
@@ -209,6 +240,7 @@ class DrawView(context: Context) : View(context) {
     private fun drawPenIncrement(s: Stroke) {
         val c = baseCanvas ?: return
         val n = s.xs.size
+        beginPage(c)
         linePaint.setColor(s.color)
         linePaint.alpha = 255
         linePaint.strokeCap = Paint.Cap.ROUND
@@ -220,14 +252,20 @@ class DrawView(context: Context) : View(context) {
             invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], w)
             i++
         }
+        c.restore()
         drawnUpTo = max(drawnUpTo, n - 1)
     }
 
+    /** Sayfa koordinatlarındaki bir parçanın ekrandaki sınırını yeniler. */
     private fun invalidateSegment(x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
-        val pad = w + 2f * density
+        val pad = w * sc + 3f * density
+        val sx0 = ox + x0 * sc
+        val sy0 = oy + y0 * sc
+        val sx1 = ox + x1 * sc
+        val sy1 = oy + y1 * sc
         invalidate(
-            (min(x0, x1) - pad).toInt(), (min(y0, y1) - pad).toInt(),
-            (max(x0, x1) + pad).toInt() + 1, (max(y0, y1) + pad).toInt() + 1
+            (min(sx0, sx1) - pad).toInt(), (min(sy0, sy1) - pad).toInt(),
+            (max(sx0, sx1) + pad).toInt() + 1, (max(sy0, sy1) + pad).toInt() + 1
         )
     }
 
@@ -239,7 +277,15 @@ class DrawView(context: Context) : View(context) {
         else -> "bilinmiyor($t)"
     }
 
-    private fun clamp01(p: Float): Float = max(0f, min(1f, p))
+    private fun pageX(x: Float): Float = (x - ox) / sc
+    private fun pageY(y: Float): Float = (y - oy) / sc
+
+    private fun samplePixel(x: Float, y: Float): Int {
+        val b = base ?: return Color.BLACK
+        val px = x.toInt().coerceIn(0, b.width - 1)
+        val py = y.toInt().coerceIn(0, b.height - 1)
+        return b.getPixel(px, py) or (0xFF shl 24)
+    }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val type = e.getToolType(0)
@@ -256,6 +302,17 @@ class DrawView(context: Context) : View(context) {
                 )
             )
         }
+
+        if (tool == Tool.PICKER) {
+            if (e.actionMasked == MotionEvent.ACTION_UP) {
+                val col = samplePixel(e.x, e.y)
+                penColor = col
+                tool = Tool.PEN
+                onColorPicked?.invoke(col)
+            }
+            return true
+        }
+
         if (!isStylus && !fingerDraw) return true
 
         when (e.actionMasked) {
@@ -265,20 +322,27 @@ class DrawView(context: Context) : View(context) {
                     type == MotionEvent.TOOL_TYPE_ERASER ||
                     (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
                 gestureRemoved.clear()
+                val gx = pageX(e.x)
+                val gy = pageY(e.y)
                 if (gestureErasing) {
-                    if (eraseAt(e.x, e.y)) rebuildBase()
+                    if (eraseAt(gx, gy)) rebuildBase()
                 } else {
                     val hl = tool == Tool.HIGHLIGHTER
-                    val s = if (hl) Stroke(hlColor, hlWidthDp * density, true)
-                    else Stroke(penColor, penWidthDp * density, false, pressureSensitivity / 100f)
-                    s.add(e.x, e.y, if (hl) 0.5f else normP(e.pressure))
+                    val s = if (hl) Stroke(hlColor, hlWidthDp * UNIT, true)
+                    else Stroke(penColor, penWidthDp * UNIT, false, pressureSensitivity / 100f)
+                    s.add(gx, gy, if (hl) 0.5f else normP(e.pressure))
                     current = s
                     drawnUpTo = 0
                     if (!hl) {
                         val r = s.width * widthFactor(s, s.ps[0]) * 0.5f
-                        fillPaint.setColor(s.color)
-                        baseCanvas?.drawCircle(e.x, e.y, r, fillPaint)
-                        invalidateSegment(e.x, e.y, e.x, e.y, r * 2f)
+                        val c = baseCanvas
+                        if (c != null) {
+                            beginPage(c)
+                            fillPaint.setColor(s.color)
+                            c.drawCircle(gx, gy, r, fillPaint)
+                            c.restore()
+                        }
+                        invalidateSegment(gx, gy, gx, gy, r * 2f)
                     }
                 }
             }
@@ -286,9 +350,9 @@ class DrawView(context: Context) : View(context) {
                 if (gestureErasing) {
                     var removed = false
                     for (h in 0 until e.historySize) {
-                        if (eraseAt(e.getHistoricalX(h), e.getHistoricalY(h))) removed = true
+                        if (eraseAt(pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)))) removed = true
                     }
-                    if (eraseAt(e.x, e.y)) removed = true
+                    if (eraseAt(pageX(e.x), pageY(e.y))) removed = true
                     if (removed) rebuildBase()
                 } else {
                     val s = current
@@ -297,11 +361,11 @@ class DrawView(context: Context) : View(context) {
                         val before = s.xs.size
                         for (h in 0 until e.historySize) {
                             s.add(
-                                e.getHistoricalX(h), e.getHistoricalY(h),
+                                pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)),
                                 if (hl) 0.5f else normP(e.getHistoricalPressure(h))
                             )
                         }
-                        s.add(e.x, e.y, if (hl) 0.5f else normP(e.pressure))
+                        s.add(pageX(e.x), pageY(e.y), if (hl) 0.5f else normP(e.pressure))
                         if (hl) {
                             val from = max(0, before - 1)
                             for (i in from + 1 until s.xs.size) {
@@ -318,6 +382,7 @@ class DrawView(context: Context) : View(context) {
                     if (gestureRemoved.isNotEmpty()) {
                         undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
                         redoStack.clear()
+                        onChanged?.invoke()
                     }
                     gestureRemoved.clear()
                 } else {
@@ -328,9 +393,15 @@ class DrawView(context: Context) : View(context) {
                         redoStack.clear()
                         current = null
                         if (s.highlighter) {
-                            baseCanvas?.let { drawStroke(it, s) }
+                            val c = baseCanvas
+                            if (c != null) {
+                                beginPage(c)
+                                drawStroke(c, s)
+                                c.restore()
+                            }
                             invalidate()
                         }
+                        onChanged?.invoke()
                     }
                 }
             }
@@ -339,7 +410,7 @@ class DrawView(context: Context) : View(context) {
     }
 
     private fun eraseAt(x: Float, y: Float): Boolean {
-        val r = eraserRadiusDp * density
+        val r = eraserRadiusDp * density / sc
         var removedAny = false
         var i = strokes.size - 1
         while (i >= 0) {
@@ -383,6 +454,7 @@ class DrawView(context: Context) : View(context) {
         }
         redoStack.add(a)
         rebuildBase()
+        onChanged?.invoke()
     }
 
     fun redo() {
@@ -396,6 +468,7 @@ class DrawView(context: Context) : View(context) {
         }
         undoStack.add(a)
         rebuildBase()
+        onChanged?.invoke()
     }
 
     fun clearAll() {
@@ -406,5 +479,11 @@ class DrawView(context: Context) : View(context) {
         undoStack.add(HistoryAction.Erase(removed))
         redoStack.clear()
         rebuildBase()
+        onChanged?.invoke()
+    }
+
+    companion object {
+        /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
+        const val UNIT = 2.2f
     }
 }

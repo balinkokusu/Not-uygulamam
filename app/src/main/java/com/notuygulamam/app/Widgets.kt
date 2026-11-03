@@ -1,0 +1,223 @@
+package com.notuygulamam.app
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Shader
+import android.view.MotionEvent
+import android.view.View
+import kotlin.math.max
+import kotlin.math.min
+
+enum class Icon {
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE
+}
+
+/** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
+class IconButton(context: Context, private val icon: Icon) : View(context) {
+    private val d = resources.displayMetrics.density
+    var active = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val rect = RectF()
+    private val path = Path()
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension((52 * d).toInt(), (52 * d).toInt())
+    }
+
+    override fun onDraw(c: Canvas) {
+        val s = min(width, height).toFloat()
+        rect.set(3 * d, 3 * d, width - 3 * d, height - 3 * d)
+        bg.setColor(if (active) Color.rgb(35, 35, 40) else Color.rgb(236, 237, 240))
+        c.drawRoundRect(rect, 12 * d, 12 * d, bg)
+        p.setColor(if (active) Color.WHITE else Color.rgb(30, 30, 34))
+        p.strokeWidth = s * 0.065f
+        val u = s * 0.56f
+        c.save()
+        c.translate((s - u) / 2f, (s - u) / 2f)
+        glyph(c, u)
+        c.restore()
+    }
+
+    private fun line(c: Canvas, u: Float, x0: Float, y0: Float, x1: Float, y1: Float) {
+        c.drawLine(x0 * u, y0 * u, x1 * u, y1 * u, p)
+    }
+
+    private fun poly(c: Canvas, u: Float, close: Boolean, vararg v: Float) {
+        path.reset()
+        path.moveTo(v[0] * u, v[1] * u)
+        var i = 2
+        while (i + 1 < v.size) {
+            path.lineTo(v[i] * u, v[i + 1] * u)
+            i += 2
+        }
+        if (close) path.close()
+        c.drawPath(path, p)
+    }
+
+    private fun undoGlyph(c: Canvas, u: Float) {
+        path.reset()
+        path.moveTo(0.1f * u, 0.4f * u)
+        path.lineTo(0.6f * u, 0.4f * u)
+        path.quadTo(0.95f * u, 0.4f * u, 0.95f * u, 0.7f * u)
+        path.quadTo(0.95f * u, 0.95f * u, 0.6f * u, 0.95f * u)
+        path.lineTo(0.35f * u, 0.95f * u)
+        c.drawPath(path, p)
+        poly(c, u, false, 0.32f, 0.18f, 0.1f, 0.4f, 0.32f, 0.62f)
+    }
+
+    private fun glyph(c: Canvas, u: Float) {
+        when (icon) {
+            Icon.PEN -> {
+                poly(c, u, true, 0.28f, 0.72f, 0.72f, 0.28f, 0.86f, 0.42f, 0.42f, 0.86f)
+                poly(c, u, true, 0.28f, 0.72f, 0.42f, 0.86f, 0.1f, 0.9f)
+            }
+            Icon.HIGHLIGHTER -> {
+                poly(c, u, true, 0.2f, 0.62f, 0.58f, 0.14f, 0.86f, 0.4f, 0.44f, 0.82f)
+                line(c, u, 0.08f, 0.96f, 0.6f, 0.96f)
+            }
+            Icon.ERASER -> {
+                poly(c, u, true, 0.12f, 0.62f, 0.5f, 0.24f, 0.88f, 0.62f, 0.5f, 1.0f)
+                line(c, u, 0.31f, 0.43f, 0.69f, 0.81f)
+            }
+            Icon.PICKER -> {
+                line(c, u, 0.1f, 0.9f, 0.48f, 0.52f)
+                line(c, u, 0.4f, 0.6f, 0.62f, 0.82f)
+                c.drawCircle(0.68f * u, 0.32f * u, 0.2f * u, p)
+            }
+            Icon.UNDO -> undoGlyph(c, u)
+            Icon.REDO -> {
+                c.save()
+                c.scale(-1f, 1f, u / 2f, 0f)
+                undoGlyph(c, u)
+                c.restore()
+            }
+            Icon.PAPER -> {
+                c.drawRect(0.1f * u, 0.1f * u, 0.9f * u, 0.9f * u, p)
+                line(c, u, 0.37f, 0.1f, 0.37f, 0.9f)
+                line(c, u, 0.63f, 0.1f, 0.63f, 0.9f)
+                line(c, u, 0.1f, 0.37f, 0.9f, 0.37f)
+                line(c, u, 0.1f, 0.63f, 0.9f, 0.63f)
+            }
+            Icon.FINGER -> {
+                rect.set(0.36f * u, 0.08f * u, 0.64f * u, 0.96f * u)
+                c.drawRoundRect(rect, 0.14f * u, 0.14f * u, p)
+                line(c, u, 0.64f, 0.55f, 0.86f, 0.55f)
+                line(c, u, 0.36f, 0.62f, 0.14f, 0.62f)
+            }
+            Icon.TRASH -> {
+                c.drawRect(0.25f * u, 0.38f * u, 0.75f * u, 0.96f * u, p)
+                line(c, u, 0.12f, 0.26f, 0.88f, 0.26f)
+                poly(c, u, false, 0.38f, 0.26f, 0.38f, 0.1f, 0.62f, 0.1f, 0.62f, 0.26f)
+                line(c, u, 0.42f, 0.5f, 0.42f, 0.82f)
+                line(c, u, 0.58f, 0.5f, 0.58f, 0.82f)
+            }
+            Icon.PREV -> poly(c, u, false, 0.7f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f)
+            Icon.NEXT -> poly(c, u, false, 0.3f, 0.1f, 0.7f, 0.5f, 0.3f, 0.9f)
+            Icon.ADD -> {
+                line(c, u, 0.5f, 0.1f, 0.5f, 0.9f)
+                line(c, u, 0.1f, 0.5f, 0.9f, 0.5f)
+            }
+            Icon.PAGES -> {
+                c.drawRect(0.1f * u, 0.24f * u, 0.64f * u, 0.96f * u, p)
+                poly(c, u, false, 0.3f, 0.24f, 0.3f, 0.06f, 0.9f, 0.06f, 0.9f, 0.78f, 0.64f, 0.78f)
+            }
+            Icon.PALETTE -> {
+                rect.set(0.05f * u, 0.1f * u, 0.95f * u, 0.9f * u)
+                c.drawOval(rect, p)
+                c.drawCircle(0.3f * u, 0.4f * u, 0.07f * u, p)
+                c.drawCircle(0.5f * u, 0.28f * u, 0.07f * u, p)
+                c.drawCircle(0.7f * u, 0.4f * u, 0.07f * u, p)
+            }
+        }
+    }
+}
+
+/** Renk tonu çubuğu ile doygunluk/parlaklık karesinden oluşan renk seçici. */
+class ColorPickerView(context: Context, initial: Int) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val hsv = FloatArray(3)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val svRect = RectF()
+    private val hueRect = RectF()
+    private val prevRect = RectF()
+    private var dragSv = true
+
+    val color: Int get() = Color.HSVToColor(hsv)
+
+    init {
+        Color.colorToHSV(initial, hsv)
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension((320 * d).toInt(), (400 * d).toInt())
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        val pad = 12 * d
+        svRect.set(pad, pad, w - pad, pad + 260 * d)
+        hueRect.set(pad, svRect.bottom + 18 * d, w - pad, svRect.bottom + 18 * d + 36 * d)
+        prevRect.set(pad, hueRect.bottom + 18 * d, w - pad, h - pad)
+    }
+
+    override fun onDraw(c: Canvas) {
+        val hueColor = Color.HSVToColor(floatArrayOf(hsv[0], 1f, 1f))
+        paint.style = Paint.Style.FILL
+        paint.shader = LinearGradient(svRect.left, 0f, svRect.right, 0f, Color.WHITE, hueColor, Shader.TileMode.CLAMP)
+        c.drawRect(svRect, paint)
+        paint.shader = LinearGradient(0f, svRect.top, 0f, svRect.bottom, Color.TRANSPARENT, Color.BLACK, Shader.TileMode.CLAMP)
+        c.drawRect(svRect, paint)
+
+        val hues = IntArray(7) { Color.HSVToColor(floatArrayOf(it * 60f, 1f, 1f)) }
+        paint.shader = LinearGradient(hueRect.left, 0f, hueRect.right, 0f, hues, null, Shader.TileMode.CLAMP)
+        c.drawRect(hueRect, paint)
+        paint.shader = null
+
+        paint.color = color
+        c.drawRect(prevRect, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3 * d
+        paint.color = Color.WHITE
+        val sx = svRect.left + hsv[1] * svRect.width()
+        val sy = svRect.top + (1f - hsv[2]) * svRect.height()
+        c.drawCircle(sx, sy, 10 * d, paint)
+        paint.strokeWidth = 1 * d
+        paint.color = Color.BLACK
+        c.drawCircle(sx, sy, 11.5f * d, paint)
+        paint.strokeWidth = 4 * d
+        paint.color = Color.WHITE
+        val hx = hueRect.left + hsv[0] / 360f * hueRect.width()
+        c.drawLine(hx, hueRect.top - 4 * d, hx, hueRect.bottom + 4 * d, paint)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        parent?.requestDisallowInterceptTouchEvent(true)
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+            dragSv = e.y < svRect.bottom + 9 * d
+        }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN || e.actionMasked == MotionEvent.ACTION_MOVE) {
+            if (dragSv) {
+                hsv[1] = max(0f, min(1f, (e.x - svRect.left) / svRect.width()))
+                hsv[2] = 1f - max(0f, min(1f, (e.y - svRect.top) / svRect.height()))
+            } else {
+                hsv[0] = max(0f, min(359.9f, (e.x - hueRect.left) / hueRect.width() * 360f))
+            }
+            invalidate()
+        }
+        return true
+    }
+}
