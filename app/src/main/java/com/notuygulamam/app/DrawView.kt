@@ -19,7 +19,7 @@ enum class Paper(val label: String) {
     BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı")
 }
 
-class Stroke(val color: Int, val width: Float, val highlighter: Boolean) {
+class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sens: Float = 0f) {
     val xs = ArrayList<Float>()
     val ys = ArrayList<Float>()
     val ps = ArrayList<Float>()
@@ -47,6 +47,13 @@ class DrawView(context: Context) : View(context) {
     var hlWidthDp = 14f
     var eraserRadiusDp = 14f
     var fingerDraw = false
+
+    /** 0 ile 100 arası; 0'da çizgi kalınlığı basınçtan etkilenmez. */
+    var pressureSensitivity = 70
+
+    /** Bu oturumda gözlenen en yüksek ham basınç. Tam basınç aralığını kullanmak için ölçek olarak alınır. */
+    var maxPressure = 0.25f
+        private set
     var paper = Paper.RULED
         set(value) {
             field = value
@@ -152,9 +159,19 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
+    /** Duyarlılık 0'da çarpan 1; 1'de çarpan 0,2 (hafif basınç) ile 2,8 (tam basınç) arasında. */
+    private fun widthFactor(s: Stroke, p: Float): Float = 1f - s.sens * 0.8f + s.sens * 2.6f * p
+
     private fun segmentWidth(s: Stroke, i: Int): Float {
         val p = (s.ps[i] + s.ps[i - 1]) / 2f
-        return s.width * (0.35f + 1.3f * p)
+        return s.width * widthFactor(s, p)
+    }
+
+    /** Ham basıncı, gözlenen en yüksek basınca göre 0..1 aralığına getirir. */
+    private fun normP(p: Float): Float {
+        if (p > maxPressure) maxPressure = p
+        val r = clamp01(p / maxPressure)
+        return Math.pow(r.toDouble(), 0.8).toFloat()
     }
 
     private fun drawStroke(c: Canvas, s: Stroke) {
@@ -179,7 +196,7 @@ class DrawView(context: Context) : View(context) {
         linePaint.strokeCap = Paint.Cap.ROUND
         if (n == 1) {
             fillPaint.setColor(s.color)
-            c.drawCircle(s.xs[0], s.ys[0], s.width * 0.5f, fillPaint)
+            c.drawCircle(s.xs[0], s.ys[0], s.width * widthFactor(s, s.ps[0]) * 0.5f, fillPaint)
             return
         }
         for (i in 1 until n) {
@@ -234,8 +251,8 @@ class DrawView(context: Context) : View(context) {
             lastInfoMs = now
             onInfo?.invoke(
                 String.format(
-                    Locale.US, "Son olay: araç=%s, basınç=%.2f, düğme=%d, eğim=%.2f",
-                    typeName(type), e.pressure, e.buttonState, e.getAxisValue(MotionEvent.AXIS_TILT)
+                    Locale.US, "Son olay: araç=%s, basınç=%.3f (en yüksek %.3f), düğme=%d, eğim=%.2f",
+                    typeName(type), e.pressure, maxPressure, e.buttonState, e.getAxisValue(MotionEvent.AXIS_TILT)
                 )
             )
         }
@@ -253,12 +270,12 @@ class DrawView(context: Context) : View(context) {
                 } else {
                     val hl = tool == Tool.HIGHLIGHTER
                     val s = if (hl) Stroke(hlColor, hlWidthDp * density, true)
-                    else Stroke(penColor, penWidthDp * density, false)
-                    s.add(e.x, e.y, if (hl) 0.5f else clamp01(e.pressure))
+                    else Stroke(penColor, penWidthDp * density, false, pressureSensitivity / 100f)
+                    s.add(e.x, e.y, if (hl) 0.5f else normP(e.pressure))
                     current = s
                     drawnUpTo = 0
                     if (!hl) {
-                        val r = s.width * (0.35f + 1.3f * s.ps[0]) * 0.5f
+                        val r = s.width * widthFactor(s, s.ps[0]) * 0.5f
                         fillPaint.setColor(s.color)
                         baseCanvas?.drawCircle(e.x, e.y, r, fillPaint)
                         invalidateSegment(e.x, e.y, e.x, e.y, r * 2f)
@@ -281,10 +298,10 @@ class DrawView(context: Context) : View(context) {
                         for (h in 0 until e.historySize) {
                             s.add(
                                 e.getHistoricalX(h), e.getHistoricalY(h),
-                                if (hl) 0.5f else clamp01(e.getHistoricalPressure(h))
+                                if (hl) 0.5f else normP(e.getHistoricalPressure(h))
                             )
                         }
-                        s.add(e.x, e.y, if (hl) 0.5f else clamp01(e.pressure))
+                        s.add(e.x, e.y, if (hl) 0.5f else normP(e.pressure))
                         if (hl) {
                             val from = max(0, before - 1)
                             for (i in from + 1 until s.xs.size) {

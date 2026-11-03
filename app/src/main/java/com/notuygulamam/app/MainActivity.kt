@@ -203,11 +203,35 @@ class MainActivity : Activity() {
         sliderRow.addView(seek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         sliderRow.addView(preview, LinearLayout.LayoutParams(dp(160f), dp(70f)))
 
+        val pressLabel = TextView(this)
+        pressLabel.textSize = 13f
+        pressLabel.setSingleLine(true)
+        pressLabel.text = "Basınç hassasiyeti: " + draw.pressureSensitivity
+        val pressSeek = SeekBar(this)
+        pressSeek.max = 100
+        pressSeek.progress = draw.pressureSensitivity
+        pressSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                draw.pressureSensitivity = progress
+                pressLabel.text = "Basınç hassasiyeti: $progress"
+            }
+
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        val pressRow = LinearLayout(this)
+        pressRow.orientation = LinearLayout.HORIZONTAL
+        pressRow.setPadding(dp(8f), 0, dp(8f), 0)
+        pressRow.addView(pressLabel, LinearLayout.LayoutParams(dp(200f), LinearLayout.LayoutParams.WRAP_CONTENT))
+        pressRow.addView(pressSeek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.addView(toolScroll)
         root.addView(swatchScroll)
         root.addView(sliderRow)
+        root.addView(pressRow)
         root.addView(status)
         root.addView(info)
         root.addView(
