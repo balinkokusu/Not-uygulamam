@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.widget.CheckBox
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -334,6 +335,7 @@ class MainActivity : Activity() {
         pageLabel.gravity = Gravity.CENTER_VERTICAL
         draw.onInfo = { msg -> info.text = "v$versionText · $msg" }
         draw.onChanged = { scheduleSave() }
+        draw.onPageSwipe = { dir -> gotoPage(nb.current + dir) }
         draw.onColorPicked = { c ->
             rememberColor(c)
             refresh()
@@ -435,6 +437,17 @@ class MainActivity : Activity() {
         pressRow.addView(pressLabel, LinearLayout.LayoutParams(dp(200f), LinearLayout.LayoutParams.WRAP_CONTENT))
         pressRow.addView(pressSeek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(pressRow)
+
+        val snapBox = CheckBox(this)
+        snapBox.text = "Fosforlu, düze yakın çizgileri tam düz çizsin"
+        snapBox.isChecked = draw.highlighterSnap
+        snapBox.setOnCheckedChangeListener { _, checked -> draw.highlighterSnap = checked }
+        panel.addView(snapBox)
+        val holdBox = CheckBox(this)
+        holdBox.text = "Çizerken kalemi bekletince çizgi düzelsin"
+        holdBox.isChecked = draw.holdToStraighten
+        holdBox.setOnCheckedChangeListener { _, checked -> draw.holdToStraighten = checked }
+        panel.addView(holdBox)
 
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(ColorDrawable(Color.WHITE))

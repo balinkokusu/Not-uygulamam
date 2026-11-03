@@ -4,13 +4,18 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import java.io.File
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -19,6 +24,8 @@ import kotlin.math.min
  * Tek bir defter sayfasını gösterir. Sayfa sabit bir mantıksal boyuta sahiptir (varsayılan 1200x1700)
  * ve ekrana sığacak şekilde ortalanıp ölçeklenir; bu yüzden ekran dönse de çizimler yerinde kalır.
  * Sayfa ve biten çizgiler bir bitmap'te tutulur, yazarken yalnızca yeni parçalar eklenir.
+ * İki parmakla yakınlaştırma ve kaydırma, üç parmakla (ya da uzaklaştırılmamışken iki parmakla)
+ * yana kaydırarak sayfa değiştirme desteklenir.
  */
 class DrawView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
@@ -30,6 +37,12 @@ class DrawView(context: Context) : View(context) {
     var hlWidthDp = 14f
     var eraserRadiusDp = 14f
     var fingerDraw = false
+
+    /** Fosforlu ile çizilen neredeyse düz bir çizgi, bırakılınca tam düz çizgiye dönüşür. */
+    var highlighterSnap = true
+
+    /** Kalem ya da fosforlu ile çizerken duraklayınca çizgi başlangıç-bitiş arasında düzleşir. */
+    var holdToStraighten = true
 
     /** 0 ile 100 arası; 0'da çizgi kalınlığı basınçtan etkilenmez. */
     var pressureSensitivity = 70
@@ -44,6 +57,9 @@ class DrawView(context: Context) : View(context) {
     var onInfo: ((String) -> Unit)? = null
     var onColorPicked: ((Int) -> Unit)? = null
     var onChanged: (() -> Unit)? = null
+
+    /** Yana kaydırma ile sayfa değiştirme isteği: +1 sonraki, -1 önceki. */
+    var onPageSwipe: ((Int) -> Unit)? = null
 
     var page: PageData = PageData()
         private set
@@ -61,6 +77,9 @@ class DrawView(context: Context) : View(context) {
 
     private var current: Stroke? = null
     private var gestureErasing = false
+    private var strokeActive = false
+    private var strokeFromStylus = false
+    private var straightLive = false
     private val gestureRemoved = ArrayList<Pair<Int, Stroke>>()
 
     private var base: Bitmap? = null
@@ -77,9 +96,41 @@ class DrawView(context: Context) : View(context) {
     private var pickColor = Color.BLACK
 
     // Sayfa birimi -> ekran pikseli dönüşümü
+    private var fitSc = 1f
     private var sc = 1f
     private var ox = 0f
     private var oy = 0f
+
+    // Çok parmaklı hareket durumu
+    private var gestureActive = false
+    private var gSc0 = 1f
+    private var gOx0 = 0f
+    private var gOy0 = 0f
+    private var lastCx = 0f
+    private var lastCy = 0f
+    private var totalDx = 0f
+    private var totalDy = 0f
+    private var pinchAccum = 0f
+    private var maxFingers = 0
+    private var swipeDone = false
+    private val gm = Matrix()
+    private val scaleDetector = ScaleGestureDetector(
+        context,
+        object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                if (!gestureActive || maxFingers >= 3 || swipeDone) return true
+                zoomAt(detector.scaleFactor, detector.focusX, detector.focusY)
+                pinchAccum += abs(detector.scaleFactor - 1f)
+                return true
+            }
+        }
+    )
+
+    // Basılı tutunca düzleştirme
+    private val holdHandler = Handler(Looper.getMainLooper())
+    private val holdRunnable = Runnable { onHold() }
+    private var holdX = 0f
+    private var holdY = 0f
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -100,12 +151,16 @@ class DrawView(context: Context) : View(context) {
     private val path = Path()
 
     fun showPage(p: PageData) {
+        holdHandler.removeCallbacks(holdRunnable)
         page = p
         strokes = p.strokes
         undoStack = p.undo
         redoStack = p.redo
         current = null
+        strokeActive = false
+        straightLive = false
         gestureRemoved.clear()
+        bg = null
         computeTransform()
         requestBg()
         rebuildBase()
@@ -113,14 +168,13 @@ class DrawView(context: Context) : View(context) {
 
     /** Sayfa bir PDF sayfasıysa görüntüsünü arka planda hazırlar, hazır olunca ekrana yansıtır. */
     private fun requestBg() {
-        bg = null
         val name = page.pdfName ?: return
         val dir = pdfDir ?: return
         if (width <= 0) return
         val token = ++bgToken
         val target = page
         val index = page.pdfIndex
-        val w = (page.width * sc * 1.5f).toInt().coerceIn(900, 2600)
+        val w = (page.width * sc * 1.5f).toInt().coerceIn(900, 3200)
         PdfStore.executor.execute {
             try {
                 val bmp = PdfStore.source(dir, name).render(index, w)
@@ -136,12 +190,33 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
+    /** Sayfayı ekrana sığdırır ve yakınlaştırmayı sıfırlar. */
     private fun computeTransform() {
         if (width <= 0 || height <= 0) return
         val m = 16f * density
-        sc = max(0.01f, min((width - 2 * m) / page.width, (height - 2 * m) / page.height))
+        fitSc = max(0.01f, min((width - 2 * m) / page.width, (height - 2 * m) / page.height))
+        sc = fitSc
         ox = (width - page.width * sc) / 2f
         oy = (height - page.height * sc) / 2f
+    }
+
+    /** Yakınlaştırılmış sayfanın ekran dışına kaçmasını engeller. */
+    private fun clampTransform() {
+        val pw = page.width * sc
+        val ph = page.height * sc
+        val m = 16f * density
+        ox = if (pw + 2 * m <= width) (width - pw) / 2f else ox.coerceIn(width - pw - m, m)
+        oy = if (ph + 2 * m <= height) (height - ph) / 2f else oy.coerceIn(height - ph - m, m)
+    }
+
+    private fun zoomAt(factor: Float, fx: Float, fy: Float) {
+        val newSc = (sc * factor).coerceIn(fitSc, fitSc * 6f)
+        val f = newSc / sc
+        ox = fx - (fx - ox) * f
+        oy = fy - (fy - oy) * f
+        sc = newSc
+        clampTransform()
+        invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -185,9 +260,17 @@ class DrawView(context: Context) : View(context) {
             c.drawColor(Color.rgb(120, 124, 132))
             return
         }
+        if (gestureActive) {
+            val f = sc / gSc0
+            gm.setScale(f, f)
+            gm.postTranslate(ox - gOx0 * f, oy - gOy0 * f)
+            c.drawColor(Color.rgb(120, 124, 132))
+            c.drawBitmap(b, gm, null)
+            return
+        }
         c.drawBitmap(b, 0f, 0f, null)
         val s = current
-        if (s != null && s.highlighter) {
+        if (s != null && (s.highlighter || straightLive)) {
             beginPage(c)
             drawStroke(c, s)
             c.restore()
@@ -334,6 +417,92 @@ class DrawView(context: Context) : View(context) {
         )
     }
 
+    // ---- Düzleştirme ----
+
+    /** Çizginin ikinci noktasını (x, y) olarak ayarlar; yatay, dikey ve 45 derece yakınında tam açıya yapıştırır. */
+    private fun setStraightEnd(s: Stroke, x: Float, y: Float) {
+        val x0 = s.xs[0]
+        val y0 = s.ys[0]
+        var ex = x
+        var ey = y
+        val dx = x - x0
+        val dy = y - y0
+        val ax = abs(dx)
+        val ay = abs(dy)
+        if (ay < ax * 0.07f) {
+            ey = y0
+        } else if (ax < ay * 0.07f) {
+            ex = x0
+        } else if (abs(ax - ay) < max(ax, ay) * 0.07f) {
+            val m = (ax + ay) / 2f
+            ex = x0 + (if (dx < 0) -m else m)
+            ey = y0 + (if (dy < 0) -m else m)
+        }
+        s.xs[1] = ex
+        s.ys[1] = ey
+    }
+
+    /** Çizgiyi ilk ve son noktası arasındaki düz bir çizgiye indirger. */
+    private fun straighten(s: Stroke) {
+        val n = s.xs.size
+        if (n < 2) return
+        val x0 = s.xs[0]
+        val y0 = s.ys[0]
+        val x1 = s.xs[n - 1]
+        val y1 = s.ys[n - 1]
+        var avgP = 0f
+        for (p in s.ps) avgP += p
+        avgP /= n
+        s.xs.clear()
+        s.ys.clear()
+        s.ps.clear()
+        s.add(x0, y0, avgP)
+        s.add(x1, y1, avgP)
+        setStraightEnd(s, x1, y1)
+    }
+
+    /** Çizgi başlangıç-bitiş doğrusundan çok sapmıyorsa true döner. */
+    private fun nearlyStraight(s: Stroke): Boolean {
+        val n = s.xs.size
+        if (n < 3) return false
+        val x0 = s.xs[0]
+        val y0 = s.ys[0]
+        val dx = s.xs[n - 1] - x0
+        val dy = s.ys[n - 1] - y0
+        val len = hypot(dx, dy)
+        if (len < 40f) return false
+        var maxDev = 0f
+        for (i in 1 until n - 1) {
+            val dev = abs((s.xs[i] - x0) * dy - (s.ys[i] - y0) * dx) / len
+            if (dev > maxDev) maxDev = dev
+        }
+        return maxDev < max(len * 0.08f, 12f)
+    }
+
+    private fun onHold() {
+        val s = current ?: return
+        if (!holdToStraighten || straightLive || s.xs.size < 3) return
+        val dx = s.xs[s.xs.size - 1] - s.xs[0]
+        val dy = s.ys[s.ys.size - 1] - s.ys[0]
+        if (hypot(dx, dy) < 20f) return
+        straighten(s)
+        straightLive = true
+        rebuildBase()
+        invalidate()
+    }
+
+    private fun scheduleHoldCheck(x: Float, y: Float) {
+        if (!holdToStraighten) return
+        if (hypot(x - holdX, y - holdY) > 8f * density) {
+            holdX = x
+            holdY = y
+            holdHandler.removeCallbacks(holdRunnable)
+            holdHandler.postDelayed(holdRunnable, 600L)
+        }
+    }
+
+    // ---- Dokunma ----
+
     private fun typeName(t: Int): String = when (t) {
         MotionEvent.TOOL_TYPE_FINGER -> "parmak"
         MotionEvent.TOOL_TYPE_STYLUS -> "kalem"
@@ -352,7 +521,128 @@ class DrawView(context: Context) : View(context) {
         return b.getPixel(px, py) or (0xFF shl 24)
     }
 
+    private fun countFingers(e: MotionEvent): Int {
+        var n = 0
+        for (i in 0 until e.pointerCount) {
+            if (e.getToolType(i) == MotionEvent.TOOL_TYPE_FINGER) n++
+        }
+        return n
+    }
+
+    private fun centroid(e: MotionEvent, skip: Int): FloatArray {
+        var sx = 0f
+        var sy = 0f
+        var n = 0
+        for (i in 0 until e.pointerCount) {
+            if (i == skip) continue
+            sx += e.getX(i)
+            sy += e.getY(i)
+            n++
+        }
+        if (n == 0) return floatArrayOf(lastCx, lastCy)
+        return floatArrayOf(sx / n, sy / n)
+    }
+
+    private fun startGesture(e: MotionEvent) {
+        holdHandler.removeCallbacks(holdRunnable)
+        if (current != null || gestureErasing) {
+            current = null
+            straightLive = false
+            if (gestureErasing && gestureRemoved.isNotEmpty()) {
+                undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
+                redoStack.clear()
+            }
+            gestureRemoved.clear()
+            strokeActive = false
+            rebuildBase()
+        }
+        gestureActive = true
+        gSc0 = sc
+        gOx0 = ox
+        gOy0 = oy
+        pinchAccum = 0f
+        totalDx = 0f
+        totalDy = 0f
+        swipeDone = false
+        maxFingers = e.pointerCount
+        val c = centroid(e, -1)
+        lastCx = c[0]
+        lastCy = c[1]
+    }
+
+    private fun endGesture() {
+        gestureActive = false
+        if (!swipeDone) {
+            requestBg()
+            rebuildBase()
+        }
+    }
+
+    /** Çok parmaklı dokunuşu işler; olay buna aitse true döner. */
+    private fun handleMultiTouch(e: MotionEvent): Boolean {
+        val act = e.actionMasked
+        if (!gestureActive) {
+            if (act == MotionEvent.ACTION_POINTER_DOWN && countFingers(e) >= 2 &&
+                !(strokeActive && strokeFromStylus)
+            ) {
+                startGesture(e)
+                scaleDetector.onTouchEvent(e)
+                return true
+            }
+            return false
+        }
+        if (act == MotionEvent.ACTION_DOWN) {
+            // Önceki hareketin sonu kaçırılmışsa temizle.
+            gestureActive = false
+            return false
+        }
+        scaleDetector.onTouchEvent(e)
+        when (act) {
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                maxFingers = max(maxFingers, e.pointerCount)
+                val c = centroid(e, -1)
+                lastCx = c[0]
+                lastCy = c[1]
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                val c = centroid(e, e.actionIndex)
+                lastCx = c[0]
+                lastCy = c[1]
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val c = centroid(e, -1)
+                val dx = c[0] - lastCx
+                val dy = c[1] - lastCy
+                lastCx = c[0]
+                lastCy = c[1]
+                totalDx += dx
+                totalDy += dy
+                if (!swipeDone) {
+                    val zoomed = sc > fitSc * 1.02f
+                    if (e.pointerCount >= 3) {
+                        if (abs(totalDx) > 90f * density && abs(totalDx) > 1.5f * abs(totalDy)) {
+                            swipeDone = true
+                            onPageSwipe?.invoke(if (totalDx < 0) 1 else -1)
+                        }
+                    } else if (zoomed || pinchAccum > 0.04f) {
+                        ox += dx
+                        oy += dy
+                        clampTransform()
+                        invalidate()
+                    } else if (abs(totalDx) > 110f * density && abs(totalDx) > 1.8f * abs(totalDy)) {
+                        swipeDone = true
+                        onPageSwipe?.invoke(if (totalDx < 0) 1 else -1)
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> endGesture()
+        }
+        return true
+    }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (handleMultiTouch(e)) return true
+
         val type = e.getToolType(0)
         val isStylus = type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER
 
@@ -398,6 +688,9 @@ class DrawView(context: Context) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 requestUnbufferedDispatch(e)
+                strokeActive = true
+                strokeFromStylus = isStylus
+                straightLive = false
                 gestureErasing = tool == Tool.ERASER ||
                     type == MotionEvent.TOOL_TYPE_ERASER ||
                     (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
@@ -413,6 +706,12 @@ class DrawView(context: Context) : View(context) {
                     s.add(gx, gy, if (hl) 0.5f else normP(e.pressure))
                     current = s
                     drawnUpTo = 0
+                    holdX = e.x
+                    holdY = e.y
+                    if (holdToStraighten) {
+                        holdHandler.removeCallbacks(holdRunnable)
+                        holdHandler.postDelayed(holdRunnable, 600L)
+                    }
                     if (!hl) {
                         val r = s.width * widthFactor(s, s.ps[0]) * 0.5f
                         val c = baseCanvas
@@ -437,27 +736,35 @@ class DrawView(context: Context) : View(context) {
                 } else {
                     val s = current
                     if (s != null) {
-                        val hl = s.highlighter
-                        val before = s.xs.size
-                        for (h in 0 until e.historySize) {
-                            s.add(
-                                pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)),
-                                if (hl) 0.5f else normP(e.getHistoricalPressure(h))
-                            )
-                        }
-                        s.add(pageX(e.x), pageY(e.y), if (hl) 0.5f else normP(e.pressure))
-                        if (hl) {
-                            val from = max(0, before - 1)
-                            for (i in from + 1 until s.xs.size) {
-                                invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width)
-                            }
+                        if (straightLive) {
+                            setStraightEnd(s, pageX(e.x), pageY(e.y))
+                            invalidate()
                         } else {
-                            drawPenIncrement(s)
+                            val hl = s.highlighter
+                            val before = s.xs.size
+                            for (h in 0 until e.historySize) {
+                                s.add(
+                                    pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)),
+                                    if (hl) 0.5f else normP(e.getHistoricalPressure(h))
+                                )
+                            }
+                            s.add(pageX(e.x), pageY(e.y), if (hl) 0.5f else normP(e.pressure))
+                            if (hl) {
+                                val from = max(0, before - 1)
+                                for (i in from + 1 until s.xs.size) {
+                                    invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width)
+                                }
+                            } else {
+                                drawPenIncrement(s)
+                            }
+                            scheduleHoldCheck(e.x, e.y)
                         }
                     }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                holdHandler.removeCallbacks(holdRunnable)
+                strokeActive = false
                 if (gestureErasing) {
                     if (gestureRemoved.isNotEmpty()) {
                         undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
@@ -468,19 +775,17 @@ class DrawView(context: Context) : View(context) {
                 } else {
                     val s = current
                     if (s != null) {
+                        var needsBake = s.highlighter || straightLive
+                        if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
+                            straighten(s)
+                            needsBake = true
+                        }
                         strokes.add(s)
                         undoStack.add(HistoryAction.Add(s))
                         redoStack.clear()
                         current = null
-                        if (s.highlighter) {
-                            val c = baseCanvas
-                            if (c != null) {
-                                beginPage(c)
-                                drawStroke(c, s)
-                                c.restore()
-                            }
-                            invalidate()
-                        }
+                        straightLive = false
+                        if (needsBake) rebuildBase()
                         onChanged?.invoke()
                     }
                 }
