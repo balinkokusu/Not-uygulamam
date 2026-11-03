@@ -153,6 +153,7 @@ class MainActivity : Activity() {
 
         for (t in listOf(status, info, sliderLabel)) {
             t.textSize = 13f
+            t.setSingleLine(true)
             t.setPadding(dp(8f), dp(2f), dp(8f), dp(2f))
         }
         draw.onInfo = { msg -> info.text = msg }
