@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var fingerBtn: IconButton
     private val toolButtons = HashMap<Tool, IconButton>()
     private var sliderMin = 1
+    private var versionText = ""
     private var d = 1f
 
     private val handler = Handler(Looper.getMainLooper())
@@ -67,8 +68,8 @@ class MainActivity : Activity() {
         saveNow()
     }
 
-    private fun iconBtn(icon: Icon, onClick: () -> Unit): IconButton {
-        val b = IconButton(this, icon)
+    private fun iconBtn(icon: Icon, label: String, onClick: () -> Unit): IconButton {
+        val b = IconButton(this, icon, label)
         val lp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         )
@@ -125,7 +126,7 @@ class MainActivity : Activity() {
         swatchRow.removeAllViews()
         val highlighter = draw.tool == Tool.HIGHLIGHTER
         val selected = if (highlighter) draw.hlColor else draw.penColor
-        swatchRow.addView(iconBtn(Icon.PALETTE) { showColorDialog() })
+        swatchRow.addView(iconBtn(Icon.PALETTE, "Renk") { showColorDialog() })
         for (c in recentColors) swatchRow.addView(swatch(c, c == selected))
         if (recentColors.isNotEmpty()) swatchRow.addView(separator())
         val palette = if (highlighter) hlPalette else penPalette
@@ -225,6 +226,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         d = resources.displayMetrics.density
+        versionText = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+        } catch (e: Exception) {
+            ""
+        }
 
         val loaded = Storage.load(notebookFile())
         if (loaded != null) {
@@ -252,7 +258,7 @@ class MainActivity : Activity() {
         sliderLabel.setPadding(dp(8f), dp(2f), dp(8f), dp(2f))
         pageLabel.textSize = 16f
         pageLabel.gravity = Gravity.CENTER_VERTICAL
-        draw.onInfo = { msg -> info.text = msg }
+        draw.onInfo = { msg -> info.text = "v$versionText · $msg" }
         draw.onChanged = { scheduleSave() }
         draw.onColorPicked = { c ->
             rememberColor(c)
@@ -281,11 +287,11 @@ class MainActivity : Activity() {
         toolRow.orientation = LinearLayout.HORIZONTAL
         toolRow.gravity = Gravity.CENTER_VERTICAL
         val toolIcons = listOf(
-            Tool.PEN to Icon.PEN, Tool.HIGHLIGHTER to Icon.HIGHLIGHTER,
-            Tool.ERASER to Icon.ERASER, Tool.PICKER to Icon.PICKER
+            Triple(Tool.PEN, Icon.PEN, "Kalem"), Triple(Tool.HIGHLIGHTER, Icon.HIGHLIGHTER, "Fosforlu"),
+            Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık")
         )
-        for ((t, ic) in toolIcons) {
-            val b = iconBtn(ic) {
+        for ((t, ic, lb) in toolIcons) {
+            val b = iconBtn(ic, lb) {
                 draw.tool = t
                 refresh()
             }
@@ -293,22 +299,22 @@ class MainActivity : Activity() {
             toolRow.addView(b)
         }
         toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.UNDO) { draw.undo() })
-        toolRow.addView(iconBtn(Icon.REDO) { draw.redo() })
+        toolRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
+        toolRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
         toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.PAPER) { showPaperDialog() })
-        fingerBtn = iconBtn(Icon.FINGER) {
+        toolRow.addView(iconBtn(Icon.PAPER, "Kâğıt") { showPaperDialog() })
+        fingerBtn = iconBtn(Icon.FINGER, "Parmak") {
             draw.fingerDraw = !draw.fingerDraw
             refresh()
         }
         toolRow.addView(fingerBtn)
-        toolRow.addView(iconBtn(Icon.TRASH) { draw.clearAll() })
+        toolRow.addView(iconBtn(Icon.TRASH, "Temizle") { draw.clearAll() })
         toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.PREV) { gotoPage(nb.current - 1) })
+        toolRow.addView(iconBtn(Icon.PREV, "Önceki") { gotoPage(nb.current - 1) })
         toolRow.addView(pageLabel)
-        toolRow.addView(iconBtn(Icon.NEXT) { gotoPage(nb.current + 1) })
-        toolRow.addView(iconBtn(Icon.ADD) { addPage() })
-        toolRow.addView(iconBtn(Icon.PAGES) { showPagesDialog() })
+        toolRow.addView(iconBtn(Icon.NEXT, "Sonraki") { gotoPage(nb.current + 1) })
+        toolRow.addView(iconBtn(Icon.ADD, "Yeni sayfa") { addPage() })
+        toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
         val toolScroll = HorizontalScrollView(this)
         toolScroll.addView(toolRow)
 
@@ -363,5 +369,6 @@ class MainActivity : Activity() {
 
         draw.showPage(nb.pages[nb.current])
         refresh()
+        info.text = "v$versionText · yazmaya başlayabilirsiniz"
     }
 }

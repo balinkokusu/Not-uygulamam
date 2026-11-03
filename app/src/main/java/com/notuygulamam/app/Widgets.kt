@@ -18,7 +18,7 @@ enum class Icon {
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
-class IconButton(context: Context, private val icon: Icon) : View(context) {
+class IconButton(context: Context, private val icon: Icon, private val label: String) : View(context) {
     private val d = resources.displayMetrics.density
     var active = false
         set(value) {
@@ -33,23 +33,30 @@ class IconButton(context: Context, private val icon: Icon) : View(context) {
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val rect = RectF()
     private val path = Path()
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = 11f * d
+    }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension((52 * d).toInt(), (52 * d).toInt())
+        setMeasuredDimension((74 * d).toInt(), (68 * d).toInt())
     }
 
     override fun onDraw(c: Canvas) {
-        val s = min(width, height).toFloat()
         rect.set(3 * d, 3 * d, width - 3 * d, height - 3 * d)
         bg.setColor(if (active) Color.rgb(35, 35, 40) else Color.rgb(236, 237, 240))
         c.drawRoundRect(rect, 12 * d, 12 * d, bg)
-        p.setColor(if (active) Color.WHITE else Color.rgb(30, 30, 34))
-        p.strokeWidth = s * 0.065f
-        val u = s * 0.56f
+        val fg = if (active) Color.WHITE else Color.rgb(30, 30, 34)
+        p.setColor(fg)
+        textPaint.setColor(fg)
+        val areaH = height - 20 * d
+        val u = areaH * 0.66f
+        p.strokeWidth = u * 0.115f
         c.save()
-        c.translate((s - u) / 2f, (s - u) / 2f)
+        c.translate((width - u) / 2f, 5 * d + (areaH - u) / 2f)
         glyph(c, u)
         c.restore()
+        c.drawText(label, width / 2f, height - 8 * d, textPaint)
     }
 
     private fun line(c: Canvas, u: Float, x0: Float, y0: Float, x1: Float, y1: Float) {
