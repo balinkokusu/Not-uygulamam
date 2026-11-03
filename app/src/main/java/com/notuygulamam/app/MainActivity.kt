@@ -3,6 +3,7 @@ package com.notuygulamam.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.content.Intent
 import android.os.Bundle
@@ -12,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -40,6 +42,9 @@ class MainActivity : Activity() {
     private lateinit var fingerBtn: IconButton
     private val toolButtons = HashMap<Tool, IconButton>()
     private var sliderMin = 1
+    private var toolsVisible = true
+    private var settingsPopup: PopupWindow? = null
+    private var settingsAnchor: View? = null
     private var versionText = ""
     private var d = 1f
 
@@ -117,8 +122,8 @@ class MainActivity : Activity() {
         if (selected) g.setStroke(dp(4f), Color.rgb(0, 120, 255))
         else g.setStroke(dp(1f), Color.LTGRAY)
         v.background = g
-        val lp = LinearLayout.LayoutParams(dp(42f), dp(42f))
-        lp.setMargins(dp(6f), dp(4f), dp(6f), dp(4f))
+        val lp = LinearLayout.LayoutParams(dp(36f), dp(36f))
+        lp.setMargins(dp(5f), dp(4f), dp(5f), dp(4f))
         v.layoutParams = lp
         v.setOnClickListener { applyColor(c) }
         return v
@@ -128,11 +133,35 @@ class MainActivity : Activity() {
         swatchRow.removeAllViews()
         val highlighter = draw.tool == Tool.HIGHLIGHTER
         val selected = if (highlighter) draw.hlColor else draw.penColor
-        swatchRow.addView(iconBtn(Icon.PALETTE, "Renk") { showColorDialog() })
+        swatchRow.addView(colorButton())
         for (c in recentColors) swatchRow.addView(swatch(c, c == selected))
         if (recentColors.isNotEmpty()) swatchRow.addView(separator())
         val palette = if (highlighter) hlPalette else penPalette
         for (c in palette) swatchRow.addView(swatch(c, c == selected))
+    }
+
+    private fun toggleSettings() {
+        val p = settingsPopup ?: return
+        val anchor = settingsAnchor ?: return
+        if (p.isShowing) p.dismiss() else p.showAsDropDown(anchor, dp(8f), 0)
+    }
+
+    private fun colorButton(): View {
+        val t = TextView(this)
+        t.text = "Renk seç"
+        t.textSize = 14f
+        t.setPadding(dp(14f), dp(7f), dp(14f), dp(7f))
+        val g = GradientDrawable()
+        g.setColor(Color.rgb(225, 227, 232))
+        g.cornerRadius = dp(10f).toFloat()
+        t.background = g
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(dp(6f), dp(4f), dp(6f), dp(4f))
+        t.layoutParams = lp
+        t.setOnClickListener { showColorDialog() }
+        return t
     }
 
     private fun showColorDialog() {
@@ -343,6 +372,7 @@ class MainActivity : Activity() {
             toolButtons[t] = b
             toolRow.addView(b)
         }
+        toolRow.addView(iconBtn(Icon.THICKNESS, "Kalınlık") { toggleSettings() })
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
         toolRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
@@ -368,13 +398,18 @@ class MainActivity : Activity() {
         val swatchScroll = HorizontalScrollView(this)
         swatchScroll.addView(swatchRow)
 
+        val panel = LinearLayout(this)
+        panel.orientation = LinearLayout.VERTICAL
+        panel.setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
+        panel.setBackgroundColor(Color.WHITE)
+
         val sliderRow = LinearLayout(this)
         sliderRow.orientation = LinearLayout.HORIZONTAL
         sliderRow.gravity = Gravity.CENTER_VERTICAL
-        sliderRow.setPadding(dp(8f), 0, dp(8f), 0)
         sliderRow.addView(sliderLabel, LinearLayout.LayoutParams(dp(150f), LinearLayout.LayoutParams.WRAP_CONTENT))
         sliderRow.addView(seek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        sliderRow.addView(preview, LinearLayout.LayoutParams(dp(160f), dp(60f)))
+        panel.addView(sliderRow)
+        panel.addView(preview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64f)))
 
         val pressLabel = TextView(this)
         pressLabel.textSize = 13f
@@ -397,17 +432,41 @@ class MainActivity : Activity() {
         val pressRow = LinearLayout(this)
         pressRow.orientation = LinearLayout.HORIZONTAL
         pressRow.gravity = Gravity.CENTER_VERTICAL
-        pressRow.setPadding(dp(8f), 0, dp(8f), 0)
         pressRow.addView(pressLabel, LinearLayout.LayoutParams(dp(200f), LinearLayout.LayoutParams.WRAP_CONTENT))
         pressRow.addView(pressSeek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        panel.addView(pressRow)
+
+        val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        popup.setBackgroundDrawable(ColorDrawable(Color.WHITE))
+        popup.isOutsideTouchable = true
+        popup.elevation = dp(10f).toFloat()
+        settingsPopup = popup
+        settingsAnchor = toolScroll
+
+        val toggle = TextView(this)
+        toggle.text = "Araçları gizle"
+        toggle.textSize = 14f
+        toggle.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+        toggle.setBackgroundColor(Color.rgb(225, 227, 232))
+        toggle.setOnClickListener {
+            toolsVisible = !toolsVisible
+            val vis = if (toolsVisible) View.VISIBLE else View.GONE
+            toolScroll.visibility = vis
+            swatchScroll.visibility = vis
+            toggle.text = if (toolsVisible) "Araçları gizle" else "Araçları göster"
+            settingsPopup?.dismiss()
+        }
+        val statusRow = LinearLayout(this)
+        statusRow.orientation = LinearLayout.HORIZONTAL
+        statusRow.gravity = Gravity.CENTER_VERTICAL
+        statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        statusRow.addView(toggle)
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.addView(toolScroll)
         root.addView(swatchScroll)
-        root.addView(sliderRow)
-        root.addView(pressRow)
-        root.addView(info)
+        root.addView(statusRow)
         root.addView(
             draw,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
