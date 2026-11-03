@@ -35,7 +35,7 @@ class PageRenderer {
     private val path = Path()
 
     /** Duyarlılık 0'da çarpan 1; 1'de çarpan 0,2 (hafif basınç) ile 2,8 (tam basınç) arasında. */
-    fun widthFactor(s: Stroke, p: Float): Float = 1f - s.sens * 0.8f + s.sens * 2.6f * p
+    fun widthFactor(s: Stroke, p: Float): Float = 1f - s.sens * 0.85f + s.sens * 3.0f * p
 
     fun segmentWidth(s: Stroke, i: Int): Float {
         val p = (s.ps[i] + s.ps[i - 1]) / 2f

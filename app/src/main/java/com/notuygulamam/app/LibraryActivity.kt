@@ -1,0 +1,599 @@
+package com.notuygulamam.app
+
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.DashPathEffect
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.os.Bundle
+import android.text.TextPaint
+import android.text.TextUtils
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.GridView
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.max
+
+/** Kütüphanedeki bir defter, klasör ya da "Yeni" kutusunu çizer. */
+class TileView(
+    context: Context,
+    private val item: LibraryItem?,
+    private val coverDir: File,
+    private val subtitle: String
+) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private val shadow = RectF()
+    private val path = Path()
+    private val src = Rect()
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        setMeasuredDimension(w, (w * 1.5f).toInt())
+    }
+
+    private fun drawCropped(c: Canvas, bmp: Bitmap, dst: RectF) {
+        val bw = bmp.width.toFloat()
+        val bh = bmp.height.toFloat()
+        val scale = max(dst.width() / bw, dst.height() / bh)
+        val sw = dst.width() / scale
+        val sh = dst.height() / scale
+        src.set(((bw - sw) / 2f).toInt(), ((bh - sh) / 2f).toInt(), ((bw + sw) / 2f).toInt(), ((bh + sh) / 2f).toInt())
+        val radius = dst.width() * 0.05f
+        c.save()
+        path.reset()
+        path.addRoundRect(dst, radius, radius, Path.Direction.CW)
+        c.clipPath(path)
+        c.drawBitmap(bmp, src, dst, bitmapPaint)
+        p.style = Paint.Style.FILL
+        p.color = Color.argb(60, 0, 0, 0)
+        c.drawRect(dst.left, dst.top, dst.left + dst.width() * 0.07f, dst.bottom, p)
+        p.color = Color.argb(70, 255, 255, 255)
+        c.drawRect(dst.left + dst.width() * 0.07f, dst.top, dst.left + dst.width() * 0.078f, dst.bottom, p)
+        c.restore()
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat()
+        val artW = w * 0.82f
+        val left = (w - artW) / 2f
+        val coverH = artW * 1.3f
+        val top = w * 0.04f
+        tp.textAlign = Paint.Align.CENTER
+
+        if (item == null) {
+            rect.set(left, top, left + artW, top + coverH)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 2.5f * d
+            p.color = Color.rgb(60, 120, 230)
+            p.pathEffect = DashPathEffect(floatArrayOf(10f * d, 8f * d), 0f)
+            c.drawRoundRect(rect, 12f * d, 12f * d, p)
+            p.pathEffect = null
+            p.strokeCap = Paint.Cap.ROUND
+            p.strokeWidth = 4f * d
+            c.drawLine(rect.centerX() - 18f * d, rect.centerY(), rect.centerX() + 18f * d, rect.centerY(), p)
+            c.drawLine(rect.centerX(), rect.centerY() - 18f * d, rect.centerX(), rect.centerY() + 18f * d, p)
+            tp.color = Color.rgb(60, 120, 230)
+            tp.textSize = 16f * d
+            tp.isFakeBoldText = true
+            c.drawText("Yeni", w / 2f, top + coverH + 22f * d, tp)
+            return
+        }
+
+        if (item.isFolder) {
+            val fh = artW * 0.85f
+            rect.set(left, top + coverH - fh, left + artW, top + coverH)
+            FolderArt.draw(c, rect, item.color, item.icon)
+        } else {
+            rect.set(left, top, left + artW, top + coverH)
+            shadow.set(rect.left + 3f * d, rect.top + 4f * d, rect.right + 3f * d, rect.bottom + 4f * d)
+            p.style = Paint.Style.FILL
+            p.color = Color.argb(45, 0, 0, 0)
+            c.drawRoundRect(shadow, artW * 0.05f, artW * 0.05f, p)
+            val img = item.coverImage
+            val bmp = if (img != null) CoverCache.thumb(coverDir, img) else null
+            if (bmp != null) drawCropped(c, bmp, rect) else CoverArt.draw(c, rect, item.coverStyle, item.color)
+        }
+
+        tp.color = Color.rgb(30, 30, 34)
+        tp.textSize = 15f * d
+        tp.isFakeBoldText = true
+        val title = TextUtils.ellipsize(item.title, tp, w * 0.92f, TextUtils.TruncateAt.END).toString()
+        c.drawText(title, w / 2f, top + coverH + 22f * d, tp)
+        if (subtitle.isNotEmpty()) {
+            tp.color = Color.rgb(120, 122, 130)
+            tp.textSize = 12f * d
+            tp.isFakeBoldText = false
+            c.drawText(subtitle, w / 2f, top + coverH + 40f * d, tp)
+        }
+    }
+}
+
+/** Seçenek listelerinde kullanılan küçük, seçilebilir önizleme. */
+class ArtThumb(
+    context: Context,
+    private val wDp: Int,
+    private val hDp: Int,
+    private val selected: () -> Boolean,
+    private val painter: (Canvas, RectF) -> Unit
+) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val rect = RectF()
+    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension((wDp * d).toInt(), (hDp * d).toInt())
+    }
+
+    override fun onDraw(c: Canvas) {
+        rect.set(5f * d, 5f * d, width - 5f * d, height - 5f * d)
+        painter(c, rect)
+        if (selected()) {
+            ring.strokeWidth = 3f * d
+            ring.color = Color.rgb(0, 120, 255)
+            rect.inset(-3f * d, -3f * d)
+            c.drawRoundRect(rect, 8f * d, 8f * d, ring)
+        }
+    }
+}
+
+class LibraryActivity : Activity() {
+    private lateinit var store: LibraryStore
+    private lateinit var coverDir: File
+    private lateinit var grid: GridView
+    private lateinit var titleView: TextView
+    private lateinit var backBtn: TextView
+    private var folderId = ""
+    private var d = 1f
+    private var shown: List<LibraryItem?> = emptyList()
+    private var draftForPhoto: LibraryItem? = null
+    private var onPhotoReady: (() -> Unit)? = null
+    private val pendingImages = ArrayList<String>()
+    private val dateFmt = SimpleDateFormat("d MMM yyyy", Locale("tr"))
+
+    private val palette = intArrayOf(
+        Color.rgb(70, 100, 180), Color.rgb(40, 150, 150), Color.rgb(70, 150, 90),
+        Color.rgb(150, 160, 70), Color.rgb(235, 190, 60), Color.rgb(235, 140, 60),
+        Color.rgb(205, 70, 70), Color.rgb(230, 120, 160), Color.rgb(140, 90, 180),
+        Color.rgb(130, 90, 70), Color.rgb(120, 125, 135), Color.rgb(35, 50, 100)
+    )
+
+    private fun dp(v: Float): Int = (v * d).toInt()
+
+    private val adapter = object : BaseAdapter() {
+        override fun getCount(): Int = shown.size
+        override fun getItem(position: Int): Any? = shown[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val it = shown[position]
+            val sub = if (it == null) "" else if (it.isFolder) {
+                val n = store.items.count { c -> c.parentId == it.id }
+                "$n öğe"
+            } else dateFmt.format(Date(it.modified))
+            return TileView(this@LibraryActivity, it, coverDir, sub)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        d = resources.displayMetrics.density
+        store = LibraryStore(File(filesDir, "library"))
+        coverDir = File(filesDir, "covers")
+        store.load()
+        migrate()
+
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        root.setBackgroundColor(Color.rgb(244, 244, 247))
+
+        val header = LinearLayout(this)
+        header.orientation = LinearLayout.HORIZONTAL
+        header.gravity = Gravity.CENTER_VERTICAL
+        header.setPadding(dp(20f), dp(18f), dp(20f), dp(6f))
+        backBtn = TextView(this)
+        backBtn.text = "‹ Geri"
+        backBtn.textSize = 18f
+        backBtn.setTextColor(Color.rgb(60, 120, 230))
+        backBtn.setPadding(0, dp(6f), dp(16f), dp(6f))
+        backBtn.visibility = View.GONE
+        backBtn.setOnClickListener { goUp() }
+        titleView = TextView(this)
+        titleView.textSize = 28f
+        titleView.setTypeface(null, Typeface.BOLD)
+        titleView.setTextColor(Color.rgb(25, 25, 30))
+        header.addView(backBtn)
+        header.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+        grid = GridView(this)
+        grid.numColumns = GridView.AUTO_FIT
+        grid.columnWidth = dp(170f)
+        grid.stretchMode = GridView.STRETCH_COLUMN_WIDTH
+        grid.verticalSpacing = dp(10f)
+        grid.horizontalSpacing = dp(10f)
+        grid.setPadding(dp(20f), dp(12f), dp(20f), dp(20f))
+        grid.clipToPadding = false
+        grid.adapter = adapter
+        grid.setOnItemClickListener { _, _, pos, _ -> onTileClick(shown[pos]) }
+        grid.setOnItemLongClickListener { _, _, pos, _ ->
+            val it = shown[pos]
+            if (it != null) showItemMenu(it)
+            true
+        }
+
+        root.addView(header)
+        root.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(root)
+        refresh()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        store.load()
+        refresh()
+    }
+
+    override fun onBackPressed() {
+        if (folderId.isNotEmpty()) goUp() else super.onBackPressed()
+    }
+
+    private fun goUp() {
+        folderId = store.find(folderId)?.parentId ?: ""
+        refresh()
+    }
+
+    /** Eski sürümlerdeki tek defteri kütüphaneye taşır. */
+    private fun migrate() {
+        val old = File(filesDir, "defter.bin")
+        val flag = File(filesDir, "library_migrated")
+        if (store.items.isEmpty() && old.exists() && !flag.exists()) {
+            val it = LibraryItem(store.newId(), false, "Defterim", "")
+            it.modified = old.lastModified()
+            store.dir.mkdirs()
+            old.copyTo(store.notebookFile(it.id), overwrite = true)
+            store.items.add(it)
+            store.save()
+            flag.createNewFile()
+        }
+    }
+
+    private fun refresh() {
+        val list = ArrayList<LibraryItem?>()
+        list.add(null)
+        list.addAll(store.children(folderId))
+        shown = list
+        val f = store.find(folderId)
+        titleView.text = f?.title ?: "Defterlerim"
+        backBtn.visibility = if (folderId.isEmpty()) View.GONE else View.VISIBLE
+        adapter.notifyDataSetChanged()
+    }
+
+    private fun onTileClick(item: LibraryItem?) {
+        when {
+            item == null -> showNewMenu()
+            item.isFolder -> {
+                folderId = item.id
+                refresh()
+            }
+            else -> {
+                val intent = Intent(this, MainActivity::class.java)
+                intent.putExtra("id", item.id)
+                startActivity(intent)
+            }
+        }
+    }
+
+    private fun showNewMenu() {
+        AlertDialog.Builder(this)
+            .setTitle("Yeni")
+            .setItems(arrayOf("Yeni defter", "Yeni klasör")) { _, which ->
+                showEditor(null, which == 1)
+            }
+            .show()
+    }
+
+    private fun showItemMenu(item: LibraryItem) {
+        AlertDialog.Builder(this)
+            .setTitle(item.title)
+            .setItems(arrayOf("Düzenle (ad, kapak, renk)", "Başka klasöre taşı", "Sil")) { _, which ->
+                when (which) {
+                    0 -> showEditor(item, item.isFolder)
+                    1 -> showMoveDialog(item)
+                    else -> confirmDelete(item)
+                }
+            }
+            .show()
+    }
+
+    private fun showMoveDialog(item: LibraryItem) {
+        val blocked = HashSet<String>()
+        blocked.add(item.id)
+        for (x in store.descendants(item.id)) blocked.add(x.id)
+        val targets = store.items.filter { it.isFolder && !blocked.contains(it.id) }
+        val labels = ArrayList<String>()
+        labels.add("Ana klasör (Defterlerim)")
+        for (t in targets) labels.add(t.title)
+        AlertDialog.Builder(this)
+            .setTitle("Nereye taşınsın?")
+            .setItems(labels.toTypedArray()) { _, which ->
+                item.parentId = if (which == 0) "" else targets[which - 1].id
+                store.save()
+                refresh()
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
+    private fun confirmDelete(item: LibraryItem) {
+        val extra = if (item.isFolder) " Klasörün içindeki her şey de silinir." else ""
+        AlertDialog.Builder(this)
+            .setTitle("Silinsin mi?")
+            .setMessage("\"${item.title}\" silinecek.$extra Bu işlem geri alınamaz.")
+            .setPositiveButton("Sil") { _, _ ->
+                val all = ArrayList<LibraryItem>()
+                all.add(item)
+                all.addAll(store.descendants(item.id))
+                for (x in all) {
+                    if (!x.isFolder) store.notebookFile(x.id).delete()
+                    val img = x.coverImage
+                    if (img != null) CoverCache.delete(coverDir, img)
+                }
+                store.items.removeAll(all.toSet())
+                store.save()
+                refresh()
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
+    private fun label(t: String): TextView {
+        val v = TextView(this)
+        v.text = t
+        v.textSize = 14f
+        v.setTypeface(null, Typeface.BOLD)
+        v.setPadding(0, dp(14f), 0, dp(4f))
+        return v
+    }
+
+    /** Yeni defter/klasör oluşturma ve var olanı düzenleme penceresi. */
+    private fun showEditor(existing: LibraryItem?, isFolder: Boolean) {
+        val draft = existing?.copy() ?: LibraryItem(store.newId(), isFolder, "", folderId)
+        if (existing == null) draft.color = palette[if (isFolder) 4 else 0]
+        var paperIdx = Paper.RULED.ordinal
+        var committed = false
+        val thumbs = ArrayList<View>()
+
+        val content = LinearLayout(this)
+        content.orientation = LinearLayout.VERTICAL
+        content.setPadding(dp(20f), dp(10f), dp(20f), dp(10f))
+
+        val preview = TileView(this, draft, coverDir, "")
+        val plp = LinearLayout.LayoutParams(dp(170f), LinearLayout.LayoutParams.WRAP_CONTENT)
+        plp.gravity = Gravity.CENTER_HORIZONTAL
+        content.addView(preview, plp)
+
+        fun refreshAll() {
+            for (t in thumbs) t.invalidate()
+            preview.invalidate()
+        }
+
+        val titleEdit = EditText(this)
+        titleEdit.hint = if (isFolder) "Klasör adı" else "Defter adı"
+        titleEdit.setText(draft.title)
+        titleEdit.setSingleLine(true)
+        content.addView(titleEdit)
+
+        content.addView(label(if (isFolder) "Klasör rengi" else "Kapak rengi"))
+        val colorRow = LinearLayout(this)
+        colorRow.orientation = LinearLayout.HORIZONTAL
+        for (col in palette) {
+            val t = ArtThumb(this, 44, 44, { draft.color == col }) { cv, r ->
+                val pnt = Paint(Paint.ANTI_ALIAS_FLAG)
+                pnt.color = col
+                cv.drawCircle(r.centerX(), r.centerY(), r.width() / 2f, pnt)
+            }
+            t.setOnClickListener {
+                draft.color = col
+                refreshAll()
+            }
+            thumbs.add(t)
+            colorRow.addView(t)
+        }
+        val colorScroll = HorizontalScrollView(this)
+        colorScroll.addView(colorRow)
+        content.addView(colorScroll)
+
+        if (isFolder) {
+            content.addView(label("Klasör simgesi"))
+            val iconRow = LinearLayout(this)
+            iconRow.orientation = LinearLayout.HORIZONTAL
+            for (i in 0 until FolderArt.ICON_COUNT) {
+                val t = ArtThumb(this, 56, 56, { draft.icon == i }) { cv, r ->
+                    val pnt = Paint(Paint.ANTI_ALIAS_FLAG)
+                    pnt.color = Color.rgb(232, 233, 238)
+                    cv.drawRoundRect(r, 10f * d, 10f * d, pnt)
+                    FolderArt.drawIcon(cv, r.centerX(), r.centerY(), r.width() * 0.3f, i, Color.rgb(60, 62, 70))
+                }
+                t.setOnClickListener {
+                    draft.icon = i
+                    refreshAll()
+                }
+                thumbs.add(t)
+                iconRow.addView(t)
+            }
+            val iconScroll = HorizontalScrollView(this)
+            iconScroll.addView(iconRow)
+            content.addView(iconScroll)
+        } else {
+            content.addView(label("Kapak şablonu"))
+            val styleRow = LinearLayout(this)
+            styleRow.orientation = LinearLayout.HORIZONTAL
+            for (i in 0 until CoverArt.STYLE_COUNT) {
+                val t = ArtThumb(this, 66, 90, { draft.coverImage == null && draft.coverStyle == i }) { cv, r ->
+                    CoverArt.draw(cv, r, i, draft.color)
+                }
+                t.setOnClickListener {
+                    draft.coverStyle = i
+                    draft.coverImage = null
+                    refreshAll()
+                }
+                thumbs.add(t)
+                styleRow.addView(t)
+            }
+            val styleScroll = HorizontalScrollView(this)
+            styleScroll.addView(styleRow)
+            content.addView(styleScroll)
+
+            content.addView(label("Kendi fotoğrafınız"))
+            val photoRow = LinearLayout(this)
+            photoRow.orientation = LinearLayout.HORIZONTAL
+            val pick = Button(this)
+            pick.text = "Galeriden seç"
+            pick.isAllCaps = false
+            pick.setOnClickListener {
+                draftForPhoto = draft
+                onPhotoReady = { refreshAll() }
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                intent.addCategory(Intent.CATEGORY_OPENABLE)
+                intent.type = "image/*"
+                startActivityForResult(intent, REQ_COVER)
+            }
+            val clear = Button(this)
+            clear.text = "Fotoğrafı kaldır"
+            clear.isAllCaps = false
+            clear.setOnClickListener {
+                draft.coverImage = null
+                refreshAll()
+            }
+            photoRow.addView(pick)
+            photoRow.addView(clear)
+            content.addView(photoRow)
+
+            if (existing == null) {
+                content.addView(label("İlk sayfanın kâğıdı"))
+                val paperRow = LinearLayout(this)
+                paperRow.orientation = LinearLayout.HORIZONTAL
+                val paperViews = ArrayList<TextView>()
+                fun updPaper() {
+                    for ((i, tv) in paperViews.withIndex()) {
+                        tv.setBackgroundColor(if (i == paperIdx) Color.rgb(40, 40, 40) else Color.rgb(225, 227, 232))
+                        tv.setTextColor(if (i == paperIdx) Color.WHITE else Color.BLACK)
+                    }
+                }
+                for ((i, pp) in Paper.values().withIndex()) {
+                    val tv = TextView(this)
+                    tv.text = pp.label
+                    tv.textSize = 14f
+                    tv.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.setMargins(0, 0, dp(6f), 0)
+                    tv.layoutParams = lp
+                    tv.setOnClickListener {
+                        paperIdx = i
+                        updPaper()
+                    }
+                    paperViews.add(tv)
+                    paperRow.addView(tv)
+                }
+                updPaper()
+                content.addView(paperRow)
+            }
+        }
+
+        val sv = ScrollView(this)
+        sv.addView(content)
+        val dlg = AlertDialog.Builder(this)
+            .setTitle(
+                if (existing == null) (if (isFolder) "Yeni klasör" else "Yeni defter")
+                else (if (isFolder) "Klasörü düzenle" else "Defteri düzenle")
+            )
+            .setView(sv)
+            .setPositiveButton(if (existing == null) "Oluştur" else "Kaydet") { _, _ ->
+                committed = true
+                draft.title = titleEdit.text.toString().trim()
+                    .ifEmpty { if (isFolder) "Adsız klasör" else "Adsız defter" }
+                if (existing == null) {
+                    draft.modified = System.currentTimeMillis()
+                    if (!isFolder) {
+                        val nb = Notebook()
+                        nb.pages.add(PageData(paper = Paper.values()[paperIdx]))
+                        store.dir.mkdirs()
+                        Storage.save(nb, store.notebookFile(draft.id))
+                    }
+                    store.items.add(draft)
+                } else {
+                    val old = existing.coverImage
+                    if (old != null && old != draft.coverImage) CoverCache.delete(coverDir, old)
+                    existing.copyFrom(draft)
+                }
+                pendingImages.remove(draft.coverImage)
+                store.save()
+                refresh()
+            }
+            .setNegativeButton("Vazgeç", null)
+            .create()
+        dlg.setOnDismissListener {
+            for (b in pendingImages) CoverCache.delete(coverDir, b)
+            pendingImages.clear()
+            draftForPhoto = null
+            onPhotoReady = null
+        }
+        dlg.show()
+        if (committed) return
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_COVER || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val target = draftForPhoto ?: return
+        Toast.makeText(this, "Fotoğraf hazırlanıyor...", Toast.LENGTH_SHORT).show()
+        Thread {
+            val base = "c_" + target.id + "_" + System.currentTimeMillis()
+            val ok = try {
+                CoverCache.importImage(this, uri, coverDir, base)
+            } catch (e: Exception) {
+                false
+            }
+            runOnUiThread {
+                if (ok) {
+                    pendingImages.add(base)
+                    target.coverImage = base
+                    onPhotoReady?.invoke()
+                } else {
+                    Toast.makeText(this, "Fotoğraf açılamadı", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    companion object {
+        private const val REQ_COVER = 201
+    }
+}

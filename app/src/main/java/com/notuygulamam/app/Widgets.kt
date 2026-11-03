@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -166,6 +166,11 @@ class IconButton(context: Context, private val icon: Icon, private val label: St
                 c.drawRect(0.1f * u, 0.12f * u, 0.9f * u, 0.36f * u, p)
                 c.drawRect(0.17f * u, 0.36f * u, 0.83f * u, 0.92f * u, p)
                 line(c, u, 0.4f, 0.56f, 0.6f, 0.56f)
+            }
+            Icon.HOME -> {
+                poly(c, u, false, 0.06f, 0.5f, 0.5f, 0.1f, 0.94f, 0.5f)
+                poly(c, u, false, 0.2f, 0.42f, 0.2f, 0.92f, 0.8f, 0.92f, 0.8f, 0.42f)
+                poly(c, u, false, 0.42f, 0.92f, 0.42f, 0.62f, 0.58f, 0.62f, 0.58f, 0.92f)
             }
             Icon.IMPORT -> {
                 poly(c, u, false, 0.1f, 0.6f, 0.1f, 0.95f, 0.9f, 0.95f, 0.9f, 0.6f)

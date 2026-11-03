@@ -45,7 +45,7 @@ class DrawView(context: Context) : View(context) {
     var holdToStraighten = true
 
     /** 0 ile 100 arası; 0'da çizgi kalınlığı basınçtan etkilenmez. */
-    var pressureSensitivity = 70
+    var pressureSensitivity = 85
 
     /** Bu oturumda gözlenen en yüksek ham basınç; tam basınç ölçeği olarak kullanılır. */
     var maxPressure = 0.25f
@@ -310,7 +310,7 @@ class DrawView(context: Context) : View(context) {
     private fun normP(p: Float): Float {
         if (p > maxPressure) maxPressure = p
         val r = clamp01(p / maxPressure)
-        return Math.pow(r.toDouble(), 0.8).toFloat()
+        return Math.pow(r.toDouble(), 0.7).toFloat()
     }
 
     private fun drawStroke(c: Canvas, s: Stroke) = renderer.drawStroke(c, s)

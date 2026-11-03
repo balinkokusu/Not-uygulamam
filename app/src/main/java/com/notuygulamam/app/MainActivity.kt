@@ -56,7 +56,10 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val saveRunnable = Runnable { saveNow() }
 
-    private fun notebookFile(): File = File(filesDir, "defter.bin")
+    private var itemId: String = ""
+    private fun libraryDir(): File = File(filesDir, "library")
+    private fun notebookFile(): File =
+        if (itemId.isEmpty()) File(filesDir, "defter.bin") else File(libraryDir(), "nb_$itemId.bin")
     private fun pdfDir(): File = File(filesDir, "pdfs")
 
     private fun dp(v: Float): Int = (v * d).toInt()
@@ -78,6 +81,11 @@ class MainActivity : Activity() {
         super.onPause()
         handler.removeCallbacks(saveRunnable)
         saveNow()
+        if (itemId.isNotEmpty()) {
+            val st = LibraryStore(libraryDir())
+            st.load()
+            st.touch(itemId)
+        }
     }
 
     private fun iconBtn(icon: Icon, label: String, onClick: () -> Unit): IconButton {
@@ -421,6 +429,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        itemId = intent.getStringExtra("id") ?: ""
         d = resources.displayMetrics.density
         versionText = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: ""
@@ -484,6 +493,8 @@ class MainActivity : Activity() {
         val toolRow = LinearLayout(this)
         toolRow.orientation = LinearLayout.HORIZONTAL
         toolRow.gravity = Gravity.CENTER_VERTICAL
+        toolRow.addView(iconBtn(Icon.HOME, "Kütüphane") { finish() })
+        toolRow.addView(separator())
         val toolIcons = listOf(
             Triple(Tool.PEN, Icon.PEN, "Kalem"), Triple(Tool.HIGHLIGHTER, Icon.HIGHLIGHTER, "Fosforlu"),
             Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık")
