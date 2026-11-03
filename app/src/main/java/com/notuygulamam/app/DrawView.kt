@@ -37,8 +37,11 @@ class DrawView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
 
     var tool = Tool.PEN
-    var inkColor = Color.BLACK
+    var penColor = Color.BLACK
     var penWidthDp = 4f
+    var hlColor = Color.rgb(255, 235, 0)
+    var hlWidthDp = 14f
+    var eraserRadiusDp = 14f
     var fingerDraw = false
     var paper = Paper.RULED
         set(value) {
@@ -120,7 +123,7 @@ class DrawView(context: Context) : View(context) {
         if (n == 0) return
         if (s.highlighter) {
             linePaint.setColor(s.color)
-            linePaint.alpha = 90
+            linePaint.alpha = 110
             linePaint.strokeWidth = s.width
             linePaint.strokeCap = Paint.Cap.SQUARE
             path.reset()
@@ -178,8 +181,8 @@ class DrawView(context: Context) : View(context) {
                     eraseAt(e.x, e.y)
                 } else {
                     val hl = tool == Tool.HIGHLIGHTER
-                    val w = penWidthDp * density * (if (hl) 5f else 1f)
-                    val s = Stroke(inkColor, w, hl)
+                    val s = if (hl) Stroke(hlColor, hlWidthDp * density, true)
+                    else Stroke(penColor, penWidthDp * density, false)
                     s.add(e.x, e.y, if (hl) 0.5f else clamp01(e.pressure))
                     current = s
                 }
@@ -225,7 +228,7 @@ class DrawView(context: Context) : View(context) {
     }
 
     private fun eraseAt(x: Float, y: Float) {
-        val r = 14f * density
+        val r = eraserRadiusDp * density
         var i = strokes.size - 1
         while (i >= 0) {
             val s = strokes[i]
