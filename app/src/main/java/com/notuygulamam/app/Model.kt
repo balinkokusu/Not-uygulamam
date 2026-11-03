@@ -38,6 +38,16 @@ class PageData(
     var pdfName: String? = null
     var pdfIndex = 0
     val strokes = ArrayList<Stroke>()
+
+    /** Arka planda dışa aktarmak için sayfanın o anki halinin kopyası. */
+    fun snapshot(): PageData {
+        val p = PageData(width, height, paper)
+        p.pdfName = pdfName
+        p.pdfIndex = pdfIndex
+        p.strokes.addAll(strokes)
+        return p
+    }
+
     val undo = ArrayList<HistoryAction>()
     val redo = ArrayList<HistoryAction>()
 }

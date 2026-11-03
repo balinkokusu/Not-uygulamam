@@ -149,6 +149,7 @@ class DrawView(context: Context) : View(context) {
         strokeWidth = 1.5f
     }
     private val path = Path()
+    private val renderer = PageRenderer()
 
     fun showPage(p: PageData) {
         holdHandler.removeCallbacks(holdRunnable)
@@ -297,52 +298,11 @@ class DrawView(context: Context) : View(context) {
         c.drawCircle(pickX, pickY, 5f * density, linePaint)
     }
 
-    private fun drawPaper(c: Canvas) {
-        val step = 40f
-        val w = page.width
-        val h = page.height
-        when (page.paper) {
-            Paper.BLANK -> {}
-            Paper.RULED -> {
-                var y = step * 2f
-                while (y < h) {
-                    c.drawLine(0f, y, w, y, paperPaint)
-                    y += step
-                }
-            }
-            Paper.GRID -> {
-                var y = step
-                while (y < h) {
-                    c.drawLine(0f, y, w, y, paperPaint)
-                    y += step
-                }
-                var x = step
-                while (x < w) {
-                    c.drawLine(x, 0f, x, h, paperPaint)
-                    x += step
-                }
-            }
-            Paper.DOTTED -> {
-                var y = step
-                while (y < h) {
-                    var x = step
-                    while (x < w) {
-                        c.drawCircle(x, y, 2.2f, dotPaint)
-                        x += step
-                    }
-                    y += step
-                }
-            }
-        }
-    }
+    private fun drawPaper(c: Canvas) = renderer.drawPaper(c, page)
 
-    /** Duyarlılık 0'da çarpan 1; 1'de çarpan 0,2 (hafif basınç) ile 2,8 (tam basınç) arasında. */
-    private fun widthFactor(s: Stroke, p: Float): Float = 1f - s.sens * 0.8f + s.sens * 2.6f * p
+    private fun widthFactor(s: Stroke, p: Float): Float = renderer.widthFactor(s, p)
 
-    private fun segmentWidth(s: Stroke, i: Int): Float {
-        val p = (s.ps[i] + s.ps[i - 1]) / 2f
-        return s.width * widthFactor(s, p)
-    }
+    private fun segmentWidth(s: Stroke, i: Int): Float = renderer.segmentWidth(s, i)
 
     private fun clamp01(p: Float): Float = max(0f, min(1f, p))
 
@@ -353,36 +313,7 @@ class DrawView(context: Context) : View(context) {
         return Math.pow(r.toDouble(), 0.8).toFloat()
     }
 
-    private fun drawStroke(c: Canvas, s: Stroke) {
-        val n = s.xs.size
-        if (n == 0) return
-        if (s.highlighter) {
-            linePaint.setColor(s.color)
-            linePaint.alpha = 110
-            linePaint.strokeWidth = s.width
-            linePaint.strokeCap = Paint.Cap.SQUARE
-            path.reset()
-            path.moveTo(s.xs[0], s.ys[0])
-            if (n == 1) path.lineTo(s.xs[0] + 0.1f, s.ys[0])
-            for (i in 1 until n) path.lineTo(s.xs[i], s.ys[i])
-            c.drawPath(path, linePaint)
-            linePaint.alpha = 255
-            linePaint.strokeCap = Paint.Cap.ROUND
-            return
-        }
-        linePaint.setColor(s.color)
-        linePaint.alpha = 255
-        linePaint.strokeCap = Paint.Cap.ROUND
-        if (n == 1) {
-            fillPaint.setColor(s.color)
-            c.drawCircle(s.xs[0], s.ys[0], s.width * widthFactor(s, s.ps[0]) * 0.5f, fillPaint)
-            return
-        }
-        for (i in 1 until n) {
-            linePaint.strokeWidth = segmentWidth(s, i)
-            c.drawLine(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], linePaint)
-        }
-    }
+    private fun drawStroke(c: Canvas, s: Stroke) = renderer.drawStroke(c, s)
 
     /** Kalem çizgisinin henüz çizilmemiş yeni parçalarını bitmap'e ekler ve yalnızca o bölgeyi yeniler. */
     private fun drawPenIncrement(s: Stroke) {

@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +20,9 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : Activity() {
     private val penPalette = intArrayOf(
@@ -241,8 +245,15 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_PDF || resultCode != RESULT_OK) return
+        if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
+        when (requestCode) {
+            REQ_PDF -> importPdfFrom(uri)
+            REQ_EXPORT -> exportPdfTo(uri)
+        }
+    }
+
+    private fun importPdfFrom(uri: Uri) {
         Toast.makeText(this, "PDF ekleniyor...", Toast.LENGTH_SHORT).show()
         Thread {
             try {
@@ -255,6 +266,41 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     Toast.makeText(this, "PDF açılamadı (şifreli ya da bozuk olabilir)", Toast.LENGTH_LONG).show()
                 }
+            }
+        }.start()
+    }
+
+    private fun saveWithMessage() {
+        handler.removeCallbacks(saveRunnable)
+        try {
+            Storage.save(nb, notebookFile())
+            val t = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            Toast.makeText(this, "Defter kaydedildi ($t)", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Kaydedilemedi", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun startExport() {
+        saveNow()
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.type = "application/pdf"
+        intent.putExtra(Intent.EXTRA_TITLE, "defter.pdf")
+        startActivityForResult(intent, REQ_EXPORT)
+    }
+
+    private fun exportPdfTo(uri: Uri) {
+        Toast.makeText(this, "PDF hazırlanıyor, sayfa sayısına göre biraz sürebilir...", Toast.LENGTH_LONG).show()
+        val snapshot = nb.pages.map { it.snapshot() }
+        val dir = pdfDir()
+        Thread {
+            try {
+                val out = contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Dosya açılamadı")
+                out.use { PdfExporter.export(snapshot, dir, it) }
+                runOnUiThread { Toast.makeText(this, "PDF kaydedildi", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "PDF kaydedilemedi", Toast.LENGTH_LONG).show() }
             }
         }.start()
     }
@@ -394,6 +440,9 @@ class MainActivity : Activity() {
         toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.IMPORT, "PDF ekle") { pickPdf() })
+        toolRow.addView(separator())
+        toolRow.addView(iconBtn(Icon.SAVE, "Kaydet") { saveWithMessage() })
+        toolRow.addView(iconBtn(Icon.EXPORT, "PDF kaydet") { startExport() })
         val toolScroll = HorizontalScrollView(this)
         toolScroll.addView(toolRow)
 
@@ -493,5 +542,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQ_PDF = 101
+        private const val REQ_EXPORT = 102
     }
 }
