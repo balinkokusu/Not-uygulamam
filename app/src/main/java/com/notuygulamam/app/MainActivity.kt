@@ -250,6 +250,8 @@ class MainActivity : Activity() {
         when (requestCode) {
             REQ_PDF -> importPdfFrom(uri)
             REQ_EXPORT -> exportPdfTo(uri)
+            REQ_BACKUP -> backupTo(uri)
+            REQ_RESTORE -> restoreFrom(uri)
         }
     }
 
@@ -275,10 +277,84 @@ class MainActivity : Activity() {
         try {
             Storage.save(nb, notebookFile())
             val t = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-            Toast.makeText(this, "Defter kaydedildi ($t)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Defter uygulamanın içine kaydedildi ($t). Dosya olarak almak için \"PDF kaydet\" ya da \"Yedek\" düğmesini kullanın.",
+                Toast.LENGTH_LONG
+            ).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Kaydedilemedi", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun showBackupDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Yedek")
+            .setItems(arrayOf("Yedek dosyası oluştur (yeri siz seçersiniz)", "Yedek dosyasından geri yükle")) { _, which ->
+                if (which == 0) {
+                    saveNow()
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                    intent.addCategory(Intent.CATEGORY_OPENABLE)
+                    intent.type = "application/zip"
+                    intent.putExtra(Intent.EXTRA_TITLE, "NotUygulamam-yedek.zip")
+                    startActivityForResult(intent, REQ_BACKUP)
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Geri yükle")
+                        .setMessage("Seçtiğiniz yedek şu anki defterin yerine geçecek. Şu anki defter uygulama içinde bir önceki sürüm olarak saklanır. Devam edilsin mi?")
+                        .setPositiveButton("Dosya seç") { _, _ ->
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                            intent.addCategory(Intent.CATEGORY_OPENABLE)
+                            intent.type = "application/zip"
+                            startActivityForResult(intent, REQ_RESTORE)
+                        }
+                        .setNegativeButton("Vazgeç", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun backupTo(uri: Uri) {
+        Toast.makeText(this, "Yedek hazırlanıyor...", Toast.LENGTH_SHORT).show()
+        val nbFile = notebookFile()
+        val dir = pdfDir()
+        Thread {
+            try {
+                val out = contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Dosya açılamadı")
+                out.use { Backup.write(nbFile, dir, it) }
+                runOnUiThread { Toast.makeText(this, "Yedek kaydedildi", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Yedek kaydedilemedi", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun restoreFrom(uri: Uri) {
+        Toast.makeText(this, "Yedek yükleniyor...", Toast.LENGTH_SHORT).show()
+        val nbFile = notebookFile()
+        val dir = pdfDir()
+        Thread {
+            var ok = false
+            try {
+                val input = contentResolver.openInputStream(uri) ?: throw java.io.IOException("Dosya açılamadı")
+                ok = input.use { Backup.restore(it, nbFile, dir) }
+            } catch (e: Exception) {
+                ok = false
+            }
+            runOnUiThread {
+                val loaded = if (ok) Storage.load(nbFile) else null
+                if (loaded != null) {
+                    nb = loaded
+                    draw.showPage(nb.pages[nb.current])
+                    refresh()
+                    Toast.makeText(this, "Yedek yüklendi", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Yedek yüklenemedi", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun startExport() {
@@ -443,6 +519,7 @@ class MainActivity : Activity() {
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.SAVE, "Kaydet") { saveWithMessage() })
         toolRow.addView(iconBtn(Icon.EXPORT, "PDF kaydet") { startExport() })
+        toolRow.addView(iconBtn(Icon.ARCHIVE, "Yedek") { showBackupDialog() })
         val toolScroll = HorizontalScrollView(this)
         toolScroll.addView(toolRow)
 
@@ -543,5 +620,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_PDF = 101
         private const val REQ_EXPORT = 102
+        private const val REQ_BACKUP = 103
+        private const val REQ_RESTORE = 104
     }
 }
