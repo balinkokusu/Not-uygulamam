@@ -34,6 +34,9 @@ class PageData(
     var height: Float = 1700f,
     var paper: Paper = Paper.RULED
 ) {
+    /** Sayfa bir PDF sayfasından geliyorsa PDF dosyasının adı ve sayfa sırası. */
+    var pdfName: String? = null
+    var pdfIndex = 0
     val strokes = ArrayList<Stroke>()
     val undo = ArrayList<HistoryAction>()
     val redo = ArrayList<HistoryAction>()
@@ -46,7 +49,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 1
+    private const val VERSION = 2
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -59,6 +62,12 @@ object Storage {
                 o.writeFloat(pg.width)
                 o.writeFloat(pg.height)
                 o.writeInt(pg.paper.ordinal)
+                val nm = pg.pdfName
+                o.writeBoolean(nm != null)
+                if (nm != null) {
+                    o.writeUTF(nm)
+                    o.writeInt(pg.pdfIndex)
+                }
                 o.writeInt(pg.strokes.size)
                 for (s in pg.strokes) {
                     o.writeInt(s.color)
@@ -86,7 +95,8 @@ object Storage {
         return try {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
-                if (i.readInt() != VERSION) return null
+                val ver = i.readInt()
+                if (ver != 1 && ver != 2) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()
@@ -95,6 +105,10 @@ object Storage {
                     val h = i.readFloat()
                     val paper = Paper.values()[i.readInt()]
                     val pg = PageData(w, h, paper)
+                    if (ver >= 2 && i.readBoolean()) {
+                        pg.pdfName = i.readUTF()
+                        pg.pdfIndex = i.readInt()
+                    }
                     val sc = i.readInt()
                     for (j in 0 until sc) {
                         val color = i.readInt()

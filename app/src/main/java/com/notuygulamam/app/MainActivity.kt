@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -46,6 +47,7 @@ class MainActivity : Activity() {
     private val saveRunnable = Runnable { saveNow() }
 
     private fun notebookFile(): File = File(filesDir, "defter.bin")
+    private fun pdfDir(): File = File(filesDir, "pdfs")
 
     private fun dp(v: Float): Int = (v * d).toInt()
 
@@ -200,9 +202,51 @@ class MainActivity : Activity() {
         scheduleSave()
     }
 
+    private fun pickPdf() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.type = "application/pdf"
+        startActivityForResult(intent, REQ_PDF)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_PDF || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        Toast.makeText(this, "PDF ekleniyor...", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val name = PdfStore.importPdf(this, uri, pdfDir())
+                val src = PdfStore.source(pdfDir(), name)
+                val sizes = ArrayList<Pair<Int, Int>>()
+                for (i in 0 until src.pageCount()) sizes.add(src.pageSize(i))
+                runOnUiThread { insertPdfPages(name, sizes) }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "PDF açılamadı (şifreli ya da bozuk olabilir)", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun insertPdfPages(name: String, sizes: List<Pair<Int, Int>>) {
+        if (sizes.isEmpty()) return
+        val at = nb.current + 1
+        for (i in sizes.indices) {
+            val (w, h) = sizes[i]
+            val pg = PageData(1200f, 1200f * h / w, Paper.BLANK)
+            pg.pdfName = name
+            pg.pdfIndex = i
+            nb.pages.add(at + i, pg)
+        }
+        gotoPage(at)
+        Toast.makeText(this, "${sizes.size} sayfa eklendi", Toast.LENGTH_SHORT).show()
+    }
+
     private fun showPagesDialog() {
         val labels = nb.pages.mapIndexed { i, pg ->
-            "Sayfa ${i + 1}  (${pg.paper.label}, ${pg.strokes.size} çizgi)"
+            val kind = if (pg.pdfName != null) "PDF sayfa ${pg.pdfIndex + 1}" else pg.paper.label
+            "Sayfa ${i + 1}  ($kind, ${pg.strokes.size} çizgi)"
         }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Sayfalar")
@@ -241,6 +285,7 @@ class MainActivity : Activity() {
         }
 
         draw = DrawView(this)
+        draw.pdfDir = pdfDir()
         preview = PreviewView(this, draw)
         info = TextView(this)
         sliderLabel = TextView(this)
@@ -315,6 +360,8 @@ class MainActivity : Activity() {
         toolRow.addView(iconBtn(Icon.NEXT, "Sonraki") { gotoPage(nb.current + 1) })
         toolRow.addView(iconBtn(Icon.ADD, "Yeni sayfa") { addPage() })
         toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
+        toolRow.addView(separator())
+        toolRow.addView(iconBtn(Icon.IMPORT, "PDF ekle") { pickPdf() })
         val toolScroll = HorizontalScrollView(this)
         toolScroll.addView(toolRow)
 
@@ -370,5 +417,9 @@ class MainActivity : Activity() {
         draw.showPage(nb.pages[nb.current])
         refresh()
         info.text = "v$versionText · yazmaya başlayabilirsiniz"
+    }
+
+    companion object {
+        private const val REQ_PDF = 101
     }
 }

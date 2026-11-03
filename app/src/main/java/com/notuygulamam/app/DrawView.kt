@@ -6,8 +6,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
+import java.io.File
 import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.max
@@ -36,6 +38,9 @@ class DrawView(context: Context) : View(context) {
     var maxPressure = 0.25f
         private set
 
+    /** PDF sayfalarının bulunduğu klasör. */
+    var pdfDir: File? = null
+
     var onInfo: ((String) -> Unit)? = null
     var onColorPicked: ((Int) -> Unit)? = null
     var onChanged: (() -> Unit)? = null
@@ -62,6 +67,10 @@ class DrawView(context: Context) : View(context) {
     private var baseCanvas: Canvas? = null
     private var drawnUpTo = 0
     private var lastInfoMs = 0L
+    private var bg: Bitmap? = null
+    private var bgToken = 0
+    private val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    private val bgRect = RectF()
     private var picking = false
     private var pickX = 0f
     private var pickY = 0f
@@ -98,7 +107,33 @@ class DrawView(context: Context) : View(context) {
         current = null
         gestureRemoved.clear()
         computeTransform()
+        requestBg()
         rebuildBase()
+    }
+
+    /** Sayfa bir PDF sayfasıysa görüntüsünü arka planda hazırlar, hazır olunca ekrana yansıtır. */
+    private fun requestBg() {
+        bg = null
+        val name = page.pdfName ?: return
+        val dir = pdfDir ?: return
+        if (width <= 0) return
+        val token = ++bgToken
+        val target = page
+        val index = page.pdfIndex
+        val w = (page.width * sc * 1.5f).toInt().coerceIn(900, 2600)
+        PdfStore.executor.execute {
+            try {
+                val bmp = PdfStore.source(dir, name).render(index, w)
+                post {
+                    if (token == bgToken && page === target) {
+                        bg = bmp
+                        rebuildBase()
+                    }
+                }
+            } catch (e: Exception) {
+                // PDF çizilemezse sayfa beyaz kalır.
+            }
+        }
     }
 
     private fun computeTransform() {
@@ -116,6 +151,7 @@ class DrawView(context: Context) : View(context) {
         base = bmp
         baseCanvas = Canvas(bmp)
         computeTransform()
+        requestBg()
         rebuildBase()
     }
 
@@ -132,6 +168,11 @@ class DrawView(context: Context) : View(context) {
         c.drawColor(Color.rgb(120, 124, 132))
         beginPage(c)
         c.drawColor(Color.WHITE)
+        val b = bg
+        if (b != null) {
+            bgRect.set(0f, 0f, page.width, page.height)
+            c.drawBitmap(b, null, bgRect, bgPaint)
+        }
         drawPaper(c)
         for (s in strokes) drawStroke(c, s)
         c.restore()
