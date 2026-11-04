@@ -43,6 +43,9 @@ class PageData(
     /** Tarihli takvim sayfaları için yıl ve ay (1-12); 0 ise tarihsiz şablon. */
     var calYear = 0
     var calMonth = 0
+
+    /** Kâğıdın rengi (ARGB). */
+    var paperColor: Int = -1
     val strokes = ArrayList<Stroke>()
 
     /** Arka planda dışa aktarmak için sayfanın o anki halinin kopyası. */
@@ -52,6 +55,7 @@ class PageData(
         p.pdfIndex = pdfIndex
         p.calYear = calYear
         p.calMonth = calMonth
+        p.paperColor = paperColor
         p.strokes.addAll(strokes)
         return p
     }
@@ -71,7 +75,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 4
+    private const val VERSION = 5
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -92,6 +96,7 @@ object Storage {
                 }
                 o.writeInt(pg.calYear)
                 o.writeInt(pg.calMonth)
+                o.writeInt(pg.paperColor)
                 o.writeInt(pg.strokes.size)
                 for (s in pg.strokes) {
                     o.writeInt(s.color)
@@ -127,7 +132,7 @@ object Storage {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
                 val ver = i.readInt()
-                if (ver < 1 || ver > 4) return null
+                if (ver < 1 || ver > 5) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()
@@ -144,6 +149,7 @@ object Storage {
                         pg.calYear = i.readInt()
                         pg.calMonth = i.readInt()
                     }
+                    if (ver >= 5) pg.paperColor = i.readInt()
                     val sc = i.readInt()
                     for (j in 0 until sc) {
                         val color = i.readInt()

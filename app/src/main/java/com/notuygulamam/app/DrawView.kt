@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Matrix
+import android.graphics.Shader
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -88,7 +90,10 @@ class DrawView(context: Context) : View(context) {
     private var baseCanvas: Canvas? = null
     private var drawnUpTo = 0
     private var lastInfoMs = 0L
-    private var bg: Bitmap? = null
+    private val bgs = java.util.IdentityHashMap<PageData, Bitmap>()
+    private var rightPage: PageData? = null
+    private var leftPage: PageData = page
+    private var offX = 0f
     private var bgToken = 0
     private val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val bgRect = RectF()
@@ -192,7 +197,7 @@ class DrawView(context: Context) : View(context) {
 
     private fun tabHeight(): Float {
         val n = max(1, tabs.size)
-        return min(TAB_H_MAX, max(TAB_H_MIN, (page.height - 2f * TAB_TOP - (n - 1) * TAB_GAP) / n))
+        return min(TAB_H_MAX, max(TAB_H_MIN, (leftPage.height - 2f * TAB_TOP - (n - 1) * TAB_GAP) / n))
     }
 
     private fun tabTop(i: Int): Float = TAB_TOP + i * (tabHeight() + TAB_GAP)
@@ -207,6 +212,16 @@ class DrawView(context: Context) : View(context) {
         return null
     }
 
+    private val tabPath = Path()
+    private val tabRadii = floatArrayOf(22f, 22f, 4f, 4f, 4f, 4f, 22f, 22f)
+
+    private fun lighten(color: Int, f: Float): Int {
+        val r = Color.red(color)
+        val g = Color.green(color)
+        val b = Color.blue(color)
+        return Color.rgb((r + (255 - r) * f).toInt(), (g + (255 - g) * f).toInt(), (b + (255 - b) * f).toInt())
+    }
+
     private fun drawTabs(c: Canvas) {
         if (tabs.isEmpty()) return
         c.save()
@@ -218,29 +233,39 @@ class DrawView(context: Context) : View(context) {
             val on = t === tabActive
             val top = tabTop(i)
             val left = if (on) -TAB_GUTTER else -TAB_OUT
-            tabRect.set(left, top, TAB_IN, top + h)
+            // Yumuşak gölge
+            tabPaint.shader = null
             tabPaint.style = Paint.Style.FILL
-            tabPaint.setColor(t.color)
-            c.drawRoundRect(tabRect, 20f, 20f, tabPaint)
-            tabPaint.style = Paint.Style.STROKE
-            tabPaint.strokeWidth = if (on) 5f else 2.5f
-            tabPaint.setColor(if (on) Color.rgb(60, 60, 70) else Color.argb(90, 0, 0, 0))
-            c.drawRoundRect(tabRect, 20f, 20f, tabPaint)
+            tabPaint.setColor(Color.argb(if (on) 70 else 42, 0, 0, 0))
+            tabRect.set(left - 2f, top + 4f, TAB_IN - 2f, top + h + 4f)
+            tabPath.reset()
+            tabPath.addRoundRect(tabRect, tabRadii, Path.Direction.CW)
+            c.drawPath(tabPath, tabPaint)
+            // Üstü açık, altı koyu pastel geçiş
+            tabRect.set(left, top, TAB_IN, top + h)
+            tabPaint.shader = LinearGradient(
+                0f, top, 0f, top + h, lighten(t.color, 0.5f), t.color, Shader.TileMode.CLAMP
+            )
+            tabPath.reset()
+            tabPath.addRoundRect(tabRect, tabRadii, Path.Direction.CW)
+            c.drawPath(tabPath, tabPaint)
+            tabPaint.shader = null
 
-            tabText.setColor(Color.rgb(40, 40, 50))
-            tabText.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-            val cx = (left + TAB_IN) / 2f - 4f
+            tabText.setColor(if (on) Color.rgb(35, 35, 50) else Color.argb(215, 70, 70, 85))
+            tabText.typeface = Typeface.create(if (on) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
+            tabText.letterSpacing = 0.05f
+            val cx = (left + TAB_IN) / 2f - 3f
             val cy = top + h / 2f
             var label = t.label
             if (label.length <= 2) {
-                tabText.textSize = 46f
+                tabText.textSize = 34f
                 val fm = tabText.fontMetrics
                 c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
             } else {
-                var size = 34f
-                val avail = h - 20f
+                var size = 28f
+                val avail = h - 26f
                 tabText.textSize = size
-                while (tabText.measureText(label) > avail && size > 18f) {
+                while (tabText.measureText(label) > avail && size > 16f) {
                     size -= 2f
                     tabText.textSize = size
                 }
@@ -249,7 +274,7 @@ class DrawView(context: Context) : View(context) {
                 }
                 val fm = tabText.fontMetrics
                 c.save()
-                c.rotate(-90f, cx, cy)
+                c.rotate(90f, cx, cy)
                 c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
                 c.restore()
             }
@@ -269,7 +294,7 @@ class DrawView(context: Context) : View(context) {
         }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val t = tabAt(pageX(e.x), pageY(e.y)) ?: return false
+                val t = tabAt(worldX(e.x), pageY(e.y)) ?: return false
                 tabDown = t
                 tabDownX = e.x
                 tabDownY = e.y
@@ -302,8 +327,12 @@ class DrawView(context: Context) : View(context) {
         return false
     }
 
-    fun showPage(p: PageData) {
+    /** Tek sayfa ya da (right verilirse) yan yana iki sayfa gösterir; etkin sayfa sol sayfadır. */
+    fun showPage(p: PageData, right: PageData? = null) {
         holdHandler.removeCallbacks(holdRunnable)
+        leftPage = p
+        rightPage = right
+        offX = 0f
         page = p
         strokes = p.strokes
         undoStack = p.undo
@@ -312,34 +341,59 @@ class DrawView(context: Context) : View(context) {
         strokeActive = false
         straightLive = false
         gestureRemoved.clear()
-        bg = null
+        bgs.clear()
         computeTransform()
         requestBg()
         rebuildBase()
     }
 
-    /** Sayfa bir PDF sayfasıysa görüntüsünü arka planda hazırlar, hazır olunca ekrana yansıtır. */
+    /** Gösterilen PDF sayfalarının görüntülerini arka planda hazırlar, hazır olunca ekrana yansıtır. */
     private fun requestBg() {
-        val name = page.pdfName ?: return
         val dir = pdfDir ?: return
         if (width <= 0) return
         val token = ++bgToken
-        val target = page
-        val index = page.pdfIndex
-        val w = (page.width * sc * 1.5f).toInt().coerceIn(900, 3200)
-        PdfStore.executor.execute {
-            try {
-                val bmp = PdfStore.source(dir, name).render(index, w)
-                post {
-                    if (token == bgToken && page === target) {
-                        bg = bmp
-                        rebuildBase()
+        for (target in listOfNotNull(leftPage, rightPage)) {
+            val name = target.pdfName ?: continue
+            val index = target.pdfIndex
+            val w = (target.width * sc * 1.5f).toInt().coerceIn(900, 3200)
+            PdfStore.executor.execute {
+                try {
+                    val bmp = PdfStore.source(dir, name).render(index, w)
+                    post {
+                        if (token == bgToken && (leftPage === target || rightPage === target)) {
+                            bgs[target] = bmp
+                            rebuildBase()
+                        }
                     }
+                } catch (e: Exception) {
+                    // PDF çizilemezse sayfa boş kalır.
                 }
-            } catch (e: Exception) {
-                // PDF çizilemezse sayfa beyaz kalır.
             }
         }
+    }
+
+    private fun worldW(): Float {
+        val r = rightPage
+        return if (r == null) leftPage.width else leftPage.width + SPREAD_GAP + r.width
+    }
+
+    private fun worldH(): Float {
+        val r = rightPage
+        return if (r == null) leftPage.height else max(leftPage.height, r.height)
+    }
+
+    /** Dokunulan x konumuna göre etkin sayfayı seçer (çift sayfa görünümünde). */
+    private fun activateAt(screenX: Float) {
+        val r = rightPage ?: return
+        val wx = (screenX - ox) / sc
+        val useRight = wx > leftPage.width + SPREAD_GAP / 2f
+        val target = if (useRight) r else leftPage
+        if (target === page) return
+        page = target
+        offX = if (useRight) leftPage.width + SPREAD_GAP else 0f
+        strokes = target.strokes
+        undoStack = target.undo
+        redoStack = target.redo
     }
 
     /** Sayfayı ekrana sığdırır ve yakınlaştırmayı sıfırlar. */
@@ -347,20 +401,20 @@ class DrawView(context: Context) : View(context) {
         if (width <= 0 || height <= 0) return
         val m = 16f * density
         val g = tabGutter()
-        fitSc = max(0.01f, min((width - 2 * m) / (page.width + g), (height - 2 * m) / page.height))
+        fitSc = max(0.01f, min((width - 2 * m) / (worldW() + g), (height - 2 * m) / worldH()))
         sc = fitSc
-        ox = (width - (page.width + g) * sc) / 2f + g * sc
-        oy = (height - page.height * sc) / 2f
+        ox = (width - (worldW() + g) * sc) / 2f + g * sc
+        oy = (height - worldH() * sc) / 2f
     }
 
     /** Yakınlaştırılmış sayfanın ekran dışına kaçmasını engeller. */
     private fun clampTransform() {
         val g = tabGutter()
-        val pw = (page.width + g) * sc
-        val ph = page.height * sc
+        val pw = (worldW() + g) * sc
+        val ph = worldH() * sc
         val m = 16f * density
         ox = if (pw + 2 * m <= width) (width - pw) / 2f + g * sc
-        else ox.coerceIn(width - page.width * sc - m, m + g * sc)
+        else ox.coerceIn(width - worldW() * sc - m, m + g * sc)
         oy = if (ph + 2 * m <= height) (height - ph) / 2f else oy.coerceIn(height - ph - m, m)
     }
 
@@ -387,7 +441,7 @@ class DrawView(context: Context) : View(context) {
 
     private fun beginPage(c: Canvas) {
         c.save()
-        c.translate(ox, oy)
+        c.translate(ox + offX * sc, oy)
         c.scale(sc, sc)
         c.clipRect(0f, 0f, page.width, page.height)
     }
@@ -396,16 +450,23 @@ class DrawView(context: Context) : View(context) {
     private fun rebuildBase() {
         val c = baseCanvas ?: return
         c.drawColor(Color.rgb(120, 124, 132))
-        beginPage(c)
-        c.drawColor(Color.WHITE)
-        val b = bg
-        if (b != null) {
-            bgRect.set(0f, 0f, page.width, page.height)
-            c.drawBitmap(b, null, bgRect, bgPaint)
+        val list = listOfNotNull(leftPage, rightPage)
+        for ((k, pg) in list.withIndex()) {
+            val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
+            c.save()
+            c.translate(ox + off * sc, oy)
+            c.scale(sc, sc)
+            c.clipRect(0f, 0f, pg.width, pg.height)
+            c.drawColor(pg.paperColor)
+            val b = bgs[pg]
+            if (b != null) {
+                bgRect.set(0f, 0f, pg.width, pg.height)
+                c.drawBitmap(b, null, bgRect, bgPaint)
+            }
+            renderer.drawPaper(c, pg)
+            for (s in pg.strokes) drawStroke(c, s)
+            c.restore()
         }
-        drawPaper(c)
-        for (s in strokes) drawStroke(c, s)
-        c.restore()
         invalidate()
     }
 
@@ -454,8 +515,6 @@ class DrawView(context: Context) : View(context) {
         c.drawCircle(pickX, pickY, 5f * density, linePaint)
     }
 
-    private fun drawPaper(c: Canvas) = renderer.drawPaper(c, page)
-
     private fun widthFactor(s: Stroke, p: Float): Float = renderer.widthFactor(s, p)
 
     private fun segmentWidth(s: Stroke, i: Int): Float = renderer.segmentWidth(s, i)
@@ -494,9 +553,9 @@ class DrawView(context: Context) : View(context) {
     /** Sayfa koordinatlarındaki bir parçanın ekrandaki sınırını yeniler. */
     private fun invalidateSegment(x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
         val pad = w * sc + 3f * density
-        val sx0 = ox + x0 * sc
+        val sx0 = ox + (x0 + offX) * sc
         val sy0 = oy + y0 * sc
-        val sx1 = ox + x1 * sc
+        val sx1 = ox + (x1 + offX) * sc
         val sy1 = oy + y1 * sc
         invalidate(
             (min(sx0, sx1) - pad).toInt(), (min(sy0, sy1) - pad).toInt(),
@@ -598,7 +657,8 @@ class DrawView(context: Context) : View(context) {
         else -> "bilinmiyor($t)"
     }
 
-    private fun pageX(x: Float): Float = (x - ox) / sc
+    private fun pageX(x: Float): Float = (x - ox) / sc - offX
+    private fun worldX(x: Float): Float = (x - ox) / sc
     private fun pageY(y: Float): Float = (y - oy) / sc
 
     private fun samplePixel(x: Float, y: Float): Int {
@@ -775,6 +835,7 @@ class DrawView(context: Context) : View(context) {
 
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                activateAt(e.x)
                 requestUnbufferedDispatch(e)
                 strokeActive = true
                 strokeFromStylus = isStylus
@@ -958,12 +1019,13 @@ class DrawView(context: Context) : View(context) {
     companion object {
         /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
         const val UNIT = 2.2f
-        const val TAB_OUT = 62f
-        const val TAB_IN = 14f
-        const val TAB_GUTTER = 80f
-        const val TAB_TOP = 40f
-        const val TAB_GAP = 8f
-        const val TAB_H_MAX = 130f
+        const val SPREAD_GAP = 28f
+        const val TAB_OUT = 50f
+        const val TAB_IN = 6f
+        const val TAB_GUTTER = 68f
+        const val TAB_TOP = 60f
+        const val TAB_GAP = 6f
+        const val TAB_H_MAX = 150f
         const val TAB_H_MIN = 44f
     }
 }

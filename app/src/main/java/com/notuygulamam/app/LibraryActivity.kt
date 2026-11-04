@@ -460,6 +460,7 @@ class LibraryActivity : Activity() {
         val nowCal = java.util.Calendar.getInstance()
         val plannerYear = nowCal.get(java.util.Calendar.YEAR) + if (nowCal.get(java.util.Calendar.MONTH) >= 8) 1 else 0
         var committed = false
+        val chooser = PageStyleChooser(this, 1200f, 1697f, Color.WHITE)
         val thumbs = ArrayList<View>()
 
         val content = LinearLayout(this)
@@ -601,6 +602,7 @@ class LibraryActivity : Activity() {
                 val paperScroll = HorizontalScrollView(this)
                 paperScroll.addView(paperRow)
                 content.addView(paperScroll)
+                content.addView(chooser)
             }
         }
 
@@ -625,6 +627,11 @@ class LibraryActivity : Activity() {
                         } else {
                             nb = Notebook()
                             nb.pages.add(PageData(paper = Paper.values()[paperIdx]))
+                        }
+                        for (pg in nb.pages) {
+                            pg.width = chooser.pageW
+                            pg.height = chooser.pageH
+                            pg.paperColor = chooser.pageColor
                         }
                         store.dir.mkdirs()
                         Storage.save(nb, store.notebookFile(draft.id))

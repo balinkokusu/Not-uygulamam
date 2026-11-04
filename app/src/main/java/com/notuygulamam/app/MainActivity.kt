@@ -41,10 +41,10 @@ class MainActivity : Activity() {
     )
     private val recentColors = ArrayList<Int>()
     private val tabPalette = intArrayOf(
-        Color.rgb(244, 160, 200), Color.rgb(245, 150, 150), Color.rgb(250, 185, 150),
-        Color.rgb(252, 215, 140), Color.rgb(250, 240, 150), Color.rgb(200, 230, 150),
-        Color.rgb(160, 225, 170), Color.rgb(150, 225, 210), Color.rgb(150, 210, 245),
-        Color.rgb(160, 180, 245), Color.rgb(190, 165, 240), Color.rgb(225, 165, 235)
+        Color.rgb(236, 196, 244), Color.rgb(246, 196, 226), Color.rgb(250, 186, 196),
+        Color.rgb(252, 208, 184), Color.rgb(252, 232, 170), Color.rgb(232, 244, 180),
+        Color.rgb(200, 236, 190), Color.rgb(186, 238, 222), Color.rgb(190, 226, 246),
+        Color.rgb(196, 208, 246), Color.rgb(212, 198, 244), Color.rgb(226, 196, 240)
     )
 
     private lateinit var nb: Notebook
@@ -60,8 +60,10 @@ class MainActivity : Activity() {
     private var sliderMin = 1
     private var toolsVisible = true
     private var settingsPopup: PopupWindow? = null
-    private var settingsAnchor: View? = null
     private var versionText = ""
+    private var spread = false
+    private lateinit var spreadBtn: IconButton
+    private lateinit var presetRow: LinearLayout
     private var d = 1f
 
     private val handler = Handler(Looper.getMainLooper())
@@ -150,8 +152,8 @@ class MainActivity : Activity() {
         if (selected) g.setStroke(dp(4f), Color.rgb(0, 120, 255))
         else g.setStroke(dp(1f), Color.LTGRAY)
         v.background = g
-        val lp = LinearLayout.LayoutParams(dp(36f), dp(36f))
-        lp.setMargins(dp(5f), dp(4f), dp(5f), dp(4f))
+        val lp = LinearLayout.LayoutParams(dp(28f), dp(28f))
+        lp.setMargins(dp(4f), dp(3f), dp(4f), dp(3f))
         v.layoutParams = lp
         v.setOnClickListener { applyColor(c) }
         return v
@@ -168,17 +170,70 @@ class MainActivity : Activity() {
         for (c in palette) swatchRow.addView(swatch(c, c == selected))
     }
 
-    private fun toggleSettings() {
+    private fun toggleSettings(anchor: View) {
         val p = settingsPopup ?: return
-        val anchor = settingsAnchor ?: return
-        if (p.isShowing) p.dismiss() else p.showAsDropDown(anchor, dp(8f), 0)
+        if (p.isShowing) p.dismiss() else p.showAsDropDown(anchor, 0, dp(2f))
+    }
+
+    private fun setToolWidth(v: Float) {
+        when (sliderTool()) {
+            Tool.HIGHLIGHTER -> draw.hlWidthDp = v
+            Tool.ERASER -> draw.eraserRadiusDp = v
+            else -> draw.penWidthDp = v
+        }
+        refresh()
+    }
+
+    /** Kalınlık seviyelerini, seçili aracın altında açılan listede hızlı seçim olarak gösterir. */
+    private fun rebuildPresets() {
+        presetRow.removeAllViews()
+        val st = sliderTool()
+        val values = when (st) {
+            Tool.HIGHLIGHTER -> floatArrayOf(8f, 14f, 22f, 32f)
+            Tool.ERASER -> floatArrayOf(8f, 14f, 22f, 30f)
+            else -> floatArrayOf(1f, 2f, 4f, 7f, 12f, 20f)
+        }
+        val cur = when (st) {
+            Tool.HIGHLIGHTER -> draw.hlWidthDp
+            Tool.ERASER -> draw.eraserRadiusDp
+            else -> draw.penWidthDp
+        }
+        val color = when (st) {
+            Tool.HIGHLIGHTER -> draw.hlColor
+            Tool.ERASER -> Color.rgb(120, 124, 132)
+            else -> draw.penColor
+        }
+        for (v in values) {
+            val on = Math.abs(cur - v) < 0.5f
+            val chip = object : View(this) {
+                private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                override fun onDraw(c: android.graphics.Canvas) {
+                    val dia = (4f + v * 1.1f).coerceAtMost(28f) * d
+                    val cx = width / 2f
+                    val cy = height / 2f
+                    if (on) {
+                        paint.style = android.graphics.Paint.Style.FILL
+                        paint.setColor(Color.rgb(228, 236, 252))
+                        c.drawRoundRect(3f * d, 3f * d, width - 3f * d, height - 3f * d, 10f * d, 10f * d, paint)
+                    }
+                    paint.style = android.graphics.Paint.Style.FILL
+                    paint.setColor(color)
+                    c.drawCircle(cx, cy, dia / 2f, paint)
+                }
+            }
+            val lp = LinearLayout.LayoutParams(dp(48f), dp(44f))
+            lp.setMargins(dp(2f), 0, dp(2f), dp(4f))
+            chip.layoutParams = lp
+            chip.setOnClickListener { setToolWidth(v) }
+            presetRow.addView(chip)
+        }
     }
 
     private fun colorButton(): View {
         val t = TextView(this)
         t.text = "Renk seç"
-        t.textSize = 14f
-        t.setPadding(dp(14f), dp(7f), dp(14f), dp(7f))
+        t.textSize = 13f
+        t.setPadding(dp(12f), dp(4f), dp(12f), dp(4f))
         t.setTextColor(Color.WHITE)
         val g = GradientDrawable()
         g.setColor(Color.rgb(78, 80, 90))
@@ -210,7 +265,11 @@ class MainActivity : Activity() {
     private fun refresh() {
         for ((t, b) in toolButtons) b.active = draw.tool == t
         fingerBtn.active = draw.fingerDraw
-        pageLabel.text = " ${nb.current + 1} / ${nb.pages.size} "
+        pageLabel.text = if (spread && nb.current + 1 < nb.pages.size)
+            " ${nb.current + 1}–${nb.current + 2} / ${nb.pages.size} "
+        else " ${nb.current + 1} / ${nb.pages.size} "
+        spreadBtn.active = spread
+        rebuildPresets()
         rebuildTabs()
 
         val st = sliderTool()
@@ -238,28 +297,42 @@ class MainActivity : Activity() {
         return name + v.toInt()
     }
 
+    private fun step(): Int = if (spread) 2 else 1
+
+    /** Açık sayfa(lar)ı çizim alanına yükler; çift sayfa görünümünde çift numaralı sayfadan başlayan ikiliyi gösterir. */
+    private fun showCurrent() {
+        if (spread) nb.current -= nb.current % 2
+        val left = nb.pages[nb.current]
+        val right = if (spread && nb.current + 1 < nb.pages.size) nb.pages[nb.current + 1] else null
+        draw.showPage(left, right)
+    }
+
     private fun gotoPage(i: Int) {
         if (i < 0 || i >= nb.pages.size) return
         nb.current = i
-        draw.showPage(nb.pages[i])
+        showCurrent()
         refresh()
         scheduleSave()
     }
 
     private fun addPage() {
-        val cur = nb.pages[nb.current]
-        nb.pages.add(nb.current + 1, PageData(cur.width, cur.height, cur.paper))
-        gotoPage(nb.current + 1)
+        val cur = draw.page
+        val at = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it } + 1
+        val np = PageData(cur.width, cur.height, cur.paper)
+        np.paperColor = cur.paperColor
+        nb.pages.add(at, np)
+        gotoPage(at)
     }
 
     private fun deleteCurrentPage() {
         if (nb.pages.size <= 1) return
-        val gone = nb.pages[nb.current]
-        nb.pages.removeAt(nb.current)
+        val idx = nb.pages.indexOf(draw.page).let { if (it < 0) nb.current else it }
+        val gone = nb.pages[idx]
+        nb.pages.removeAt(idx)
         if (nb.current >= nb.pages.size) nb.current = nb.pages.size - 1
-        val heir = nb.pages[nb.current]
+        val heir = nb.pages[minOf(idx, nb.pages.size - 1)]
         for (t in nb.tabs) if (t.target === gone) t.target = heir
-        draw.showPage(nb.pages[nb.current])
+        showCurrent()
         refresh()
         scheduleSave()
     }
@@ -375,7 +448,7 @@ class MainActivity : Activity() {
                 val loaded = if (ok) Storage.load(nbFile) else null
                 if (loaded != null) {
                     nb = loaded
-                    draw.showPage(nb.pages[nb.current])
+                    showCurrent()
                     refresh()
                     Toast.makeText(this, "Yedek yüklendi", Toast.LENGTH_LONG).show()
                 } else {
@@ -523,7 +596,8 @@ class MainActivity : Activity() {
         val m = android.widget.PopupMenu(this, anchor)
         val names = arrayOf(
             "PDF ekle", "Şablonlu yeni sayfa", "Kaydet", "PDF olarak dışa aktar",
-            "Bu defterin yedeği", "Bu sayfadaki çizimleri temizle", "Bu sayfayı sil"
+            "Bu defterin yedeği", "Bu sayfadaki çizimleri temizle", "Bu sayfayı sil",
+            "Sayfa boyutu ve kâğıt rengi"
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
         m.setOnMenuItemClickListener { mi ->
@@ -535,10 +609,42 @@ class MainActivity : Activity() {
                 4 -> showBackupDialog()
                 5 -> draw.clearAll()
                 6 -> confirmDeletePage()
+                7 -> showPageStyleDialog()
             }
             true
         }
         m.show()
+    }
+
+    private fun showPageStyleDialog() {
+        val cur = draw.page
+        val chooser = PageStyleChooser(this, cur.width, cur.height, cur.paperColor)
+        val all = CheckBox(this)
+        all.text = "Defterdeki tüm sayfalara uygula (PDF sayfaları hariç)"
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(20f), dp(8f), dp(20f), dp(8f))
+        box.addView(chooser)
+        box.addView(all)
+        val sv = ScrollView(this)
+        sv.addView(box)
+        AlertDialog.Builder(this)
+            .setTitle("Sayfa boyutu ve kâğıt rengi")
+            .setView(sv)
+            .setPositiveButton("Uygula") { _, _ ->
+                val targets = if (all.isChecked) nb.pages else arrayListOf(cur)
+                for (pg in targets) {
+                    if (pg.pdfName != null) continue
+                    pg.width = chooser.pageW
+                    pg.height = chooser.pageH
+                    pg.paperColor = chooser.pageColor
+                }
+                showCurrent()
+                refresh()
+                scheduleSave()
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
     }
 
     private fun confirmDeletePage() {
@@ -559,9 +665,13 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Yeni sayfa için şablon")
             .setItems(labels) { _, which ->
-                val pg = PageData(1200f, 1700f, Paper.values()[which])
-                nb.pages.add(nb.current + 1, pg)
-                gotoPage(nb.current + 1)
+                val cur = draw.page
+                val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, Paper.values()[which])
+                else PageData(1200f, 1697f, Paper.values()[which])
+                if (cur.pdfName == null) pg.paperColor = cur.paperColor
+                val at = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it } + 1
+                nb.pages.add(at, pg)
+                gotoPage(at)
             }
             .setNegativeButton("Vazgeç", null)
             .show()
@@ -596,6 +706,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         itemId = intent.getStringExtra("id") ?: ""
+        spread = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("cift_$itemId", false)
         d = resources.displayMetrics.density
         versionText = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: ""
@@ -637,7 +748,7 @@ class MainActivity : Activity() {
             if (idx >= 0) gotoPage(idx)
         }
         draw.onTabLongPress = { t -> showTabDialog(t) }
-        draw.onPageSwipe = { dir -> gotoPage(nb.current + dir) }
+        draw.onPageSwipe = { dir -> gotoPage(nb.current + dir * step()) }
         draw.onColorPicked = { c ->
             rememberColor(c)
             refresh()
@@ -664,7 +775,7 @@ class MainActivity : Activity() {
         val toolRow = LinearLayout(this)
         toolRow.orientation = LinearLayout.HORIZONTAL
         toolRow.gravity = Gravity.CENTER_VERTICAL
-        toolRow.setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+        toolRow.setPadding(dp(8f), dp(2f), dp(8f), dp(2f))
         fun spacer(): View {
             val v = View(this)
             v.layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
@@ -685,13 +796,18 @@ class MainActivity : Activity() {
         )
         for ((t, ic, lb) in toolIcons) {
             val b = iconBtn(ic, lb) {
-                draw.tool = t
-                refresh()
+                if (draw.tool == t && t != Tool.PICKER) {
+                    val ab = toolButtons[t]
+                    if (ab != null) toggleSettings(ab)
+                } else {
+                    draw.tool = t
+                    settingsPopup?.dismiss()
+                    refresh()
+                }
             }
             toolButtons[t] = b
             toolRow.addView(b)
         }
-        toolRow.addView(iconBtn(Icon.THICKNESS, "Kalınlık ve basınç") { toggleSettings() })
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.PAPER, "Sayfa şablonu") { showPaperDialog() })
         toolRow.addView(iconBtn(Icon.TAB, "Ayraç ekle") { showTabDialog(null) })
@@ -700,12 +816,19 @@ class MainActivity : Activity() {
             refresh()
         }
         toolRow.addView(fingerBtn)
+        spreadBtn = iconBtn(Icon.SPREAD, "Çift sayfa görünümü (ajanda gibi)") {
+            spread = !spread
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("cift_$itemId", spread).apply()
+            showCurrent()
+            refresh()
+        }
+        toolRow.addView(spreadBtn)
         toolRow.addView(spacer())
-        toolRow.addView(iconBtn(Icon.PREV, "Önceki sayfa") { gotoPage(nb.current - 1) })
+        toolRow.addView(iconBtn(Icon.PREV, "Önceki sayfa") { gotoPage(nb.current - step()) })
         pageLabel.setTextColor(Color.WHITE)
         pageLabel.setPadding(dp(6f), 0, dp(6f), 0)
         toolRow.addView(pageLabel)
-        toolRow.addView(iconBtn(Icon.NEXT, "Sonraki sayfa") { gotoPage(nb.current + 1) })
+        toolRow.addView(iconBtn(Icon.NEXT, "Sonraki sayfa") { gotoPage(nb.current + step()) })
         toolRow.addView(spacer())
         toolRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
         toolRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
@@ -726,6 +849,10 @@ class MainActivity : Activity() {
         panel.setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
         panel.setBackgroundColor(Color.WHITE)
 
+        presetRow = LinearLayout(this)
+        presetRow.orientation = LinearLayout.HORIZONTAL
+        presetRow.gravity = Gravity.CENTER_VERTICAL
+        panel.addView(presetRow)
         val sliderRow = LinearLayout(this)
         sliderRow.orientation = LinearLayout.HORIZONTAL
         sliderRow.gravity = Gravity.CENTER_VERTICAL
@@ -775,7 +902,6 @@ class MainActivity : Activity() {
         popup.isOutsideTouchable = true
         popup.elevation = dp(10f).toFloat()
         settingsPopup = popup
-        settingsAnchor = toolScroll
 
         val toggle = TextView(this)
         toggle.text = "Araçları gizle"
@@ -807,7 +933,7 @@ class MainActivity : Activity() {
         root.addView(draw, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
-        draw.showPage(nb.pages[nb.current])
+        showCurrent()
         refresh()
         info.text = "v$versionText · yazmaya başlayabilirsiniz"
     }

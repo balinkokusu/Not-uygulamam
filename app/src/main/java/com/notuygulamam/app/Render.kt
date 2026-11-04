@@ -18,6 +18,9 @@ import kotlin.math.max
  * Her kullanıcının kendi boyaları olduğundan farklı iş parçacıklarında ayrı örnekler oluşturulmalıdır.
  */
 class PageRenderer {
+    private val DW = 1200f
+    private val DH = 1700f
+
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -80,13 +83,26 @@ class PageRenderer {
                     y += step
                 }
             }
+            Paper.TODO, Paper.DAILY, Paper.WEEKLY, Paper.MONTHLY, Paper.CORNELL, Paper.YEAR -> drawTemplate(c, page)
+        }
+    }
+
+    /** Hazır şablonlar 1200 x 1700 tasarım alanında çizilir; sayfa başka boyuttaysa orantılı küçültülüp ortalanır. */
+    private fun drawTemplate(c: Canvas, page: PageData) {
+        val k = kotlin.math.min(page.width / DW, page.height / DH)
+        c.save()
+        c.translate((page.width - DW * k) / 2f, (page.height - DH * k) / 2f)
+        c.scale(k, k)
+        when (page.paper) {
             Paper.TODO -> drawTodo(c, page)
             Paper.DAILY -> drawDaily(c, page)
             Paper.WEEKLY -> drawWeekly(c, page)
             Paper.MONTHLY -> drawMonthly(c, page)
             Paper.CORNELL -> drawCornell(c, page)
             Paper.YEAR -> drawYear(c, page)
+            else -> {}
         }
+        c.restore()
     }
 
     // ---- Hazır sayfa şablonları (1200 x 1700 sayfa birimine göre; sayfa boyutu farklıysa orantılı çizilir) ----
@@ -127,7 +143,7 @@ class PageRenderer {
     private fun drawTodo(c: Canvas, page: PageData) {
         header(c, "YAPILACAKLAR")
         var y = 190f
-        while (y + 110f < page.height - 40f) {
+        while (y + 110f < DH - 40f) {
             checkbox(c, 86f, y + 20f, 46f)
             c.drawLine(160f, y + 80f, 1120f, y + 80f, paperPaint)
             y += 110f
@@ -145,7 +161,7 @@ class PageRenderer {
             c.drawLine(80f, 1480f + k * 70f, 740f, 1480f + k * 70f, paperPaint)
         }
         label(c, "Günün notu", 80f, 1450f, 24f, soft)
-        c.drawLine(770f, 175f, 770f, page.height - 70f, boxPaint)
+        c.drawLine(770f, 175f, 770f, DH - 70f, boxPaint)
 
         label(c, "ÖNCELİKLER", 800f, 215f, 28f, ink, true)
         for (k in 0 until 3) {
@@ -161,7 +177,7 @@ class PageRenderer {
         }
         label(c, "NOTLAR", 800f, 1100f, 28f, ink, true)
         var y = 1150f
-        while (y < page.height - 60f) {
+        while (y < DH - 60f) {
             c.drawLine(800f, y, 1120f, y, paperPaint)
             y += 58f
         }
@@ -173,7 +189,7 @@ class PageRenderer {
         c.drawLine(900f, 120f, 1120f, 120f, paperPaint)
         val names = arrayOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar", "Notlar")
         val bw = 520f
-        val bh = (page.height - 180f - 80f - 3 * 20f) / 4f
+        val bh = (DH - 180f - 80f - 3 * 20f) / 4f
         for (i in names.indices) {
             val x = 70f + (i % 2) * (bw + 20f)
             val y = 180f + (i / 2) * (bh + 20f)
@@ -205,7 +221,7 @@ class PageRenderer {
         val cw = 1060f / 7f
         val top = 190f
         val headH = 50f
-        val rh = (page.height - 70f - top - headH) / 6f
+        val rh = (DH - 70f - top - headH) / 6f
         fillPaint.setColor(Color.rgb(238, 240, 244))
         c.drawRect(x0, top, x0 + 1060f, top + headH, fillPaint)
         val days = Planner.DAYS
@@ -226,7 +242,7 @@ class PageRenderer {
     private fun drawCornell(c: Canvas, page: PageData) {
         label(c, "Konu:", 80f, 110f, 30f, soft)
         c.drawLine(170f, 114f, 1120f, 114f, paperPaint)
-        val bottom = page.height - 300f
+        val bottom = DH - 300f
         c.drawLine(70f, 150f, 1130f, 150f, boxPaint)
         c.drawLine(70f, bottom, 1130f, bottom, boxPaint)
         c.drawLine(380f, 150f, 380f, bottom, boxPaint)
@@ -303,7 +319,7 @@ object PdfExporter {
                 val c = page.canvas
                 val k = PAGE_WIDTH_PT / pg.width
                 c.scale(k, k)
-                c.drawColor(Color.WHITE)
+                c.drawColor(pg.paperColor)
                 val name = pg.pdfName
                 if (name != null) {
                     try {

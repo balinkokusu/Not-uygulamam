@@ -12,10 +12,10 @@ object Planner {
     val DAYS = arrayOf("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
 
     private val colors = intArrayOf(
-        Color.rgb(244, 160, 200), Color.rgb(245, 150, 150), Color.rgb(250, 185, 150),
-        Color.rgb(252, 215, 140), Color.rgb(250, 240, 150), Color.rgb(200, 230, 150),
-        Color.rgb(160, 225, 170), Color.rgb(150, 225, 210), Color.rgb(150, 210, 245),
-        Color.rgb(160, 180, 245), Color.rgb(190, 165, 240), Color.rgb(225, 165, 235)
+        Color.rgb(236, 196, 244), Color.rgb(246, 196, 226), Color.rgb(250, 186, 196),
+        Color.rgb(252, 208, 184), Color.rgb(252, 232, 170), Color.rgb(232, 244, 180),
+        Color.rgb(200, 236, 190), Color.rgb(186, 238, 222), Color.rgb(190, 226, 246),
+        Color.rgb(196, 208, 246), Color.rgb(212, 198, 244), Color.rgb(226, 196, 240)
     )
 
     fun build(year: Int): Notebook {

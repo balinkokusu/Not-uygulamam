@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -44,20 +44,20 @@ class IconButton(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        if (compact) setMeasuredDimension((52 * d).toInt(), (52 * d).toInt())
+        if (compact) setMeasuredDimension((42 * d).toInt(), (42 * d).toInt())
         else setMeasuredDimension((74 * d).toInt(), (68 * d).toInt())
     }
 
     override fun onDraw(c: Canvas) {
         if (compact) {
-            rect.set(3 * d, 3 * d, width - 3 * d, height - 3 * d)
+            rect.set(4 * d, 4 * d, width - 4 * d, height - 4 * d)
             if (active) {
-                bg.setColor(Color.rgb(68, 84, 128))
-                c.drawRoundRect(rect, 12 * d, 12 * d, bg)
+                bg.setColor(Color.rgb(74, 92, 140))
+                c.drawRoundRect(rect, 10 * d, 10 * d, bg)
             }
             p.setColor(if (active) Color.WHITE else Color.rgb(215, 217, 224))
-            val uc = width * 0.46f
-            p.strokeWidth = uc * 0.1f
+            val uc = width * 0.44f
+            p.strokeWidth = maxOf(1.3f * d, uc * 0.075f)
             c.save()
             c.translate((width - uc) / 2f, (height - uc) / 2f)
             glyph(c, uc)
@@ -158,6 +158,12 @@ class IconButton(
             Icon.TAB -> {
                 poly(c, u, true, 0.34f, 0.12f, 0.9f, 0.12f, 0.9f, 0.88f, 0.34f, 0.88f, 0.1f, 0.5f)
                 c.drawCircle(0.42f * u, 0.5f * u, 0.07f * u, p)
+            }
+            Icon.SPREAD -> {
+                rect.set(0.04f * u, 0.14f * u, 0.48f * u, 0.86f * u)
+                c.drawRoundRect(rect, 0.06f * u, 0.06f * u, p)
+                rect.set(0.52f * u, 0.14f * u, 0.96f * u, 0.86f * u)
+                c.drawRoundRect(rect, 0.06f * u, 0.06f * u, p)
             }
             Icon.MORE -> {
                 p.style = Paint.Style.FILL
