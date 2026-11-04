@@ -46,7 +46,6 @@ class MainActivity : Activity() {
         Color.rgb(160, 225, 170), Color.rgb(150, 225, 210), Color.rgb(150, 210, 245),
         Color.rgb(160, 180, 245), Color.rgb(190, 165, 240), Color.rgb(225, 165, 235)
     )
-    private lateinit var tabList: LinearLayout
 
     private lateinit var nb: Notebook
     private lateinit var draw: DrawView
@@ -419,46 +418,11 @@ class MainActivity : Activity() {
         Toast.makeText(this, "${sizes.size} sayfa eklendi", Toast.LENGTH_SHORT).show()
     }
 
-    private fun tabBackground(color: Int, active: Boolean): GradientDrawable {
-        val r = dp(12f).toFloat()
-        val g = GradientDrawable()
-        g.shape = GradientDrawable.RECTANGLE
-        g.cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
-        g.setColor(color)
-        if (active) g.setStroke(dp(2f), Color.rgb(70, 70, 80)) else g.setStroke(dp(1f), Color.argb(70, 0, 0, 0))
-        return g
-    }
-
     private fun rebuildTabs() {
-        tabList.removeAllViews()
         val sorted = nb.tabs.sortedBy { nb.pages.indexOf(it.target) }
         var active: Tab? = null
         for (t in sorted) if (nb.pages.indexOf(t.target) <= nb.current) active = t
-        for (t in sorted) {
-            val on = t === active
-            val v = TextView(this)
-            v.text = t.label
-            v.textSize = if (on) 13f else 12f
-            v.setTextColor(Color.rgb(40, 40, 50))
-            v.typeface = if (on) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-            v.gravity = Gravity.CENTER
-            v.maxLines = 2
-            v.ellipsize = android.text.TextUtils.TruncateAt.END
-            v.setPadding(dp(3f), 0, dp(3f), 0)
-            v.background = tabBackground(t.color, on)
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46f))
-            lp.setMargins(0, dp(3f), if (on) 0 else dp(8f), dp(3f))
-            v.layoutParams = lp
-            v.setOnClickListener {
-                val idx = nb.pages.indexOf(t.target)
-                if (idx >= 0) gotoPage(idx)
-            }
-            v.setOnLongClickListener {
-                showTabDialog(t)
-                true
-            }
-            tabList.addView(v)
-        }
+        draw.setTabs(sorted, active)
     }
 
     private fun showTabDialog(existing: Tab?) {
@@ -615,6 +579,11 @@ class MainActivity : Activity() {
         pageLabel.gravity = Gravity.CENTER_VERTICAL
         draw.onInfo = { msg -> info.text = "v$versionText · $msg" }
         draw.onChanged = { scheduleSave() }
+        draw.onTabClick = { t ->
+            val idx = nb.pages.indexOf(t.target)
+            if (idx >= 0) gotoPage(idx)
+        }
+        draw.onTabLongPress = { t -> showTabDialog(t) }
         draw.onPageSwipe = { dir -> gotoPage(nb.current + dir) }
         draw.onColorPicked = { c ->
             rememberColor(c)
@@ -674,6 +643,7 @@ class MainActivity : Activity() {
         toolRow.addView(iconBtn(Icon.NEXT, "Sonraki") { gotoPage(nb.current + 1) })
         toolRow.addView(iconBtn(Icon.ADD, "Yeni sayfa") { addPage() })
         toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
+        toolRow.addView(iconBtn(Icon.TAB, "Ayraç") { showTabDialog(null) })
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.IMPORT, "PDF ekle") { pickPdf() })
         toolRow.addView(separator())
@@ -761,40 +731,12 @@ class MainActivity : Activity() {
         statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         statusRow.addView(toggle)
 
-        tabList = LinearLayout(this)
-        tabList.orientation = LinearLayout.VERTICAL
-        val tabScroll = ScrollView(this)
-        tabScroll.isVerticalScrollBarEnabled = false
-        tabScroll.addView(tabList)
-        val addTab = TextView(this)
-        addTab.text = "+ Ayraç"
-        addTab.textSize = 12f
-        addTab.gravity = Gravity.CENTER
-        addTab.setTextColor(Color.rgb(40, 40, 50))
-        val addBg = GradientDrawable()
-        addBg.setColor(Color.rgb(225, 227, 232))
-        addBg.cornerRadius = dp(10f).toFloat()
-        addTab.background = addBg
-        addTab.setOnClickListener { showTabDialog(null) }
-        val tabColumn = LinearLayout(this)
-        tabColumn.orientation = LinearLayout.VERTICAL
-        tabColumn.setPadding(0, dp(4f), 0, dp(4f))
-        tabColumn.addView(tabScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        val addLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40f))
-        addLp.setMargins(dp(4f), dp(4f), dp(8f), 0)
-        tabColumn.addView(addTab, addLp)
-
-        val body = LinearLayout(this)
-        body.orientation = LinearLayout.HORIZONTAL
-        body.addView(tabColumn, LinearLayout.LayoutParams(dp(64f), LinearLayout.LayoutParams.MATCH_PARENT))
-        body.addView(draw, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.addView(toolScroll)
         root.addView(swatchScroll)
         root.addView(statusRow)
-        root.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(draw, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
         draw.showPage(nb.pages[nb.current])

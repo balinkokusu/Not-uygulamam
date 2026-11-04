@@ -13,6 +13,8 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
+import android.graphics.Typeface
 import java.io.File
 import java.util.Locale
 import kotlin.math.abs
@@ -151,6 +153,155 @@ class DrawView(context: Context) : View(context) {
     private val path = Path()
     private val renderer = PageRenderer()
 
+    // ---- Sayfa kenarındaki ayraçlar (sayfa birimiyle çizilir; sayfayla birlikte yakınlaşır) ----
+    private var tabs: List<Tab> = emptyList()
+    private var tabActive: Tab? = null
+    var onTabClick: ((Tab) -> Unit)? = null
+    var onTabLongPress: ((Tab) -> Unit)? = null
+    private val tabPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tabText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val tabRect = RectF()
+    private var tabDown: Tab? = null
+    private var tabDownX = 0f
+    private var tabDownY = 0f
+    private var tabLongFired = false
+    private val tabSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val tabLongRunnable = Runnable {
+        val t = tabDown
+        if (t != null) {
+            tabLongFired = true
+            onTabLongPress?.invoke(t)
+        }
+    }
+
+    private fun tabGutter(): Float = if (tabs.isEmpty()) 0f else TAB_GUTTER
+
+    /** Ayraçlar sırasıyla ve hangisinin açık olduğuyla verilir; ilk ayraç gelince ya da son ayraç gidince sayfa yeniden yerleşir. */
+    fun setTabs(list: List<Tab>, active: Tab?) {
+        val hadGutter = tabGutter()
+        tabs = list
+        tabActive = active
+        if (hadGutter != tabGutter()) {
+            computeTransform()
+            requestBg()
+            rebuildBase()
+        } else {
+            invalidate()
+        }
+    }
+
+    private fun tabHeight(): Float {
+        val n = max(1, tabs.size)
+        return min(TAB_H_MAX, max(TAB_H_MIN, (page.height - 2f * TAB_TOP - (n - 1) * TAB_GAP) / n))
+    }
+
+    private fun tabTop(i: Int): Float = TAB_TOP + i * (tabHeight() + TAB_GAP)
+
+    private fun tabAt(px: Float, py: Float): Tab? {
+        if (px > TAB_IN || px < -TAB_GUTTER) return null
+        val h = tabHeight()
+        for (i in tabs.indices) {
+            val top = tabTop(i)
+            if (py >= top - TAB_GAP / 2f && py <= top + h + TAB_GAP / 2f) return tabs[i]
+        }
+        return null
+    }
+
+    private fun drawTabs(c: Canvas) {
+        if (tabs.isEmpty()) return
+        c.save()
+        c.translate(ox, oy)
+        c.scale(sc, sc)
+        val h = tabHeight()
+        for (i in tabs.indices) {
+            val t = tabs[i]
+            val on = t === tabActive
+            val top = tabTop(i)
+            val left = if (on) -TAB_GUTTER else -TAB_OUT
+            tabRect.set(left, top, TAB_IN, top + h)
+            tabPaint.style = Paint.Style.FILL
+            tabPaint.setColor(t.color)
+            c.drawRoundRect(tabRect, 20f, 20f, tabPaint)
+            tabPaint.style = Paint.Style.STROKE
+            tabPaint.strokeWidth = if (on) 5f else 2.5f
+            tabPaint.setColor(if (on) Color.rgb(60, 60, 70) else Color.argb(90, 0, 0, 0))
+            c.drawRoundRect(tabRect, 20f, 20f, tabPaint)
+
+            tabText.setColor(Color.rgb(40, 40, 50))
+            tabText.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            val cx = (left + TAB_IN) / 2f - 4f
+            val cy = top + h / 2f
+            var label = t.label
+            if (label.length <= 2) {
+                tabText.textSize = 46f
+                val fm = tabText.fontMetrics
+                c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
+            } else {
+                var size = 34f
+                val avail = h - 20f
+                tabText.textSize = size
+                while (tabText.measureText(label) > avail && size > 18f) {
+                    size -= 2f
+                    tabText.textSize = size
+                }
+                while (tabText.measureText(label) > avail && label.length > 2) {
+                    label = label.substring(0, label.length - 1)
+                }
+                val fm = tabText.fontMetrics
+                c.save()
+                c.rotate(-90f, cx, cy)
+                c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
+                c.restore()
+            }
+        }
+        c.restore()
+    }
+
+    /** Ayraç üstüne dokunma: kısa dokunuş sayfaya götürür, uzun basış düzenleme penceresini açar. Ayraca denk gelmezse false döner. */
+    private fun tabTouch(e: MotionEvent): Boolean {
+        if (tabs.isEmpty()) return false
+        if (e.pointerCount > 1) {
+            if (tabDown != null) {
+                holdHandler.removeCallbacks(tabLongRunnable)
+                tabDown = null
+            }
+            return false
+        }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val t = tabAt(pageX(e.x), pageY(e.y)) ?: return false
+                tabDown = t
+                tabDownX = e.x
+                tabDownY = e.y
+                tabLongFired = false
+                holdHandler.postDelayed(tabLongRunnable, 500L)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (tabDown == null) return false
+                if (hypot(e.x - tabDownX, e.y - tabDownY) > tabSlop) {
+                    holdHandler.removeCallbacks(tabLongRunnable)
+                    tabDown = null
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                val t = tabDown ?: return false
+                holdHandler.removeCallbacks(tabLongRunnable)
+                tabDown = null
+                if (!tabLongFired) onTabClick?.invoke(t)
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (tabDown == null) return false
+                holdHandler.removeCallbacks(tabLongRunnable)
+                tabDown = null
+                return true
+            }
+        }
+        return false
+    }
+
     fun showPage(p: PageData) {
         holdHandler.removeCallbacks(holdRunnable)
         page = p
@@ -195,18 +346,21 @@ class DrawView(context: Context) : View(context) {
     private fun computeTransform() {
         if (width <= 0 || height <= 0) return
         val m = 16f * density
-        fitSc = max(0.01f, min((width - 2 * m) / page.width, (height - 2 * m) / page.height))
+        val g = tabGutter()
+        fitSc = max(0.01f, min((width - 2 * m) / (page.width + g), (height - 2 * m) / page.height))
         sc = fitSc
-        ox = (width - page.width * sc) / 2f
+        ox = (width - (page.width + g) * sc) / 2f + g * sc
         oy = (height - page.height * sc) / 2f
     }
 
     /** Yakınlaştırılmış sayfanın ekran dışına kaçmasını engeller. */
     private fun clampTransform() {
-        val pw = page.width * sc
+        val g = tabGutter()
+        val pw = (page.width + g) * sc
         val ph = page.height * sc
         val m = 16f * density
-        ox = if (pw + 2 * m <= width) (width - pw) / 2f else ox.coerceIn(width - pw - m, m)
+        ox = if (pw + 2 * m <= width) (width - pw) / 2f + g * sc
+        else ox.coerceIn(width - page.width * sc - m, m + g * sc)
         oy = if (ph + 2 * m <= height) (height - ph) / 2f else oy.coerceIn(height - ph - m, m)
     }
 
@@ -267,9 +421,11 @@ class DrawView(context: Context) : View(context) {
             gm.postTranslate(ox - gOx0 * f, oy - gOy0 * f)
             c.drawColor(Color.rgb(120, 124, 132))
             c.drawBitmap(b, gm, null)
+            drawTabs(c)
             return
         }
         c.drawBitmap(b, 0f, 0f, null)
+        drawTabs(c)
         val s = current
         if (s != null && (s.highlighter || straightLive)) {
             beginPage(c)
@@ -572,6 +728,7 @@ class DrawView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (tabTouch(e)) return true
         if (handleMultiTouch(e)) return true
 
         val type = e.getToolType(0)
@@ -801,5 +958,12 @@ class DrawView(context: Context) : View(context) {
     companion object {
         /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
         const val UNIT = 2.2f
+        const val TAB_OUT = 62f
+        const val TAB_IN = 14f
+        const val TAB_GUTTER = 80f
+        const val TAB_TOP = 40f
+        const val TAB_GAP = 8f
+        const val TAB_H_MAX = 130f
+        const val TAB_H_MIN = 44f
     }
 }
