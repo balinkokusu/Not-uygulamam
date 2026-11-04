@@ -139,7 +139,7 @@ class PageStyleChooser(
 
     private fun update() {
         for ((i, tv) in chips.withIndex()) {
-            tv.setBackgroundColor(if (i == sizeIdx) Color.rgb(40, 40, 40) else Color.rgb(225, 227, 232))
+            tv.setBackgroundColor(if (i == sizeIdx) Look.ink else Look.accentSoft)
             tv.setTextColor(if (i == sizeIdx) Color.WHITE else Color.BLACK)
         }
         customRow.visibility = if (sizeIdx == customIdx) View.VISIBLE else View.GONE
@@ -147,7 +147,7 @@ class PageStyleChooser(
             val g = GradientDrawable()
             g.shape = GradientDrawable.OVAL
             g.setColor(c)
-            if (c == pageColor) g.setStroke(dp(4f), Color.rgb(0, 120, 255)) else g.setStroke(dp(1f), Color.GRAY)
+            if (c == pageColor) g.setStroke(dp(4f), Look.accent) else g.setStroke(dp(1f), Color.GRAY)
             v.background = g
         }
     }

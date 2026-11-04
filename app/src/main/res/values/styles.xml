@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#A6626A</item>
+        <item name="android:colorPrimary">#4A4042</item>
+        <item name="android:colorControlActivated">#A6626A</item>
+        <item name="android:textColorPrimary">#4A4042</item>
+        <item name="android:alertDialogTheme">@style/AppDialog</item>
+    </style>
+    <style name="AppDialog" parent="android:Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#A6626A</item>
+        <item name="android:textColorPrimary">#4A4042</item>
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
+    </style>
+</resources>

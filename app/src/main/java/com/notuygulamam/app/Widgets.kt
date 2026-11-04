@@ -52,10 +52,10 @@ class IconButton(
         if (compact) {
             rect.set(4 * d, 4 * d, width - 4 * d, height - 4 * d)
             if (active) {
-                bg.setColor(Color.rgb(74, 92, 140))
+                bg.setColor(Look.accentSoft)
                 c.drawRoundRect(rect, 10 * d, 10 * d, bg)
             }
-            p.setColor(if (active) Color.WHITE else Color.rgb(215, 217, 224))
+            p.setColor(if (active) Look.accent else Look.ink)
             val uc = width * 0.44f
             p.strokeWidth = maxOf(1.3f * d, uc * 0.075f)
             c.save()

@@ -88,7 +88,7 @@ class TileView(
             rect.set(left, top, left + artW, top + coverH)
             p.style = Paint.Style.STROKE
             p.strokeWidth = 2.5f * d
-            p.color = Color.rgb(60, 120, 230)
+            p.color = Look.gold
             p.pathEffect = DashPathEffect(floatArrayOf(10f * d, 8f * d), 0f)
             c.drawRoundRect(rect, 12f * d, 12f * d, p)
             p.pathEffect = null
@@ -96,9 +96,10 @@ class TileView(
             p.strokeWidth = 4f * d
             c.drawLine(rect.centerX() - 18f * d, rect.centerY(), rect.centerX() + 18f * d, rect.centerY(), p)
             c.drawLine(rect.centerX(), rect.centerY() - 18f * d, rect.centerX(), rect.centerY() + 18f * d, p)
-            tp.color = Color.rgb(60, 120, 230)
+            tp.color = Look.accent
+            tp.typeface = Typeface.SERIF
             tp.textSize = 16f * d
-            tp.isFakeBoldText = true
+            tp.isFakeBoldText = false
             c.drawText("Yeni", w / 2f, top + coverH + 22f * d, tp)
             return
         }
@@ -109,23 +110,28 @@ class TileView(
             FolderArt.draw(c, rect, item.color, item.icon)
         } else {
             rect.set(left, top, left + artW, top + coverH)
-            shadow.set(rect.left + 3f * d, rect.top + 4f * d, rect.right + 3f * d, rect.bottom + 4f * d)
             p.style = Paint.Style.FILL
-            p.color = Color.argb(45, 0, 0, 0)
-            c.drawRoundRect(shadow, artW * 0.05f, artW * 0.05f, p)
+            for (g in 1..6) {
+                val e = g * 1.8f * d
+                shadow.set(rect.left - e * 0.4f, rect.top + 3f * d - e * 0.3f, rect.right + e * 0.4f, rect.bottom + 5f * d + e * 0.6f)
+                p.color = Color.argb(14, 70, 40, 45)
+                c.drawRoundRect(shadow, artW * 0.05f + e * 0.5f, artW * 0.05f + e * 0.5f, p)
+            }
             val img = item.coverImage
             val bmp = if (img != null) CoverCache.thumb(coverDir, img) else null
             if (bmp != null) drawCropped(c, bmp, rect) else CoverArt.draw(c, rect, item.coverStyle, item.color)
         }
 
-        tp.color = Color.rgb(30, 30, 34)
-        tp.textSize = 15f * d
-        tp.isFakeBoldText = true
+        tp.color = Look.ink
+        tp.typeface = Typeface.SERIF
+        tp.textSize = 16f * d
+        tp.isFakeBoldText = false
         val title = TextUtils.ellipsize(item.title, tp, w * 0.92f, TextUtils.TruncateAt.END).toString()
         c.drawText(title, w / 2f, top + coverH + 22f * d, tp)
         if (subtitle.isNotEmpty()) {
-            tp.color = Color.rgb(120, 122, 130)
-            tp.textSize = 12f * d
+            tp.color = Look.inkSoft
+            tp.typeface = Typeface.DEFAULT
+            tp.textSize = 11.5f * d
             tp.isFakeBoldText = false
             c.drawText(subtitle, w / 2f, top + coverH + 40f * d, tp)
         }
@@ -155,7 +161,7 @@ class ArtThumb(
         painter(c, rect)
         if (selected()) {
             ring.strokeWidth = 3f * d
-            ring.color = Color.rgb(0, 120, 255)
+            ring.color = Look.accent
             rect.inset(-3f * d, -3f * d)
             c.drawRoundRect(rect, 8f * d, 8f * d, ring)
         }
@@ -209,7 +215,7 @@ class LibraryActivity : Activity() {
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(Color.rgb(244, 244, 247))
+        root.setBackgroundColor(Look.libraryBg)
 
         val header = LinearLayout(this)
         header.orientation = LinearLayout.HORIZONTAL
@@ -218,20 +224,20 @@ class LibraryActivity : Activity() {
         backBtn = TextView(this)
         backBtn.text = "‹ Geri"
         backBtn.textSize = 18f
-        backBtn.setTextColor(Color.rgb(60, 120, 230))
+        backBtn.setTextColor(Look.accent)
         backBtn.setPadding(0, dp(6f), dp(16f), dp(6f))
         backBtn.visibility = View.GONE
         backBtn.setOnClickListener { goUp() }
         titleView = TextView(this)
-        titleView.textSize = 28f
-        titleView.setTypeface(null, Typeface.BOLD)
-        titleView.setTextColor(Color.rgb(25, 25, 30))
+        titleView.textSize = 34f
+        titleView.setTypeface(Typeface.SERIF, Typeface.NORMAL)
+        titleView.setTextColor(Look.ink)
         header.addView(backBtn)
         header.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         val backupBtn = TextView(this)
         backupBtn.text = "Yedek"
         backupBtn.textSize = 16f
-        backupBtn.setTextColor(Color.rgb(60, 120, 230))
+        backupBtn.setTextColor(Look.accent)
         backupBtn.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
         backupBtn.setOnClickListener { showLibraryBackup() }
         header.addView(backupBtn)
@@ -576,7 +582,7 @@ class LibraryActivity : Activity() {
                 val paperViews = ArrayList<TextView>()
                 fun updPaper() {
                     for ((i, tv) in paperViews.withIndex()) {
-                        tv.setBackgroundColor(if (i == paperIdx) Color.rgb(40, 40, 40) else Color.rgb(225, 227, 232))
+                        tv.setBackgroundColor(if (i == paperIdx) Look.ink else Look.accentSoft)
                         tv.setTextColor(if (i == paperIdx) Color.WHITE else Color.BLACK)
                     }
                 }

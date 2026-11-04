@@ -212,6 +212,7 @@ class DrawView(context: Context) : View(context) {
         return null
     }
 
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val tabPath = Path()
     private val tabRadii = floatArrayOf(22f, 22f, 4f, 4f, 4f, 4f, 22f, 22f)
 
@@ -449,10 +450,20 @@ class DrawView(context: Context) : View(context) {
     /** Arka planı, kağıdı ve tüm biten çizgileri bitmap'e baştan çizer. */
     private fun rebuildBase() {
         val c = baseCanvas ?: return
-        c.drawColor(Color.rgb(120, 124, 132))
+        c.drawColor(Look.canvas)
         val list = listOfNotNull(leftPage, rightPage)
         for ((k, pg) in list.withIndex()) {
             val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
+            // Sayfanın altına yumuşak gölge
+            val sl = ox + off * sc
+            for (g in 1..7) {
+                shadowPaint.setColor(Color.argb(13, 70, 40, 45))
+                val e = g * 1.6f * density
+                c.drawRoundRect(
+                    sl - e, oy + 2f * density - e * 0.4f, sl + pg.width * sc + e, oy + pg.height * sc + 4f * density + e,
+                    e + 3f * density, e + 3f * density, shadowPaint
+                )
+            }
             c.save()
             c.translate(ox + off * sc, oy)
             c.scale(sc, sc)
@@ -473,14 +484,14 @@ class DrawView(context: Context) : View(context) {
     override fun onDraw(c: Canvas) {
         val b = base
         if (b == null) {
-            c.drawColor(Color.rgb(120, 124, 132))
+            c.drawColor(Look.canvas)
             return
         }
         if (gestureActive) {
             val f = sc / gSc0
             gm.setScale(f, f)
             gm.postTranslate(ox - gOx0 * f, oy - gOy0 * f)
-            c.drawColor(Color.rgb(120, 124, 132))
+            c.drawColor(Look.canvas)
             c.drawBitmap(b, gm, null)
             drawTabs(c)
             return

@@ -77,6 +77,15 @@ class MainActivity : Activity() {
 
     private fun dp(v: Float): Int = (v * d).toInt()
 
+    /** Fildişi, ince çerçeveli yuvarlak çubuk zemini. */
+    private fun bar(radius: Float): GradientDrawable {
+        val g = GradientDrawable()
+        g.setColor(Look.bar)
+        g.cornerRadius = radius
+        g.setStroke(dp(1f), Look.hairline)
+        return g
+    }
+
     private fun scheduleSave() {
         handler.removeCallbacks(saveRunnable)
         handler.postDelayed(saveRunnable, 2500L)
@@ -118,7 +127,7 @@ class MainActivity : Activity() {
 
     private fun separator(): View {
         val v = View(this)
-        v.setBackgroundColor(Color.rgb(100, 102, 110))
+        v.setBackgroundColor(Look.hairline)
         val lp = LinearLayout.LayoutParams(dp(1f), dp(28f))
         lp.setMargins(dp(6f), dp(6f), dp(6f), dp(6f))
         v.layoutParams = lp
@@ -149,8 +158,8 @@ class MainActivity : Activity() {
         val g = GradientDrawable()
         g.shape = GradientDrawable.OVAL
         g.setColor(c)
-        if (selected) g.setStroke(dp(4f), Color.rgb(0, 120, 255))
-        else g.setStroke(dp(1f), Color.LTGRAY)
+        if (selected) g.setStroke(dp(3f), Look.accent)
+        else g.setStroke(dp(1f), Look.hairline)
         v.background = g
         val lp = LinearLayout.LayoutParams(dp(28f), dp(28f))
         lp.setMargins(dp(4f), dp(3f), dp(4f), dp(3f))
@@ -213,7 +222,7 @@ class MainActivity : Activity() {
                     val cy = height / 2f
                     if (on) {
                         paint.style = android.graphics.Paint.Style.FILL
-                        paint.setColor(Color.rgb(228, 236, 252))
+                        paint.setColor(Look.accentSoft)
                         c.drawRoundRect(3f * d, 3f * d, width - 3f * d, height - 3f * d, 10f * d, 10f * d, paint)
                     }
                     paint.style = android.graphics.Paint.Style.FILL
@@ -234,9 +243,9 @@ class MainActivity : Activity() {
         t.text = "Renk seç"
         t.textSize = 13f
         t.setPadding(dp(12f), dp(4f), dp(12f), dp(4f))
-        t.setTextColor(Color.WHITE)
+        t.setTextColor(Look.accent)
         val g = GradientDrawable()
-        g.setColor(Color.rgb(78, 80, 90))
+        g.setColor(Look.accentSoft)
         g.cornerRadius = dp(10f).toFloat()
         t.background = g
         val lp = LinearLayout.LayoutParams(
@@ -524,7 +533,7 @@ class MainActivity : Activity() {
                 val g = GradientDrawable()
                 g.shape = GradientDrawable.OVAL
                 g.setColor(c)
-                if (c == chosen) g.setStroke(dp(4f), Color.rgb(0, 120, 255)) else g.setStroke(dp(1f), Color.LTGRAY)
+                if (c == chosen) g.setStroke(dp(4f), Look.accent) else g.setStroke(dp(1f), Color.LTGRAY)
                 v.background = g
             }
         }
@@ -825,7 +834,9 @@ class MainActivity : Activity() {
         toolRow.addView(spreadBtn)
         toolRow.addView(spacer())
         toolRow.addView(iconBtn(Icon.PREV, "Önceki sayfa") { gotoPage(nb.current - step()) })
-        pageLabel.setTextColor(Color.WHITE)
+        pageLabel.setTextColor(Look.ink)
+        pageLabel.typeface = android.graphics.Typeface.SERIF
+        pageLabel.textSize = 15f
         pageLabel.setPadding(dp(6f), 0, dp(6f), 0)
         toolRow.addView(pageLabel)
         toolRow.addView(iconBtn(Icon.NEXT, "Sonraki sayfa") { gotoPage(nb.current + step()) })
@@ -837,17 +848,21 @@ class MainActivity : Activity() {
         toolRow.addView(moreBtn)
         val toolScroll = HorizontalScrollView(this)
         toolScroll.isFillViewport = true
-        toolScroll.setBackgroundColor(Color.rgb(43, 43, 46))
+        toolScroll.background = bar(dp(24f).toFloat())
+        toolScroll.elevation = dp(5f).toFloat()
+        toolScroll.clipToOutline = true
         toolScroll.addView(toolRow)
 
         val swatchScroll = HorizontalScrollView(this)
-        swatchScroll.setBackgroundColor(Color.rgb(56, 57, 63))
+        swatchScroll.background = bar(dp(20f).toFloat())
+        swatchScroll.elevation = dp(3f).toFloat()
+        swatchScroll.clipToOutline = true
         swatchScroll.addView(swatchRow)
 
         val panel = LinearLayout(this)
         panel.orientation = LinearLayout.VERTICAL
         panel.setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
-        panel.setBackgroundColor(Color.WHITE)
+        panel.setBackgroundColor(Color.TRANSPARENT)
 
         presetRow = LinearLayout(this)
         presetRow.orientation = LinearLayout.HORIZONTAL
@@ -898,7 +913,7 @@ class MainActivity : Activity() {
         panel.addView(holdBox)
 
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
-        popup.setBackgroundDrawable(ColorDrawable(Color.WHITE))
+        popup.setBackgroundDrawable(bar(dp(20f).toFloat()))
         popup.isOutsideTouchable = true
         popup.elevation = dp(10f).toFloat()
         settingsPopup = popup
@@ -907,8 +922,8 @@ class MainActivity : Activity() {
         toggle.text = "Araçları gizle"
         toggle.textSize = 14f
         toggle.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
-        toggle.setTextColor(Color.WHITE)
-        toggle.setBackgroundColor(Color.rgb(78, 80, 90))
+        toggle.setTextColor(Look.accent)
+        toggle.textSize = 12f
         toggle.setOnClickListener {
             toolsVisible = !toolsVisible
             val vis = if (toolsVisible) View.VISIBLE else View.GONE
@@ -920,15 +935,20 @@ class MainActivity : Activity() {
         val statusRow = LinearLayout(this)
         statusRow.orientation = LinearLayout.HORIZONTAL
         statusRow.gravity = Gravity.CENTER_VERTICAL
-        statusRow.setBackgroundColor(Color.rgb(43, 43, 46))
-        info.setTextColor(Color.rgb(170, 172, 180))
+        info.setTextColor(Look.inkSoft)
+        info.textSize = 11f
         statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         statusRow.addView(toggle)
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.addView(toolScroll)
-        root.addView(swatchScroll)
+        root.setBackgroundColor(Look.canvas)
+        val barLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        barLp.setMargins(dp(14f), dp(10f), dp(14f), dp(4f))
+        root.addView(toolScroll, barLp)
+        val swLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        swLp.setMargins(dp(14f), dp(4f), dp(14f), dp(2f))
+        root.addView(swatchScroll, swLp)
         root.addView(statusRow)
         root.addView(draw, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
