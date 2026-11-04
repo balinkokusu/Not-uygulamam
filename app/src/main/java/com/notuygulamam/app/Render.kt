@@ -420,14 +420,14 @@ class PageRenderer {
 
     // ---- Sayfa nesneleri: metin, çıkartma, resim ----
 
-    private val textPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private val itemText = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
 
     private fun layoutOf(it: PageItem): android.text.StaticLayout {
-        textPaint.setColor(it.color)
-        textPaint.textSize = it.size
-        textPaint.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+        itemText.setColor(it.color)
+        itemText.textSize = it.size
+        itemText.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
         val txt = if (it.text.isEmpty()) " " else it.text
-        return android.text.StaticLayout.Builder.obtain(txt, 0, txt.length, textPaint, maxOf(40, it.w.toInt())).build()
+        return android.text.StaticLayout.Builder.obtain(txt, 0, txt.length, itemText, maxOf(40, it.w.toInt())).build()
     }
 
     /** Metin kutusunun yüksekliğini günceller. */
