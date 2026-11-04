@@ -11,7 +11,9 @@ import java.io.FileOutputStream
 enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER }
 
 enum class Paper(val label: String) {
-    BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı")
+    BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı"),
+    TODO("yapılacaklar"), DAILY("günlük ajanda"), WEEKLY("haftalık plan"),
+    MONTHLY("aylık takvim"), CORNELL("Cornell notu"), YEAR("yıllık takvim")
 }
 
 /** Bir çizgi; koordinatlar ve kalınlık sayfa birimindedir, ekran çözünürlüğünden bağımsızdır. */
@@ -37,6 +39,10 @@ class PageData(
     /** Sayfa bir PDF sayfasından geliyorsa PDF dosyasının adı ve sayfa sırası. */
     var pdfName: String? = null
     var pdfIndex = 0
+
+    /** Tarihli takvim sayfaları için yıl ve ay (1-12); 0 ise tarihsiz şablon. */
+    var calYear = 0
+    var calMonth = 0
     val strokes = ArrayList<Stroke>()
 
     /** Arka planda dışa aktarmak için sayfanın o anki halinin kopyası. */
@@ -44,6 +50,8 @@ class PageData(
         val p = PageData(width, height, paper)
         p.pdfName = pdfName
         p.pdfIndex = pdfIndex
+        p.calYear = calYear
+        p.calMonth = calMonth
         p.strokes.addAll(strokes)
         return p
     }
@@ -63,7 +71,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 3
+    private const val VERSION = 4
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -82,6 +90,8 @@ object Storage {
                     o.writeUTF(nm)
                     o.writeInt(pg.pdfIndex)
                 }
+                o.writeInt(pg.calYear)
+                o.writeInt(pg.calMonth)
                 o.writeInt(pg.strokes.size)
                 for (s in pg.strokes) {
                     o.writeInt(s.color)
@@ -117,7 +127,7 @@ object Storage {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
                 val ver = i.readInt()
-                if (ver < 1 || ver > 3) return null
+                if (ver < 1 || ver > 4) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()
@@ -129,6 +139,10 @@ object Storage {
                     if (ver >= 2 && i.readBoolean()) {
                         pg.pdfName = i.readUTF()
                         pg.pdfIndex = i.readInt()
+                    }
+                    if (ver >= 4) {
+                        pg.calYear = i.readInt()
+                        pg.calMonth = i.readInt()
                     }
                     val sc = i.readInt()
                     for (j in 0 until sc) {

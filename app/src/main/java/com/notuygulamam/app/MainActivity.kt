@@ -100,21 +100,25 @@ class MainActivity : Activity() {
     }
 
     private fun iconBtn(icon: Icon, label: String, onClick: () -> Unit): IconButton {
-        val b = IconButton(this, icon, label)
+        val b = IconButton(this, icon, label, true)
         val lp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        lp.setMargins(dp(3f), dp(3f), dp(3f), dp(3f))
+        lp.setMargins(dp(2f), dp(2f), dp(2f), dp(2f))
         b.layoutParams = lp
         b.setOnClickListener { onClick() }
+        b.setOnLongClickListener {
+            Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
+            true
+        }
         return b
     }
 
     private fun separator(): View {
         val v = View(this)
-        v.setBackgroundColor(Color.LTGRAY)
-        val lp = LinearLayout.LayoutParams(dp(1f), dp(36f))
-        lp.setMargins(dp(8f), dp(8f), dp(8f), dp(8f))
+        v.setBackgroundColor(Color.rgb(100, 102, 110))
+        val lp = LinearLayout.LayoutParams(dp(1f), dp(28f))
+        lp.setMargins(dp(6f), dp(6f), dp(6f), dp(6f))
         v.layoutParams = lp
         return v
     }
@@ -175,8 +179,9 @@ class MainActivity : Activity() {
         t.text = "Renk seç"
         t.textSize = 14f
         t.setPadding(dp(14f), dp(7f), dp(14f), dp(7f))
+        t.setTextColor(Color.WHITE)
         val g = GradientDrawable()
-        g.setColor(Color.rgb(225, 227, 232))
+        g.setColor(Color.rgb(78, 80, 90))
         g.cornerRadius = dp(10f).toFloat()
         t.background = g
         val lp = LinearLayout.LayoutParams(
@@ -514,6 +519,54 @@ class MainActivity : Activity() {
         b.show()
     }
 
+    private fun showMoreMenu(anchor: View) {
+        val m = android.widget.PopupMenu(this, anchor)
+        val names = arrayOf(
+            "PDF ekle", "Şablonlu yeni sayfa", "Kaydet", "PDF olarak dışa aktar",
+            "Bu defterin yedeği", "Bu sayfadaki çizimleri temizle", "Bu sayfayı sil"
+        )
+        for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
+        m.setOnMenuItemClickListener { mi ->
+            when (mi.itemId) {
+                0 -> pickPdf()
+                1 -> showTemplatePageDialog()
+                2 -> saveWithMessage()
+                3 -> startExport()
+                4 -> showBackupDialog()
+                5 -> draw.clearAll()
+                6 -> confirmDeletePage()
+            }
+            true
+        }
+        m.show()
+    }
+
+    private fun confirmDeletePage() {
+        if (nb.pages.size <= 1) {
+            Toast.makeText(this, "Defterde tek sayfa kaldı, silinemez", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Bu sayfa silinsin mi?")
+            .setMessage("Sayfa ${nb.current + 1} ve üstündeki yazılar silinecek. Bu işlem geri alınamaz.")
+            .setPositiveButton("Sil") { _, _ -> deleteCurrentPage() }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
+    private fun showTemplatePageDialog() {
+        val labels = Paper.values().map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Yeni sayfa için şablon")
+            .setItems(labels) { _, which ->
+                val pg = PageData(1200f, 1700f, Paper.values()[which])
+                nb.pages.add(nb.current + 1, pg)
+                gotoPage(nb.current + 1)
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
     private fun showPagesDialog() {
         val labels = nb.pages.mapIndexed { i, pg ->
             val kind = if (pg.pdfName != null) "PDF sayfa ${pg.pdfIndex + 1}" else pg.paper.label
@@ -611,8 +664,21 @@ class MainActivity : Activity() {
         val toolRow = LinearLayout(this)
         toolRow.orientation = LinearLayout.HORIZONTAL
         toolRow.gravity = Gravity.CENTER_VERTICAL
+        toolRow.setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+        fun spacer(): View {
+            val v = View(this)
+            v.layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+            return v
+        }
         toolRow.addView(iconBtn(Icon.HOME, "Kütüphane") { finish() })
-        toolRow.addView(separator())
+        toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
+        val addBtn = iconBtn(Icon.ADD, "Yeni sayfa (uzun basınca şablon seç)") { addPage() }
+        addBtn.setOnLongClickListener {
+            showTemplatePageDialog()
+            true
+        }
+        toolRow.addView(addBtn)
+        toolRow.addView(spacer())
         val toolIcons = listOf(
             Triple(Tool.PEN, Icon.PEN, "Kalem"), Triple(Tool.HIGHLIGHTER, Icon.HIGHLIGHTER, "Fosforlu"),
             Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık")
@@ -625,35 +691,34 @@ class MainActivity : Activity() {
             toolButtons[t] = b
             toolRow.addView(b)
         }
-        toolRow.addView(iconBtn(Icon.THICKNESS, "Kalınlık") { toggleSettings() })
+        toolRow.addView(iconBtn(Icon.THICKNESS, "Kalınlık ve basınç") { toggleSettings() })
         toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
-        toolRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
-        toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.PAPER, "Kâğıt") { showPaperDialog() })
-        fingerBtn = iconBtn(Icon.FINGER, "Parmak") {
+        toolRow.addView(iconBtn(Icon.PAPER, "Sayfa şablonu") { showPaperDialog() })
+        toolRow.addView(iconBtn(Icon.TAB, "Ayraç ekle") { showTabDialog(null) })
+        fingerBtn = iconBtn(Icon.FINGER, "Parmakla çizim") {
             draw.fingerDraw = !draw.fingerDraw
             refresh()
         }
         toolRow.addView(fingerBtn)
-        toolRow.addView(iconBtn(Icon.TRASH, "Temizle") { draw.clearAll() })
-        toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.PREV, "Önceki") { gotoPage(nb.current - 1) })
+        toolRow.addView(spacer())
+        toolRow.addView(iconBtn(Icon.PREV, "Önceki sayfa") { gotoPage(nb.current - 1) })
+        pageLabel.setTextColor(Color.WHITE)
+        pageLabel.setPadding(dp(6f), 0, dp(6f), 0)
         toolRow.addView(pageLabel)
-        toolRow.addView(iconBtn(Icon.NEXT, "Sonraki") { gotoPage(nb.current + 1) })
-        toolRow.addView(iconBtn(Icon.ADD, "Yeni sayfa") { addPage() })
-        toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
-        toolRow.addView(iconBtn(Icon.TAB, "Ayraç") { showTabDialog(null) })
-        toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.IMPORT, "PDF ekle") { pickPdf() })
-        toolRow.addView(separator())
-        toolRow.addView(iconBtn(Icon.SAVE, "Kaydet") { saveWithMessage() })
-        toolRow.addView(iconBtn(Icon.EXPORT, "PDF kaydet") { startExport() })
-        toolRow.addView(iconBtn(Icon.ARCHIVE, "Yedek") { showBackupDialog() })
+        toolRow.addView(iconBtn(Icon.NEXT, "Sonraki sayfa") { gotoPage(nb.current + 1) })
+        toolRow.addView(spacer())
+        toolRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
+        toolRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
+        val moreBtn = iconBtn(Icon.MORE, "Diğer işlemler") { }
+        moreBtn.setOnClickListener { showMoreMenu(moreBtn) }
+        toolRow.addView(moreBtn)
         val toolScroll = HorizontalScrollView(this)
+        toolScroll.isFillViewport = true
+        toolScroll.setBackgroundColor(Color.rgb(43, 43, 46))
         toolScroll.addView(toolRow)
 
         val swatchScroll = HorizontalScrollView(this)
+        swatchScroll.setBackgroundColor(Color.rgb(56, 57, 63))
         swatchScroll.addView(swatchRow)
 
         val panel = LinearLayout(this)
@@ -716,7 +781,8 @@ class MainActivity : Activity() {
         toggle.text = "Araçları gizle"
         toggle.textSize = 14f
         toggle.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
-        toggle.setBackgroundColor(Color.rgb(225, 227, 232))
+        toggle.setTextColor(Color.WHITE)
+        toggle.setBackgroundColor(Color.rgb(78, 80, 90))
         toggle.setOnClickListener {
             toolsVisible = !toolsVisible
             val vis = if (toolsVisible) View.VISIBLE else View.GONE
@@ -728,6 +794,8 @@ class MainActivity : Activity() {
         val statusRow = LinearLayout(this)
         statusRow.orientation = LinearLayout.HORIZONTAL
         statusRow.gravity = Gravity.CENTER_VERTICAL
+        statusRow.setBackgroundColor(Color.rgb(43, 43, 46))
+        info.setTextColor(Color.rgb(170, 172, 180))
         statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         statusRow.addView(toggle)
 

@@ -14,11 +14,16 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
-class IconButton(context: Context, private val icon: Icon, private val label: String) : View(context) {
+class IconButton(
+    context: Context,
+    private val icon: Icon,
+    private val label: String,
+    private val compact: Boolean = false
+) : View(context) {
     private val d = resources.displayMetrics.density
     var active = false
         set(value) {
@@ -39,10 +44,26 @@ class IconButton(context: Context, private val icon: Icon, private val label: St
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension((74 * d).toInt(), (68 * d).toInt())
+        if (compact) setMeasuredDimension((52 * d).toInt(), (52 * d).toInt())
+        else setMeasuredDimension((74 * d).toInt(), (68 * d).toInt())
     }
 
     override fun onDraw(c: Canvas) {
+        if (compact) {
+            rect.set(3 * d, 3 * d, width - 3 * d, height - 3 * d)
+            if (active) {
+                bg.setColor(Color.rgb(68, 84, 128))
+                c.drawRoundRect(rect, 12 * d, 12 * d, bg)
+            }
+            p.setColor(if (active) Color.WHITE else Color.rgb(215, 217, 224))
+            val uc = width * 0.46f
+            p.strokeWidth = uc * 0.1f
+            c.save()
+            c.translate((width - uc) / 2f, (height - uc) / 2f)
+            glyph(c, uc)
+            c.restore()
+            return
+        }
         rect.set(3 * d, 3 * d, width - 3 * d, height - 3 * d)
         bg.setColor(if (active) Color.rgb(35, 35, 40) else Color.rgb(236, 237, 240))
         c.drawRoundRect(rect, 12 * d, 12 * d, bg)
@@ -137,6 +158,13 @@ class IconButton(context: Context, private val icon: Icon, private val label: St
             Icon.TAB -> {
                 poly(c, u, true, 0.34f, 0.12f, 0.9f, 0.12f, 0.9f, 0.88f, 0.34f, 0.88f, 0.1f, 0.5f)
                 c.drawCircle(0.42f * u, 0.5f * u, 0.07f * u, p)
+            }
+            Icon.MORE -> {
+                p.style = Paint.Style.FILL
+                c.drawCircle(0.5f * u, 0.14f * u, 0.08f * u, p)
+                c.drawCircle(0.5f * u, 0.5f * u, 0.08f * u, p)
+                c.drawCircle(0.5f * u, 0.86f * u, 0.08f * u, p)
+                p.style = Paint.Style.STROKE
             }
             Icon.ADD -> {
                 line(c, u, 0.5f, 0.1f, 0.5f, 0.9f)

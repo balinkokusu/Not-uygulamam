@@ -228,6 +228,13 @@ class LibraryActivity : Activity() {
         titleView.setTextColor(Color.rgb(25, 25, 30))
         header.addView(backBtn)
         header.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val backupBtn = TextView(this)
+        backupBtn.text = "Yedek"
+        backupBtn.textSize = 16f
+        backupBtn.setTextColor(Color.rgb(60, 120, 230))
+        backupBtn.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+        backupBtn.setOnClickListener { showLibraryBackup() }
+        header.addView(backupBtn)
 
         grid = GridView(this)
         grid.numColumns = GridView.AUTO_FIT
@@ -259,6 +266,72 @@ class LibraryActivity : Activity() {
 
     override fun onBackPressed() {
         if (folderId.isNotEmpty()) goUp() else super.onBackPressed()
+    }
+
+    private fun showLibraryBackup() {
+        AlertDialog.Builder(this)
+            .setTitle("Tüm kütüphane yedeği")
+            .setItems(arrayOf("Yedek dosyası oluştur (yeri siz seçersiniz)", "Yedek dosyasından geri yükle")) { _, which ->
+                if (which == 0) {
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                    intent.addCategory(Intent.CATEGORY_OPENABLE)
+                    intent.type = "application/zip"
+                    intent.putExtra(Intent.EXTRA_TITLE, "NotUygulamam-kutuphane.zip")
+                    startActivityForResult(intent, REQ_LIB_BACKUP)
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Geri yükle")
+                        .setMessage("Seçtiğiniz yedekteki defterler ve klasörler şu anki kütüphanenin yerine geçer. Şu anki kütüphane uygulama içinde bir önceki sürüm olarak saklanır. Devam edilsin mi?")
+                        .setPositiveButton("Dosya seç") { _, _ ->
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                            intent.addCategory(Intent.CATEGORY_OPENABLE)
+                            intent.type = "application/zip"
+                            startActivityForResult(intent, REQ_LIB_RESTORE)
+                        }
+                        .setNegativeButton("Vazgeç", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun libraryBackupTo(uri: android.net.Uri) {
+        Toast.makeText(this, "Yedek hazırlanıyor...", Toast.LENGTH_SHORT).show()
+        val base = filesDir
+        Thread {
+            try {
+                val out = contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Dosya açılamadı")
+                out.use { LibraryBackup.write(base, it) }
+                runOnUiThread { Toast.makeText(this, "Yedek kaydedildi", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Yedek kaydedilemedi", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun libraryRestoreFrom(uri: android.net.Uri) {
+        Toast.makeText(this, "Yedek yükleniyor...", Toast.LENGTH_SHORT).show()
+        val base = filesDir
+        Thread {
+            var ok: Boolean
+            try {
+                val input = contentResolver.openInputStream(uri) ?: throw java.io.IOException("Dosya açılamadı")
+                ok = input.use { LibraryBackup.restore(it, base) }
+            } catch (e: Exception) {
+                ok = false
+            }
+            runOnUiThread {
+                if (ok) {
+                    store.load()
+                    folderId = ""
+                    refresh()
+                    Toast.makeText(this, "Yedek yüklendi", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Yedek yüklenemedi", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun goUp() {
@@ -384,6 +457,8 @@ class LibraryActivity : Activity() {
         val draft = existing?.copy() ?: LibraryItem(store.newId(), isFolder, "", folderId)
         if (existing == null) draft.color = palette[if (isFolder) 4 else 0]
         var paperIdx = Paper.RULED.ordinal
+        val nowCal = java.util.Calendar.getInstance()
+        val plannerYear = nowCal.get(java.util.Calendar.YEAR) + if (nowCal.get(java.util.Calendar.MONTH) >= 8) 1 else 0
         var committed = false
         val thumbs = ArrayList<View>()
 
@@ -494,7 +569,7 @@ class LibraryActivity : Activity() {
             content.addView(photoRow)
 
             if (existing == null) {
-                content.addView(label("İlk sayfanın kâğıdı"))
+                content.addView(label("İlk sayfanın kâğıdı (ya da hazır defter)"))
                 val paperRow = LinearLayout(this)
                 paperRow.orientation = LinearLayout.HORIZONTAL
                 val paperViews = ArrayList<TextView>()
@@ -504,9 +579,10 @@ class LibraryActivity : Activity() {
                         tv.setTextColor(if (i == paperIdx) Color.WHITE else Color.BLACK)
                     }
                 }
-                for ((i, pp) in Paper.values().withIndex()) {
+                val chipLabels = Paper.values().map { it.label } + ("Planlayıcı " + plannerYear + " (12 ay, ayraçlı)")
+                for ((i, chipLabel) in chipLabels.withIndex()) {
                     val tv = TextView(this)
-                    tv.text = pp.label
+                    tv.text = chipLabel
                     tv.textSize = 14f
                     tv.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
                     val lp = LinearLayout.LayoutParams(
@@ -522,7 +598,9 @@ class LibraryActivity : Activity() {
                     paperRow.addView(tv)
                 }
                 updPaper()
-                content.addView(paperRow)
+                val paperScroll = HorizontalScrollView(this)
+                paperScroll.addView(paperRow)
+                content.addView(paperScroll)
             }
         }
 
@@ -541,8 +619,13 @@ class LibraryActivity : Activity() {
                 if (existing == null) {
                     draft.modified = System.currentTimeMillis()
                     if (!isFolder) {
-                        val nb = Notebook()
-                        nb.pages.add(PageData(paper = Paper.values()[paperIdx]))
+                        val nb: Notebook
+                        if (paperIdx >= Paper.values().size) {
+                            nb = Planner.build(plannerYear)
+                        } else {
+                            nb = Notebook()
+                            nb.pages.add(PageData(paper = Paper.values()[paperIdx]))
+                        }
                         store.dir.mkdirs()
                         Storage.save(nb, store.notebookFile(draft.id))
                     }
@@ -570,6 +653,16 @@ class LibraryActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == RESULT_OK && data?.data != null) {
+            if (requestCode == REQ_LIB_BACKUP) {
+                libraryBackupTo(data.data!!)
+                return
+            }
+            if (requestCode == REQ_LIB_RESTORE) {
+                libraryRestoreFrom(data.data!!)
+                return
+            }
+        }
         if (requestCode != REQ_COVER || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         val target = draftForPhoto ?: return
@@ -595,5 +688,7 @@ class LibraryActivity : Activity() {
 
     companion object {
         private const val REQ_COVER = 201
+        private const val REQ_LIB_BACKUP = 202
+        private const val REQ_LIB_RESTORE = 203
     }
 }
