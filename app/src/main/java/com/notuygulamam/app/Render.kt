@@ -117,7 +117,7 @@ class PageRenderer {
                     y += step
                 }
             }
-            Paper.TODO, Paper.DAILY, Paper.WEEKLY, Paper.MONTHLY, Paper.CORNELL, Paper.YEAR -> drawTemplate(c, page)
+            else -> drawTemplate(c, page)
         }
     }
 
@@ -134,6 +134,18 @@ class PageRenderer {
             Paper.MONTHLY -> drawMonthly(c, page)
             Paper.CORNELL -> drawCornell(c, page)
             Paper.YEAR -> drawYear(c, page)
+            Paper.WATER -> drawWater(c, page)
+            Paper.HABIT -> drawHabit(c, page)
+            Paper.MOOD -> drawMood(c, page)
+            Paper.MEAL -> drawMeal(c, page)
+            Paper.BUDGET -> drawBudget(c, page)
+            Paper.READING -> drawReading(c, page)
+            Paper.GOALS -> drawGoals(c, page)
+            Paper.SLEEP -> drawSleep(c, page)
+            Paper.STAFF -> drawStaff(c, page)
+            Paper.TIMETABLE -> drawTimetable(c, page)
+            Paper.LITERATURE -> drawLiterature(c, page)
+            Paper.SHOPPING -> drawShopping(c, page)
             else -> {}
         }
         c.restore()
@@ -283,6 +295,289 @@ class PageRenderer {
         label(c, "Anahtar kelimeler", 85f, 195f, 24f, soft)
         label(c, "Notlar", 410f, 195f, 24f, soft)
         label(c, "Özet", 85f, bottom + 40f, 24f, soft)
+    }
+
+    // ---- Ek sayfa türleri (v0.25) ----
+
+    private fun title(c: Canvas, text: String, field: String? = "Ay:") {
+        label(c, text, 80f, 120f, 54f, ink, true)
+        if (field != null) {
+            label(c, field, 820f, 116f, 28f, soft)
+            c.drawLine(900f, 120f, 1120f, 120f, paperPaint)
+        }
+        c.drawLine(80f, 150f, 1120f, 150f, boxPaint)
+    }
+
+    private fun band(c: Canvas, x: Float, y: Float, w: Float, h: Float, color: Int) {
+        fillPaint.setColor(color)
+        rr.set(x, y, x + w, y + h)
+        c.drawRoundRect(rr, 10f, 10f, fillPaint)
+    }
+
+    private fun ring(c: Canvas, cx: Float, cy: Float, r: Float) {
+        c.drawCircle(cx, cy, r, boxPaint)
+    }
+
+    private fun box(c: Canvas, x: Float, y: Float, w: Float, h: Float, name: String?) {
+        rr.set(x, y, x + w, y + h)
+        c.drawRoundRect(rr, 14f, 14f, boxPaint)
+        if (name != null) label(c, name, x + 18f, y + 36f, 26f, ink, true)
+    }
+
+    private fun drawWater(c: Canvas, page: PageData) {
+        title(c, "SU TAKİBİ")
+        label(c, "Günlük hedef:", 80f, 196f, 26f, soft)
+        c.drawLine(260f, 198f, 420f, 198f, paperPaint)
+        label(c, "bardak", 430f, 196f, 26f, soft)
+        val top = 230f
+        val rh = 44f
+        band(c, 70f, top - 4f, 1060f, 40f, Color.rgb(226, 238, 248))
+        label(c, "Gün", 90f, top + 26f, 24f, ink, true)
+        label(c, "Bardaklar", 170f, top + 26f, 24f, ink, true)
+        label(c, "Toplam", 930f, top + 26f, 24f, ink, true)
+        for (d in 1..31) {
+            val y = top + 40f + (d - 1) * rh
+            label(c, d.toString(), 100f, y + 30f, 24f, ink)
+            for (g in 0 until 8) ring(c, 190f + g * 88f, y + 22f, 15f)
+            c.drawLine(900f, y + rh, 1120f, y + rh, paperPaint)
+            c.drawLine(80f, y + rh, 880f, y + rh, paperPaint)
+        }
+        label(c, "Not:", 80f, DH - 60f, 26f, soft)
+        c.drawLine(140f, DH - 58f, 1120f, DH - 58f, paperPaint)
+    }
+
+    private fun drawHabit(c: Canvas, page: PageData) {
+        title(c, "ALIŞKANLIK TAKVİMİ")
+        val top = 180f
+        val x0 = 70f
+        val dayW = 90f
+        val cw = (1060f - dayW) / 8f
+        band(c, x0, top, 1060f, 120f, Color.rgb(238, 242, 232))
+        label(c, "Gün", x0 + 14f, top + 70f, 24f, ink, true)
+        val rh = 40f
+        val bottom = top + 120f + 31 * rh
+        for (i in 0..8) {
+            val x = x0 + dayW + i * cw
+            c.drawLine(x, top, x, bottom, boxPaint)
+        }
+        c.drawLine(x0, top, x0, bottom, boxPaint)
+        c.drawLine(x0, top, x0 + 1060f, top, boxPaint)
+        c.drawLine(x0, top + 120f, x0 + 1060f, top + 120f, boxPaint)
+        for (d in 1..31) {
+            val y = top + 120f + d * rh
+            label(c, d.toString(), x0 + dayW / 2f, y - 11f, 22f, ink, false, Paint.Align.CENTER)
+            c.drawLine(x0, y, x0 + 1060f, y, paperPaint)
+        }
+        c.drawLine(x0, bottom, x0 + 1060f, bottom, boxPaint)
+        label(c, "Alışkanlık adlarını üst kutulara yazın; yaptığınız günü işaretleyin.", 80f, DH - 60f, 24f, soft)
+    }
+
+    private fun drawMood(c: Canvas, page: PageData) {
+        title(c, "RUH HÂLİ TAKVİMİ", "Yıl:")
+        val cols = intArrayOf(
+            Color.rgb(250, 214, 120), Color.rgb(176, 214, 150), Color.rgb(150, 198, 226),
+            Color.rgb(214, 170, 214), Color.rgb(236, 150, 150)
+        )
+        for (i in 0 until 5) {
+            val x = 90f + i * 210f
+            fillPaint.setColor(cols[i])
+            c.drawCircle(x + 16f, 205f, 16f, fillPaint)
+            c.drawLine(x + 42f, 214f, x + 190f, 214f, paperPaint)
+        }
+        val top = 250f
+        val x0 = 70f
+        val dayW = 70f
+        val cw = (1060f - dayW) / 12f
+        val rh = 44f
+        val names = arrayOf("Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
+        for (m in 0 until 12) label(c, names[m], x0 + dayW + m * cw + cw / 2f, top + 28f, 22f, ink, true, Paint.Align.CENTER)
+        for (d in 1..31) {
+            val y = top + 40f + (d - 1) * rh
+            label(c, d.toString(), x0 + 30f, y + 30f, 20f, soft, false, Paint.Align.CENTER)
+            for (m in 0 until 12) ring(c, x0 + dayW + m * cw + cw / 2f, y + 22f, 16f)
+        }
+    }
+
+    private fun drawMeal(c: Canvas, page: PageData) {
+        title(c, "YEMEK PLANI", "Hafta:")
+        val days = arrayOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+        val heads = arrayOf("Kahvaltı", "Öğle", "Akşam", "Ara öğün")
+        val x0 = 70f
+        val dw = 170f
+        val cw = (1060f - dw) / 4f
+        val top = 180f
+        band(c, x0, top, 1060f, 50f, Color.rgb(246, 236, 224))
+        for (i in heads.indices) label(c, heads[i], x0 + dw + i * cw + cw / 2f, top + 34f, 24f, ink, true, Paint.Align.CENTER)
+        val rh = 140f
+        for (r in 0 until 7) {
+            val y = top + 50f + r * rh
+            label(c, days[r], x0 + 14f, y + 44f, 24f, ink, true)
+            c.drawLine(x0, y, x0 + 1060f, y, boxPaint)
+        }
+        val bottom = top + 50f + 7 * rh
+        c.drawLine(x0, bottom, x0 + 1060f, bottom, boxPaint)
+        for (i in 0..4) {
+            val x = x0 + if (i == 0) 0f else dw + (i - 1) * cw
+            c.drawLine(x, top, x, bottom, boxPaint)
+        }
+        c.drawLine(x0 + 1060f, top, x0 + 1060f, bottom, boxPaint)
+        label(c, "ALIŞVERİŞ LİSTESİ", 80f, bottom + 50f, 28f, ink, true)
+        for (k in 0 until 5) {
+            val y = bottom + 70f + k * 56f
+            for (col in 0 until 2) {
+                val x = 80f + col * 540f
+                checkbox(c, x, y + 4f, 36f)
+                c.drawLine(x + 50f, y + 40f, x + 500f, y + 40f, paperPaint)
+            }
+        }
+    }
+
+    private fun drawBudget(c: Canvas, page: PageData) {
+        title(c, "GİDER TAKİBİ")
+        val w = 330f
+        val labels = arrayOf("Gelir", "Gider", "Kalan")
+        for (i in 0 until 3) box(c, 70f + i * (w + 35f), 180f, w, 100f, labels[i])
+        val top = 320f
+        val xs = floatArrayOf(70f, 230f, 700f, 930f, 1130f)
+        band(c, 70f, top, 1060f, 46f, Color.rgb(232, 238, 232))
+        val heads = arrayOf("Tarih", "Açıklama", "Kategori", "Tutar")
+        for (i in heads.indices) label(c, heads[i], xs[i] + 14f, top + 32f, 24f, ink, true)
+        val rh = 46f
+        val n = 27
+        val bottom = top + 46f + n * rh
+        for (r in 1..n) c.drawLine(70f, top + 46f + r * rh, 1130f, top + 46f + r * rh, paperPaint)
+        for (x in xs) c.drawLine(x, top, x, bottom, boxPaint)
+        c.drawLine(70f, top, 1130f, top, boxPaint)
+        c.drawLine(70f, bottom, 1130f, bottom, boxPaint)
+        label(c, "Toplam:", 800f, bottom + 44f, 28f, ink, true)
+        c.drawLine(930f, bottom + 46f, 1130f, bottom + 46f, paperPaint)
+    }
+
+    private fun drawReading(c: Canvas, page: PageData) {
+        title(c, "OKUMA GÜNLÜĞÜ", null)
+        val fields = arrayOf("Başlık", "Yazar", "Başladığım tarih", "Bitirdiğim tarih", "Sayfa sayısı")
+        for ((i, f) in fields.withIndex()) {
+            val y = 205f + i * 62f
+            label(c, f + ":", 80f, y, 26f, soft)
+            c.drawLine(340f, y + 4f, 1120f, y + 4f, paperPaint)
+        }
+        label(c, "Puanım", 80f, 540f, 26f, soft)
+        for (i in 0 until 5) ring(c, 280f + i * 60f, 530f, 20f)
+        box(c, 70f, 580f, 1060f, 300f, "Kitabın özeti")
+        box(c, 70f, 900f, 1060f, 420f, "Alıntılar ve sayfa numaraları")
+        box(c, 70f, 1340f, 1060f, 310f, "Düşüncelerim")
+    }
+
+    private fun drawGoals(c: Canvas, page: PageData) {
+        title(c, "HEDEFLER", "Tarih:")
+        box(c, 70f, 180f, 1060f, 150f, "Ana hedefim")
+        label(c, "Son tarih:", 80f, 372f, 26f, soft)
+        c.drawLine(230f, 376f, 520f, 376f, paperPaint)
+        label(c, "Neden önemli?", 580f, 372f, 26f, soft)
+        c.drawLine(790f, 376f, 1120f, 376f, paperPaint)
+        for (b in 0 until 3) {
+            val y = 420f + b * 290f
+            band(c, 70f, y, 1060f, 46f, Color.rgb(240, 232, 244))
+            label(c, "Alt hedef " + (b + 1), 90f, y + 32f, 26f, ink, true)
+            for (k in 0 until 3) {
+                val ly = y + 56f + k * 74f
+                checkbox(c, 90f, ly + 12f, 40f)
+                c.drawLine(150f, ly + 56f, 1110f, ly + 56f, paperPaint)
+            }
+        }
+        box(c, 70f, 1300f, 520f, 340f, "Olası engeller")
+        box(c, 610f, 1300f, 520f, 340f, "Çözümler ve destek")
+    }
+
+    private fun drawSleep(c: Canvas, page: PageData) {
+        title(c, "UYKU TAKİBİ")
+        val top = 190f
+        val xs = floatArrayOf(70f, 170f, 400f, 630f, 790f, 1130f)
+        val heads = arrayOf("Gün", "Yattım", "Kalktım", "Süre", "Uyku kalitesi")
+        band(c, 70f, top, 1060f, 46f, Color.rgb(228, 232, 246))
+        for (i in heads.indices) label(c, heads[i], xs[i] + 14f, top + 32f, 24f, ink, true)
+        val rh = 44f
+        for (d in 1..31) {
+            val y = top + 46f + (d - 1) * rh
+            label(c, d.toString(), 100f, y + 30f, 22f, ink)
+            c.drawLine(70f, y + rh, 1130f, y + rh, paperPaint)
+            for (q in 0 until 5) ring(c, 830f + q * 62f, y + 22f, 14f)
+        }
+        val bottom = top + 46f + 31 * rh
+        for (x in xs) c.drawLine(x, top, x, bottom, boxPaint)
+        c.drawLine(70f, top, 1130f, top, boxPaint)
+        c.drawLine(70f, bottom, 1130f, bottom, boxPaint)
+    }
+
+    private fun drawStaff(c: Canvas, page: PageData) {
+        val n = 11
+        for (s in 0 until n) {
+            val y = 150f + s * 145f
+            for (l in 0 until 5) c.drawLine(70f, y + l * 14f, 1130f, y + l * 14f, boxPaint)
+            c.drawLine(70f, y, 70f, y + 56f, boxPaint)
+            c.drawLine(1130f, y, 1130f, y + 56f, boxPaint)
+        }
+    }
+
+    private fun drawTimetable(c: Canvas, page: PageData) {
+        title(c, "DERS PROGRAMI", "Dönem:")
+        val days = arrayOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma")
+        val x0 = 70f
+        val tw = 150f
+        val cw = (1060f - tw) / 5f
+        val top = 180f
+        band(c, x0, top, 1060f, 50f, Color.rgb(232, 240, 236))
+        for (i in days.indices) label(c, days[i], x0 + tw + i * cw + cw / 2f, top + 34f, 24f, ink, true, Paint.Align.CENTER)
+        val rh = 140f
+        for (r in 0 until 10) {
+            val y = top + 50f + r * rh
+            label(c, String.format("%02d:00", 8 + r), x0 + 14f, y + 36f, 22f, soft)
+            c.drawLine(x0, y, x0 + 1060f, y, paperPaint)
+        }
+        val bottom = top + 50f + 10 * rh
+        c.drawLine(x0, bottom, x0 + 1060f, bottom, boxPaint)
+        for (i in 0..5) {
+            val x = x0 + if (i == 0) 0f else tw + (i - 1) * cw
+            c.drawLine(x, top, x, bottom, boxPaint)
+        }
+        c.drawLine(x0 + 1060f, top, x0 + 1060f, bottom, boxPaint)
+        c.drawLine(x0, top, x0 + 1060f, top, boxPaint)
+    }
+
+    private fun drawLiterature(c: Canvas, page: PageData) {
+        title(c, "LİTERATÜR NOTU", "Tarih:")
+        label(c, "Kaynak (APA):", 80f, 200f, 26f, soft)
+        c.drawLine(300f, 204f, 1120f, 204f, paperPaint)
+        c.drawLine(80f, 262f, 1120f, 262f, paperPaint)
+        box(c, 70f, 290f, 520f, 200f, "Araştırma sorusu")
+        box(c, 610f, 290f, 520f, 200f, "Kuramsal çerçeve")
+        box(c, 70f, 510f, 520f, 240f, "Yöntem ve örneklem")
+        box(c, 610f, 510f, 520f, 240f, "Temel bulgular")
+        box(c, 70f, 770f, 1060f, 330f, "Önemli alıntılar (sayfa no ile)")
+        box(c, 70f, 1120f, 520f, 260f, "Eleştirel değerlendirme")
+        box(c, 610f, 1120f, 520f, 260f, "Çalışmama katkısı")
+        label(c, "Anahtar kavramlar:", 80f, 1440f, 26f, soft)
+        c.drawLine(330f, 1444f, 1120f, 1444f, paperPaint)
+        c.drawLine(80f, 1510f, 1120f, 1510f, paperPaint)
+        label(c, "Dönüp bakılacak kaynaklar:", 80f, 1580f, 26f, soft)
+        c.drawLine(420f, 1584f, 1120f, 1584f, paperPaint)
+        c.drawLine(80f, 1650f, 1120f, 1650f, paperPaint)
+    }
+
+    private fun drawShopping(c: Canvas, page: PageData) {
+        title(c, "ALIŞVERİŞ LİSTESİ", "Tarih:")
+        for (col in 0 until 2) {
+            val x = 70f + col * 540f
+            for (r in 0 until 22) {
+                val y = 180f + r * 64f
+                checkbox(c, x + 6f, y + 8f, 38f)
+                c.drawLine(x + 60f, y + 50f, x + 510f, y + 50f, paperPaint)
+            }
+        }
+        label(c, "Bütçe:", 80f, DH - 60f, 26f, soft)
+        c.drawLine(190f, DH - 58f, 480f, DH - 58f, paperPaint)
+        label(c, "Harcanan:", 620f, DH - 60f, 26f, soft)
+        c.drawLine(780f, DH - 58f, 1120f, DH - 58f, paperPaint)
     }
 
     private fun drawYear(c: Canvas, page: PageData) {

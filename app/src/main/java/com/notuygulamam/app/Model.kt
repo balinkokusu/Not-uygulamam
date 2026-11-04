@@ -13,7 +13,11 @@ enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER, TEXT, OBJECT }
 enum class Paper(val label: String) {
     BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı"),
     TODO("yapılacaklar"), DAILY("günlük ajanda"), WEEKLY("haftalık plan"),
-    MONTHLY("aylık takvim"), CORNELL("Cornell notu"), YEAR("yıllık takvim")
+    MONTHLY("aylık takvim"), CORNELL("Cornell notu"), YEAR("yıllık takvim"),
+    WATER("su takibi"), HABIT("alışkanlık takvimi"), MOOD("ruh hâli takvimi"),
+    MEAL("yemek planı"), BUDGET("gider takibi"), READING("okuma günlüğü"),
+    GOALS("hedefler"), SLEEP("uyku takibi"), STAFF("porte (nota kâğıdı)"),
+    TIMETABLE("ders programı"), LITERATURE("literatür notu"), SHOPPING("alışveriş listesi")
 }
 
 /** Bir çizgi; koordinatlar ve kalınlık sayfa birimindedir, ekran çözünürlüğünden bağımsızdır. */
