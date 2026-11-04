@@ -667,10 +667,10 @@ class DrawView(context: Context) : View(context) {
         onChanged?.invoke()
     }
 
-    fun bringForward() = reorder { i, _ -> i + 1 }
-    fun sendBackward() = reorder { i, _ -> i - 1 }
-    fun bringToFront() = reorder { _, n -> n - 1 }
-    fun sendToBack() = reorder { _, _ -> 0 }
+    fun itemForward() = reorder { i, _ -> i + 1 }
+    fun itemBackward() = reorder { i, _ -> i - 1 }
+    fun itemToFront() = reorder { _, n -> n - 1 }
+    fun itemToBack() = reorder { _, _ -> 0 }
 
     /** Nesneyi çizgilerin üstüne ya da altına alır. */
     fun toggleAbove() {

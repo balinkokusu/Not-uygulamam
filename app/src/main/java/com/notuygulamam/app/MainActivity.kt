@@ -1320,10 +1320,10 @@ class MainActivity : Activity() {
             bar.addView(t)
             return t
         }
-        chip("En arkaya") { draw.sendToBack() }
-        chip("Arkaya") { draw.sendBackward() }
-        chip("Öne") { draw.bringForward() }
-        chip("En öne") { draw.bringToFront() }
+        chip("En arkaya") { draw.itemToBack() }
+        chip("Arkaya") { draw.itemBackward() }
+        chip("Öne") { draw.itemForward() }
+        chip("En öne") { draw.itemToFront() }
         layerBtn = chip("Çizginin altında") { draw.toggleAbove() }
         layerBtn.setTextColor(Look.accent)
         chip("Çoğalt") { draw.duplicateSelected() }
