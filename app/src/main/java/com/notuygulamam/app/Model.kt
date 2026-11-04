@@ -52,14 +52,18 @@ class PageData(
     val redo = ArrayList<HistoryAction>()
 }
 
+/** Sayfanın kenarındaki renkli ayraç; dokununca hedef sayfaya gider. */
+class Tab(var label: String, var color: Int, var target: PageData)
+
 class Notebook {
     val pages = ArrayList<PageData>()
+    val tabs = ArrayList<Tab>()
     var current = 0
 }
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 2
+    private const val VERSION = 3
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -93,6 +97,13 @@ object Storage {
                     }
                 }
             }
+            val valid = nb.tabs.filter { nb.pages.indexOf(it.target) >= 0 }
+            o.writeInt(valid.size)
+            for (t in valid) {
+                o.writeUTF(t.label)
+                o.writeInt(t.color)
+                o.writeInt(nb.pages.indexOf(t.target))
+            }
         }
         if (!tmp.renameTo(file)) {
             file.delete()
@@ -106,7 +117,7 @@ object Storage {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
                 val ver = i.readInt()
-                if (ver != 1 && ver != 2) return null
+                if (ver < 1 || ver > 3) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()
@@ -138,6 +149,15 @@ object Storage {
                     nb.pages.add(pg)
                 }
                 if (nb.pages.isEmpty()) return null
+                if (ver >= 3) {
+                    val tc = i.readInt()
+                    for (k in 0 until tc) {
+                        val label = i.readUTF()
+                        val color = i.readInt()
+                        val idx = i.readInt()
+                        if (idx in 0 until nb.pages.size) nb.tabs.add(Tab(label, color, nb.pages[idx]))
+                    }
+                }
                 nb.current = nb.current.coerceIn(0, nb.pages.size - 1)
                 nb
             }

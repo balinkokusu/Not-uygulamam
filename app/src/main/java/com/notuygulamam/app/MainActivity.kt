@@ -12,7 +12,12 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.text.InputFilter
+import android.widget.ArrayAdapter
 import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -35,6 +40,13 @@ class MainActivity : Activity() {
         Color.rgb(255, 170, 60), Color.rgb(90, 200, 255), Color.rgb(190, 130, 255)
     )
     private val recentColors = ArrayList<Int>()
+    private val tabPalette = intArrayOf(
+        Color.rgb(244, 160, 200), Color.rgb(245, 150, 150), Color.rgb(250, 185, 150),
+        Color.rgb(252, 215, 140), Color.rgb(250, 240, 150), Color.rgb(200, 230, 150),
+        Color.rgb(160, 225, 170), Color.rgb(150, 225, 210), Color.rgb(150, 210, 245),
+        Color.rgb(160, 180, 245), Color.rgb(190, 165, 240), Color.rgb(225, 165, 235)
+    )
+    private lateinit var tabList: LinearLayout
 
     private lateinit var nb: Notebook
     private lateinit var draw: DrawView
@@ -195,6 +207,7 @@ class MainActivity : Activity() {
         for ((t, b) in toolButtons) b.active = draw.tool == t
         fingerBtn.active = draw.fingerDraw
         pageLabel.text = " ${nb.current + 1} / ${nb.pages.size} "
+        rebuildTabs()
 
         val st = sliderTool()
         val range = when (st) {
@@ -237,8 +250,11 @@ class MainActivity : Activity() {
 
     private fun deleteCurrentPage() {
         if (nb.pages.size <= 1) return
+        val gone = nb.pages[nb.current]
         nb.pages.removeAt(nb.current)
         if (nb.current >= nb.pages.size) nb.current = nb.pages.size - 1
+        val heir = nb.pages[nb.current]
+        for (t in nb.tabs) if (t.target === gone) t.target = heir
         draw.showPage(nb.pages[nb.current])
         refresh()
         scheduleSave()
@@ -403,10 +419,143 @@ class MainActivity : Activity() {
         Toast.makeText(this, "${sizes.size} sayfa eklendi", Toast.LENGTH_SHORT).show()
     }
 
+    private fun tabBackground(color: Int, active: Boolean): GradientDrawable {
+        val r = dp(12f).toFloat()
+        val g = GradientDrawable()
+        g.shape = GradientDrawable.RECTANGLE
+        g.cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+        g.setColor(color)
+        if (active) g.setStroke(dp(2f), Color.rgb(70, 70, 80)) else g.setStroke(dp(1f), Color.argb(70, 0, 0, 0))
+        return g
+    }
+
+    private fun rebuildTabs() {
+        tabList.removeAllViews()
+        val sorted = nb.tabs.sortedBy { nb.pages.indexOf(it.target) }
+        var active: Tab? = null
+        for (t in sorted) if (nb.pages.indexOf(t.target) <= nb.current) active = t
+        for (t in sorted) {
+            val on = t === active
+            val v = TextView(this)
+            v.text = t.label
+            v.textSize = if (on) 13f else 12f
+            v.setTextColor(Color.rgb(40, 40, 50))
+            v.typeface = if (on) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+            v.gravity = Gravity.CENTER
+            v.maxLines = 2
+            v.ellipsize = android.text.TextUtils.TruncateAt.END
+            v.setPadding(dp(3f), 0, dp(3f), 0)
+            v.background = tabBackground(t.color, on)
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46f))
+            lp.setMargins(0, dp(3f), if (on) 0 else dp(8f), dp(3f))
+            v.layoutParams = lp
+            v.setOnClickListener {
+                val idx = nb.pages.indexOf(t.target)
+                if (idx >= 0) gotoPage(idx)
+            }
+            v.setOnLongClickListener {
+                showTabDialog(t)
+                true
+            }
+            tabList.addView(v)
+        }
+    }
+
+    private fun showTabDialog(existing: Tab?) {
+        val pad = dp(16f)
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(pad, dp(8f), pad, 0)
+
+        val nameEdit = EditText(this)
+        nameEdit.setSingleLine(true)
+        nameEdit.hint = "Ayraç adı (kısa olursa iyi görünür)"
+        nameEdit.filters = arrayOf(InputFilter.LengthFilter(24))
+        nameEdit.setText(existing?.label ?: (nb.tabs.size + 1).toString())
+        nameEdit.setSelectAllOnFocus(true)
+        box.addView(nameEdit)
+
+        var chosen = existing?.color ?: tabPalette[nb.tabs.size % tabPalette.size]
+        val swatches = ArrayList<Pair<View, Int>>()
+        fun paint() {
+            for ((v, c) in swatches) {
+                val g = GradientDrawable()
+                g.shape = GradientDrawable.OVAL
+                g.setColor(c)
+                if (c == chosen) g.setStroke(dp(4f), Color.rgb(0, 120, 255)) else g.setStroke(dp(1f), Color.LTGRAY)
+                v.background = g
+            }
+        }
+        val colorLabel = TextView(this)
+        colorLabel.text = "Renk"
+        colorLabel.setPadding(0, dp(12f), 0, dp(2f))
+        box.addView(colorLabel)
+        for (rowStart in 0 until tabPalette.size step 6) {
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.HORIZONTAL
+            for (k in rowStart until minOf(rowStart + 6, tabPalette.size)) {
+                val c = tabPalette[k]
+                val v = View(this)
+                val lp = LinearLayout.LayoutParams(dp(38f), dp(38f))
+                lp.setMargins(dp(4f), dp(4f), dp(4f), dp(4f))
+                v.layoutParams = lp
+                v.setOnClickListener {
+                    chosen = c
+                    paint()
+                }
+                swatches.add(Pair(v, c))
+                row.addView(v)
+            }
+            box.addView(row)
+        }
+        paint()
+
+        val pageLabelText = TextView(this)
+        pageLabelText.text = "Gideceği sayfa"
+        pageLabelText.setPadding(0, dp(12f), 0, dp(2f))
+        box.addView(pageLabelText)
+        val spin = Spinner(this)
+        val names = nb.pages.mapIndexed { i, _ -> "Sayfa ${i + 1}" }
+        spin.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
+        val startIdx = if (existing != null) nb.pages.indexOf(existing.target) else nb.current
+        spin.setSelection(startIdx.coerceIn(0, nb.pages.size - 1))
+        box.addView(spin)
+
+        val scroll = ScrollView(this)
+        scroll.addView(box)
+        val b = AlertDialog.Builder(this)
+            .setTitle(if (existing == null) "Yeni ayraç" else "Ayracı düzenle")
+            .setView(scroll)
+            .setPositiveButton(if (existing == null) "Ekle" else "Kaydet") { _, _ ->
+                val label = nameEdit.text.toString().trim().ifEmpty { (nb.tabs.size + 1).toString() }
+                val target = nb.pages[spin.selectedItemPosition.coerceIn(0, nb.pages.size - 1)]
+                if (existing == null) {
+                    nb.tabs.add(Tab(label, chosen, target))
+                } else {
+                    existing.label = label
+                    existing.color = chosen
+                    existing.target = target
+                }
+                refresh()
+                scheduleSave()
+            }
+            .setNegativeButton("Vazgeç", null)
+        if (existing != null) {
+            b.setNeutralButton("Ayracı sil") { _, _ ->
+                nb.tabs.remove(existing)
+                refresh()
+                scheduleSave()
+            }
+        }
+        b.show()
+    }
+
     private fun showPagesDialog() {
         val labels = nb.pages.mapIndexed { i, pg ->
             val kind = if (pg.pdfName != null) "PDF sayfa ${pg.pdfIndex + 1}" else pg.paper.label
-            "Sayfa ${i + 1}  ($kind, ${pg.strokes.size} çizgi)"
+            val tn = nb.tabs.filter { it.target === pg }.joinToString(", ") { it.label }
+            val tabInfo = if (tn.isEmpty()) "" else "  [ayraç: $tn]"
+            "Sayfa ${i + 1}  ($kind, ${pg.strokes.size} çizgi)$tabInfo"
         }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Sayfalar")
@@ -612,15 +761,40 @@ class MainActivity : Activity() {
         statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         statusRow.addView(toggle)
 
+        tabList = LinearLayout(this)
+        tabList.orientation = LinearLayout.VERTICAL
+        val tabScroll = ScrollView(this)
+        tabScroll.isVerticalScrollBarEnabled = false
+        tabScroll.addView(tabList)
+        val addTab = TextView(this)
+        addTab.text = "+ Ayraç"
+        addTab.textSize = 12f
+        addTab.gravity = Gravity.CENTER
+        addTab.setTextColor(Color.rgb(40, 40, 50))
+        val addBg = GradientDrawable()
+        addBg.setColor(Color.rgb(225, 227, 232))
+        addBg.cornerRadius = dp(10f).toFloat()
+        addTab.background = addBg
+        addTab.setOnClickListener { showTabDialog(null) }
+        val tabColumn = LinearLayout(this)
+        tabColumn.orientation = LinearLayout.VERTICAL
+        tabColumn.setPadding(0, dp(4f), 0, dp(4f))
+        tabColumn.addView(tabScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val addLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40f))
+        addLp.setMargins(dp(4f), dp(4f), dp(8f), 0)
+        tabColumn.addView(addTab, addLp)
+
+        val body = LinearLayout(this)
+        body.orientation = LinearLayout.HORIZONTAL
+        body.addView(tabColumn, LinearLayout.LayoutParams(dp(64f), LinearLayout.LayoutParams.MATCH_PARENT))
+        body.addView(draw, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.addView(toolScroll)
         root.addView(swatchScroll)
         root.addView(statusRow)
-        root.addView(
-            draw,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-        )
+        root.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
         draw.showPage(nb.pages[nb.current])
