@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -158,6 +158,21 @@ class IconButton(
             Icon.TAB -> {
                 poly(c, u, true, 0.34f, 0.12f, 0.9f, 0.12f, 0.9f, 0.88f, 0.34f, 0.88f, 0.1f, 0.5f)
                 c.drawCircle(0.42f * u, 0.5f * u, 0.07f * u, p)
+            }
+            Icon.TEXT -> {
+                line(c, u, 0.14f, 0.2f, 0.86f, 0.2f)
+                line(c, u, 0.5f, 0.2f, 0.5f, 0.86f)
+                line(c, u, 0.36f, 0.86f, 0.64f, 0.86f)
+                line(c, u, 0.14f, 0.2f, 0.14f, 0.34f)
+                line(c, u, 0.86f, 0.2f, 0.86f, 0.34f)
+            }
+            Icon.STICKER -> {
+                poly(c, u, true, 0.1f, 0.1f, 0.9f, 0.1f, 0.9f, 0.62f, 0.62f, 0.9f, 0.1f, 0.9f)
+                poly(c, u, false, 0.9f, 0.62f, 0.62f, 0.62f, 0.62f, 0.9f)
+                c.drawCircle(0.34f * u, 0.4f * u, 0.05f * u, p)
+                c.drawCircle(0.62f * u, 0.4f * u, 0.05f * u, p)
+                rect.set(0.28f * u, 0.4f * u, 0.68f * u, 0.7f * u)
+                c.drawArc(rect, 20f, 140f, false, p)
             }
             Icon.SPREAD -> {
                 rect.set(0.04f * u, 0.14f * u, 0.48f * u, 0.86f * u)

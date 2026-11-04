@@ -5,10 +5,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
+import kotlin.math.sin
 
-/** Seçili aracın rengini ve kalınlığını gösteren küçük örnek çizgi. */
+/** Seçili aracın rengini, kalınlığını ve türünü gösteren küçük örnek çizgi. */
 class PreviewView(context: Context, private val draw: DrawView) : View(context) {
     private val d = resources.displayMetrics.density
+    private val renderer = PageRenderer()
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
     }
@@ -16,27 +18,45 @@ class PreviewView(context: Context, private val draw: DrawView) : View(context) 
     override fun onDraw(c: Canvas) {
         c.drawColor(Color.WHITE)
         val cy = height / 2f
-        when (draw.tool) {
-            Tool.ERASER -> {
-                p.setColor(Color.GRAY)
-                p.alpha = 255
-                p.strokeWidth = d
-                c.drawCircle(width / 2f, cy, draw.eraserRadiusDp * d, p)
+        if (draw.tool == Tool.ERASER) {
+            p.setColor(Color.GRAY)
+            p.alpha = 255
+            p.strokeWidth = d
+            c.drawCircle(width / 2f, cy, draw.eraserRadiusDp * d, p)
+            return
+        }
+        val hl = draw.tool == Tool.HIGHLIGHTER
+        val sample = sampleStroke(
+            hl, if (hl) draw.hlColor else draw.penColor,
+            (if (hl) draw.hlWidthDp else draw.penWidthDp) * DrawView.UNIT,
+            if (hl) draw.hlKind else draw.penKind, draw.pressureSensitivity / 100f,
+            (width - 24f * d) / (d / DrawView.UNIT)
+        )
+        c.save()
+        c.translate(12f * d, cy)
+        c.scale(d / DrawView.UNIT, d / DrawView.UNIT)
+        renderer.drawStroke(c, sample)
+        c.restore()
+    }
+
+    companion object {
+        /** Örnek bir dalga çizgisi; basınç ortada artar ki kalem türlerinin farkı görülsün. */
+        fun sampleStroke(hl: Boolean, color: Int, width: Float, kind: Int, ps: Float, length: Float): Stroke {
+            val sens = if (hl) 0f else when (kind) {
+                1 -> 0.12f
+                2 -> 0.35f
+                3 -> maxOf(0.8f, ps)
+                else -> ps
             }
-            Tool.HIGHLIGHTER -> {
-                p.setColor(draw.hlColor)
-                p.alpha = 110
-                p.strokeWidth = draw.hlWidthDp * d
-                p.strokeCap = Paint.Cap.SQUARE
-                c.drawLine(12f * d, cy, width - 12f * d, cy, p)
+            val s = Stroke(color, width, hl, sens, kind)
+            val n = 48
+            for (i in 0..n) {
+                val t = i / n.toFloat()
+                val y = (sin(t * 6.28f) * 20f)
+                val pr = 0.2f + 0.7f * sin(t * 3.14f)
+                s.add(t * length, y, if (hl) 0.5f else pr)
             }
-            Tool.PEN, Tool.PICKER -> {
-                p.setColor(draw.penColor)
-                p.alpha = 255
-                p.strokeWidth = draw.penWidthDp * d
-                p.strokeCap = Paint.Cap.ROUND
-                c.drawLine(12f * d, cy, width - 12f * d, cy, p)
-            }
+            return s
         }
     }
 }

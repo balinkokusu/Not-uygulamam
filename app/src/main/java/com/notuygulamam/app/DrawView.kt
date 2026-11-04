@@ -42,6 +42,50 @@ class DrawView(context: Context) : View(context) {
     var eraserRadiusDp = 14f
     var fingerDraw = false
 
+    /** Kalem türü: 0 dolma, 1 tükenmez, 2 kurşun, 3 fırça. */
+    var penKind = 0
+
+    /** Fosforlu türü: 0 düz, 1 pırıltılı, 2 yıldız, 3 kalp. */
+    var hlKind = 0
+
+    /** Kalemle hızlı iki kez dokunmak kalem ile silgi arasında geçiş yapar. */
+    var penDoubleTap = true
+    private var lastDrawTool = Tool.PEN
+    var onToolToggled: (() -> Unit)? = null
+
+    /** Seçili metin/çıkartma/resim. */
+    var selectedItem: PageItem? = null
+        private set
+
+    /** Metin aracıyla boşa dokunulunca (item=null, x, y) ya da seçili metne tekrar dokunulunca çağrılır. */
+    var onTextTap: ((PageItem?, Float, Float) -> Unit)? = null
+    private var dragMode = 0
+    private var dragItem: PageItem? = null
+    private var dragMoved = false
+    private var tapOnSelected = false
+    private var createPending = false
+    private var createX = 0f
+    private var createY = 0f
+    private var dragSx = 0f
+    private var dragSy = 0f
+    private var dragDx = 0f
+    private var dragDy = 0f
+    private var itemX0 = 0f
+    private var itemY0 = 0f
+    private var dist0 = 1f
+    private var ang0 = 0f
+    private var w0 = 0f
+    private var size0 = 0f
+    private var rot0 = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var lastTapTime = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+    private var lastTapStroke: Stroke? = null
+    private var lastTapErase: List<Pair<Int, Stroke>>? = null
+    private val selPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     /** Fosforlu ile çizilen neredeyse düz bir çizgi, bırakılınca tam düz çizgiye dönüşür. */
     var highlighterSnap = true
 
@@ -340,6 +384,7 @@ class DrawView(context: Context) : View(context) {
         undoStack = p.undo
         redoStack = p.redo
         current = null
+        selectedItem = null
         strokeActive = false
         straightLive = false
         gestureRemoved.clear()
@@ -479,6 +524,7 @@ class DrawView(context: Context) : View(context) {
                 c.drawBitmap(b, null, bgRect, bgPaint)
             }
             renderer.drawPaper(c, pg)
+            renderer.drawItems(c, pg)
             for (s in pg.strokes) drawStroke(c, s)
             c.restore()
         }
@@ -509,6 +555,224 @@ class DrawView(context: Context) : View(context) {
             c.restore()
         }
         if (picking) drawPickerLoupe(c)
+        drawSelection(c)
+    }
+
+    private fun rad(deg: Float) = Math.toRadians(deg.toDouble())
+
+    private fun handleAt(it: PageItem, sx: Float, sy: Float): FloatArray {
+        val lx = sx * it.w / 2f
+        val ly = sy * it.h / 2f
+        val a = rad(it.rot)
+        val cs = Math.cos(a).toFloat()
+        val sn = Math.sin(a).toFloat()
+        return floatArrayOf(it.x + lx * cs - ly * sn, it.y + lx * sn + ly * cs)
+    }
+
+    private fun itemHit(it: PageItem, x: Float, y: Float): Boolean {
+        renderer.measureItem(it)
+        val a = rad(-it.rot)
+        val dx = x - it.x
+        val dy = y - it.y
+        val lx = dx * Math.cos(a).toFloat() - dy * Math.sin(a).toFloat()
+        val ly = dx * Math.sin(a).toFloat() + dy * Math.cos(a).toFloat()
+        val pad = 8f * density / sc
+        return abs(lx) <= it.w / 2f + pad && abs(ly) <= it.h / 2f + pad
+    }
+
+    private fun drawSelection(c: Canvas) {
+        val it = selectedItem ?: return
+        if (gestureActive || (tool != Tool.TEXT && tool != Tool.OBJECT)) return
+        renderer.measureItem(it)
+        c.save()
+        c.translate(ox + offX * sc, oy)
+        c.scale(sc, sc)
+        val px = 1f / sc
+        c.save()
+        c.translate(it.x, it.y)
+        c.rotate(it.rot)
+        selPaint.style = Paint.Style.STROKE
+        selPaint.setColor(Look.accent)
+        selPaint.strokeWidth = 1.6f * density * px
+        selPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * density * px, 5f * density * px), 0f)
+        c.drawRect(-it.w / 2f, -it.h / 2f, it.w / 2f, it.h / 2f, selPaint)
+        selPaint.pathEffect = null
+        c.restore()
+        val r = 13f * density * px
+        val del = handleAt(it, -1f, -1f)
+        val rs = handleAt(it, 1f, 1f)
+        selPaint.style = Paint.Style.FILL
+        selPaint.setColor(Color.WHITE)
+        c.drawCircle(del[0], del[1], r, selPaint)
+        c.drawCircle(rs[0], rs[1], r, selPaint)
+        selPaint.style = Paint.Style.STROKE
+        selPaint.setColor(Look.accent)
+        selPaint.strokeWidth = 1.6f * density * px
+        c.drawCircle(del[0], del[1], r, selPaint)
+        c.drawCircle(rs[0], rs[1], r, selPaint)
+        val k = r * 0.4f
+        c.drawLine(del[0] - k, del[1] - k, del[0] + k, del[1] + k, selPaint)
+        c.drawLine(del[0] - k, del[1] + k, del[0] + k, del[1] - k, selPaint)
+        c.drawArc(rs[0] - k, rs[1] - k, rs[0] + k, rs[1] + k, 200f, 250f, false, selPaint)
+        c.restore()
+    }
+
+    // ---- Nesneler ----
+
+    fun addItem(it: PageItem, topLeft: Boolean = false) {
+        renderer.measureItem(it)
+        if (topLeft) {
+            it.x += it.w / 2f
+            it.y += it.h / 2f
+        }
+        it.x = it.x.coerceIn(0f, page.width)
+        it.y = it.y.coerceIn(0f, page.height)
+        page.items.add(it)
+        undoStack.add(HistoryAction.ItemAdd(it))
+        redoStack.clear()
+        selectedItem = it
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    fun deleteSelected() {
+        val it = selectedItem ?: return
+        val idx = page.items.indexOf(it)
+        if (idx < 0) return
+        page.items.removeAt(idx)
+        undoStack.add(HistoryAction.ItemRemove(it, idx))
+        redoStack.clear()
+        selectedItem = null
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    /** Seçili nesnenin metni/rengi değiştirildikten sonra çağrılır. */
+    fun itemEdited() {
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    /** Görünen alanın ortasının sayfa koordinatları (yeni çıkartmayı koymak için). */
+    fun viewCenterOnPage(): FloatArray {
+        val x = pageX(width / 2f).coerceIn(80f, max(80f, page.width - 80f))
+        val y = pageY(height / 2f).coerceIn(80f, max(80f, page.height - 80f))
+        return floatArrayOf(x, y)
+    }
+
+    private fun handleItemTouch(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                activateAt(e.x)
+                val gx = pageX(e.x)
+                val gy = pageY(e.y)
+                dragMode = 0
+                dragItem = null
+                dragMoved = false
+                tapOnSelected = false
+                createPending = false
+                val sel = selectedItem
+                if (sel != null && page.items.contains(sel)) {
+                    renderer.measureItem(sel)
+                    val hr = 30f * density / sc
+                    val del = handleAt(sel, -1f, -1f)
+                    if (hypot(gx - del[0], gy - del[1]) <= hr) {
+                        deleteSelected()
+                        return true
+                    }
+                    val rs = handleAt(sel, 1f, 1f)
+                    if (hypot(gx - rs[0], gy - rs[1]) <= hr) {
+                        dragMode = 2
+                        dragItem = sel
+                        dist0 = max(1f, hypot(gx - sel.x, gy - sel.y))
+                        ang0 = Math.toDegrees(Math.atan2((gy - sel.y).toDouble(), (gx - sel.x).toDouble())).toFloat()
+                        w0 = sel.w
+                        size0 = sel.size
+                        rot0 = sel.rot
+                        return true
+                    }
+                }
+                val hit = page.items.lastOrNull { itemHit(it, gx, gy) }
+                if (hit != null) {
+                    tapOnSelected = hit === selectedItem
+                    selectedItem = hit
+                    dragItem = hit
+                    dragMode = 1
+                    dragSx = gx
+                    dragSy = gy
+                    itemX0 = hit.x
+                    itemY0 = hit.y
+                } else {
+                    selectedItem = null
+                    if (tool == Tool.TEXT) {
+                        createPending = true
+                        createX = gx
+                        createY = gy
+                        dragSx = e.x
+                        dragSy = e.y
+                    }
+                }
+                invalidate()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val gx = pageX(e.x)
+                val gy = pageY(e.y)
+                val it = dragItem
+                if (dragMode == 1 && it != null) {
+                    if (!dragMoved && hypot(gx - dragSx, gy - dragSy) * sc > 8f * density) dragMoved = true
+                    if (dragMoved) {
+                        it.x = itemX0 + gx - dragSx
+                        it.y = itemY0 + gy - dragSy
+                        rebuildBase()
+                    }
+                } else if (dragMode == 2 && it != null) {
+                    dragMoved = true
+                    val dist = max(1f, hypot(gx - it.x, gy - it.y))
+                    val ratio = (dist / dist0).coerceIn(0.2f, 8f)
+                    val ang = Math.toDegrees(Math.atan2((gy - it.y).toDouble(), (gx - it.x).toDouble())).toFloat()
+                    it.rot = rot0 + (ang - ang0)
+                    val aspect = if (it.w > 0f) it.h / it.w else 1f
+                    if (it.type == PageItem.TEXT) {
+                        it.w = max(60f, w0 * ratio)
+                        it.size = (size0 * ratio).coerceIn(10f, 400f)
+                    } else {
+                        it.w = max(30f, w0 * ratio)
+                        it.h = it.w * aspect
+                    }
+                    rebuildBase()
+                } else if (createPending && hypot(e.x - dragSx, e.y - dragSy) > 12f * density) {
+                    createPending = false
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val it = dragItem
+                if (e.actionMasked == MotionEvent.ACTION_UP) {
+                    if (dragMode != 0 && dragMoved) {
+                        onChanged?.invoke()
+                    } else if (dragMode == 1 && !dragMoved && tapOnSelected && it != null && it.type == PageItem.TEXT) {
+                        onTextTap?.invoke(it, it.x, it.y)
+                    } else if (createPending) {
+                        onTextTap?.invoke(null, createX, createY)
+                    }
+                }
+                dragMode = 0
+                dragItem = null
+                createPending = false
+                invalidate()
+            }
+        }
+        return true
+    }
+
+    /** Kalem ile silgi arasında geçiş yapar. */
+    fun togglePenEraser() {
+        if (tool == Tool.ERASER) {
+            tool = lastDrawTool
+        } else {
+            if (tool == Tool.PEN || tool == Tool.HIGHLIGHTER) lastDrawTool = tool
+            tool = Tool.ERASER
+        }
+        onToolToggled?.invoke()
     }
 
     /** Damlalık seçiliyken parmağın/kalemin üstünde, alınacak rengi gösteren daire çizer. */
@@ -550,15 +814,10 @@ class DrawView(context: Context) : View(context) {
         val c = baseCanvas ?: return
         val n = s.xs.size
         beginPage(c)
-        linePaint.setColor(s.color)
-        linePaint.alpha = 255
-        linePaint.strokeCap = Paint.Cap.ROUND
         var i = drawnUpTo + 1
         while (i < n) {
-            val w = segmentWidth(s, i)
-            linePaint.strokeWidth = w
-            c.drawLine(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], linePaint)
-            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], w)
+            renderer.drawPenSegment(c, s, i, false)
+            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], segmentWidth(s, i) * 1.3f)
             i++
         }
         c.restore()
@@ -859,10 +1118,14 @@ class DrawView(context: Context) : View(context) {
             return true
         }
 
+        if (tool == Tool.TEXT || tool == Tool.OBJECT) return handleItemTouch(e)
+
         if (!isStylus && !fingerDraw) return true
 
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                downX = e.x
+                downY = e.y
                 activateAt(e.x)
                 requestUnbufferedDispatch(e)
                 strokeActive = true
@@ -879,8 +1142,15 @@ class DrawView(context: Context) : View(context) {
                     if (eraseAt(gx, gy)) rebuildBase()
                 } else {
                     val hl = tool == Tool.HIGHLIGHTER
-                    val s = if (hl) Stroke(hlColor, hlWidthDp * UNIT, true)
-                    else Stroke(penColor, penWidthDp * UNIT, false, pressureSensitivity / 100f)
+                    val ps0 = pressureSensitivity / 100f
+                    val sens = when (penKind) {
+                        1 -> 0.12f
+                        2 -> 0.35f
+                        3 -> max(0.8f, ps0)
+                        else -> ps0
+                    }
+                    val s = if (hl) Stroke(hlColor, hlWidthDp * UNIT, true, 0f, hlKind)
+                    else Stroke(penColor, penWidthDp * UNIT, false, sens, penKind)
                     s.add(gx, gy, if (hl) 0.5f else normP(e.pressure))
                     current = s
                     drawnUpTo = 0
@@ -945,6 +1215,42 @@ class DrawView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 holdHandler.removeCallbacks(holdRunnable)
                 strokeActive = false
+                val isTap = e.actionMasked == MotionEvent.ACTION_UP && isStylus && penDoubleTap &&
+                    (e.eventTime - e.downTime) < 260L && hypot(e.x - downX, e.y - downY) < 9f * density
+                val twice = isTap && e.eventTime - lastTapTime < 420L &&
+                    hypot(e.x - lastTapX, e.y - lastTapY) < 48f * density
+                if (twice) {
+                    // İkinci hızlı dokunuş: iki nokta/silme izini geri al, kalem-silgi geçişi yap.
+                    val ps = lastTapStroke
+                    if (ps != null) {
+                        strokes.remove(ps)
+                        undoStack.removeAll { it is HistoryAction.Add && it.stroke === ps }
+                    }
+                    val pe = lastTapErase
+                    if (pe != null) for ((idx, st) in pe.asReversed()) strokes.add(min(idx, strokes.size), st)
+                    for ((idx, st) in gestureRemoved.asReversed()) strokes.add(min(idx, strokes.size), st)
+                    gestureRemoved.clear()
+                    current = null
+                    straightLive = false
+                    lastTapStroke = null
+                    lastTapErase = null
+                    lastTapTime = 0L
+                    rebuildBase()
+                    onChanged?.invoke()
+                    togglePenEraser()
+                    return true
+                }
+                lastTapStroke = null
+                lastTapErase = null
+                if (isTap) {
+                    lastTapTime = e.eventTime
+                    lastTapX = e.x
+                    lastTapY = e.y
+                    lastTapStroke = current
+                    lastTapErase = if (gestureRemoved.isEmpty()) null else ArrayList(gestureRemoved)
+                } else {
+                    lastTapTime = 0L
+                }
                 if (gestureErasing) {
                     if (gestureRemoved.isNotEmpty()) {
                         undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
@@ -955,7 +1261,7 @@ class DrawView(context: Context) : View(context) {
                 } else {
                     val s = current
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive
+                        var needsBake = s.highlighter || straightLive || s.kind == 3
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
@@ -1016,6 +1322,11 @@ class DrawView(context: Context) : View(context) {
             is HistoryAction.Erase -> {
                 for ((idx, s) in a.removed.asReversed()) strokes.add(min(idx, strokes.size), s)
             }
+            is HistoryAction.ItemAdd -> {
+                page.items.remove(a.item)
+                if (selectedItem === a.item) selectedItem = null
+            }
+            is HistoryAction.ItemRemove -> page.items.add(min(a.index, page.items.size), a.item)
         }
         redoStack.add(a)
         rebuildBase()
@@ -1029,6 +1340,11 @@ class DrawView(context: Context) : View(context) {
             is HistoryAction.Add -> strokes.add(a.stroke)
             is HistoryAction.Erase -> {
                 for ((_, s) in a.removed) strokes.remove(s)
+            }
+            is HistoryAction.ItemAdd -> page.items.add(a.item)
+            is HistoryAction.ItemRemove -> {
+                page.items.remove(a.item)
+                if (selectedItem === a.item) selectedItem = null
             }
         }
         undoStack.add(a)

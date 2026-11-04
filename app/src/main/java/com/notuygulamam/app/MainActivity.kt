@@ -64,6 +64,10 @@ class MainActivity : Activity() {
     private var spread = false
     private lateinit var spreadBtn: IconButton
     private lateinit var presetRow: LinearLayout
+    private lateinit var kindRow: LinearLayout
+    private var autoTabs = true
+
+    class PageTemplate(val name: String, val paper: Paper, val header: String, val withDate: Boolean, val builtin: Boolean)
     private var d = 1f
 
     private val handler = Handler(Looper.getMainLooper())
@@ -138,6 +142,16 @@ class MainActivity : Activity() {
     private fun sliderTool(): Tool = if (draw.tool == Tool.PICKER) Tool.PEN else draw.tool
 
     private fun applyColor(c: Int) {
+        if (draw.tool == Tool.TEXT || draw.tool == Tool.OBJECT) {
+            val sel = draw.selectedItem
+            if (sel != null && sel.type == PageItem.TEXT) {
+                sel.color = c
+                draw.itemEdited()
+            }
+            draw.penColor = c
+            refresh()
+            return
+        }
         if (draw.tool == Tool.HIGHLIGHTER) {
             draw.hlColor = c
         } else {
@@ -177,6 +191,451 @@ class MainActivity : Activity() {
         if (recentColors.isNotEmpty()) swatchRow.addView(separator())
         val palette = if (highlighter) hlPalette else penPalette
         for (c in palette) swatchRow.addView(swatch(c, c == selected))
+    }
+
+    private fun kindChip(label: String, hl: Boolean, kind: Int, on: Boolean): View {
+        val color = if (hl) draw.hlColor else draw.penColor
+        val chip = object : View(this) {
+            private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            private val rend = PageRenderer()
+            override fun onMeasure(w: Int, h: Int) {
+                setMeasuredDimension(dp(104f), dp(60f))
+            }
+
+            override fun onDraw(c: android.graphics.Canvas) {
+                if (on) {
+                    paint.style = android.graphics.Paint.Style.FILL
+                    paint.setColor(Look.accentSoft)
+                    c.drawRoundRect(3f * d, 3f * d, width - 3f * d, height - 3f * d, 10f * d, 10f * d, paint)
+                }
+                val k = d / DrawView.UNIT
+                val len = (width - 28f * d) / k
+                val st = PreviewView.sampleStroke(hl, color, (if (hl) 9f else 3f) * DrawView.UNIT, kind, 0.85f, len)
+                c.save()
+                c.translate(14f * d, height * 0.4f)
+                c.scale(k, k)
+                rend.drawStroke(c, st)
+                c.restore()
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.setColor(if (on) Look.accent else Look.ink)
+                paint.textSize = 11f * d
+                paint.textAlign = android.graphics.Paint.Align.CENTER
+                c.drawText(label, width / 2f, height - 9f * d, paint)
+            }
+        }
+        val lp = LinearLayout.LayoutParams(dp(104f), dp(60f))
+        lp.setMargins(dp(2f), 0, dp(2f), dp(4f))
+        chip.layoutParams = lp
+        chip.setOnClickListener {
+            if (hl) draw.hlKind = kind else draw.penKind = kind
+            refresh()
+        }
+        return chip
+    }
+
+    /** Kalem ve fosforlu için tür seçimi; her türün örnek çizgisi gösterilir. */
+    private fun rebuildKinds() {
+        kindRow.removeAllViews()
+        val st = sliderTool()
+        if (st != Tool.PEN && st != Tool.HIGHLIGHTER) {
+            kindRow.visibility = View.GONE
+            return
+        }
+        kindRow.visibility = View.VISIBLE
+        if (st == Tool.PEN) {
+            val names = listOf("Dolma", "Tükenmez", "Kurşun", "Fırça")
+            for ((i, n) in names.withIndex()) kindRow.addView(kindChip(n, false, i, draw.penKind == i))
+        } else {
+            val names = listOf("Düz", "Pırıltılı", "Yıldız", "Kalp")
+            for ((i, n) in names.withIndex()) kindRow.addView(kindChip(n, true, i, draw.hlKind == i))
+        }
+    }
+
+    private fun todayKey(): Int {
+        val cal = java.util.Calendar.getInstance()
+        return cal.get(java.util.Calendar.YEAR) * 10000 + (cal.get(java.util.Calendar.MONTH) + 1) * 100 +
+            cal.get(java.util.Calendar.DAY_OF_MONTH)
+    }
+
+    /** Bir günün sayfaları için tek bir otomatik ayraç oluşturur; elle düzenlenmiş ayraçlara dokunmaz. */
+    private fun ensureDateTab(pg: PageData) {
+        if (!autoTabs || pg.dateKey == 0) return
+        val first = nb.pages.firstOrNull { it.dateKey == pg.dateKey } ?: return
+        val existing = nb.tabs.firstOrNull { it.target.dateKey == pg.dateKey }
+        if (existing != null) {
+            if (existing.auto && existing.target !== first) existing.target = first
+            return
+        }
+        val mo = pg.dateKey / 100 % 100
+        val day = pg.dateKey % 100
+        if (mo !in 1..12) return
+        nb.tabs.add(Tab("$day ${Planner.SHORT[mo - 1]}", tabPalette[(mo - 1) % tabPalette.size], first, true))
+    }
+
+    /** Kuru bir sayfaya ilk kez yazılınca sayfaya o günün tarihini verir ve gün ayracını oluşturur. */
+    private fun markWritten() {
+        val pg = draw.page
+        if (autoTabs && pg.dateKey == 0 && pg.pdfName == null && pg.paper != Paper.YEAR && pg.paper != Paper.MONTHLY) {
+            pg.dateKey = todayKey()
+            ensureDateTab(pg)
+            rebuildTabs()
+        }
+    }
+
+    // ---- Sayfa şablonlarım ----
+
+    private fun builtinTemplates() = listOf(
+        PageTemplate("Günlük not", Paper.RULED, "Günlük not", true, true),
+        PageTemplate("Alışveriş listesi", Paper.TODO, "Alışveriş listesi", true, true),
+        PageTemplate("Toplantı notu", Paper.CORNELL, "Toplantı notu", true, true),
+        PageTemplate("Günlük ajanda", Paper.DAILY, "", true, true),
+        PageTemplate("Boş sayfa", Paper.BLANK, "", false, true)
+    )
+
+    private fun customTemplates(): List<PageTemplate> {
+        val raw = getSharedPreferences("sablon", MODE_PRIVATE).getString("liste", "") ?: ""
+        val out = ArrayList<PageTemplate>()
+        for (line in raw.split('\n')) {
+            val f = line.split('\u001f')
+            if (f.size < 4) continue
+            val po = f[1].toIntOrNull() ?: continue
+            if (po !in 0 until Paper.values().size) continue
+            out.add(PageTemplate(f[0], Paper.values()[po], f[2], f[3] == "1", false))
+        }
+        return out
+    }
+
+    private fun saveCustomTemplates(list: List<PageTemplate>) {
+        val raw = list.joinToString("\n") { "${it.name.replace('\n', ' ')}\u001f${it.paper.ordinal}\u001f${it.header.replace('\n', ' ')}\u001f${if (it.withDate) 1 else 0}" }
+        getSharedPreferences("sablon", MODE_PRIVATE).edit().putString("liste", raw).apply()
+    }
+
+    private fun addTemplatePage(t: PageTemplate) {
+        val cur = draw.page
+        val pdf = cur.pdfName != null
+        val pg = PageData(if (pdf) 1200f else cur.width, if (pdf) 1697f else cur.height, t.paper)
+        if (!pdf) pg.paperColor = cur.paperColor
+        if (t.withDate) pg.dateKey = todayKey()
+        val title = StringBuilder(t.header)
+        if (t.withDate) {
+            val fmt = SimpleDateFormat("d MMMM yyyy, EEEE", Locale("tr"))
+            if (title.isNotEmpty()) title.append("  ·  ")
+            title.append(fmt.format(Date()))
+        }
+        if (title.isNotEmpty()) {
+            val it = PageItem(PageItem.TEXT, 0f, 0f)
+            it.text = title.toString()
+            it.size = 30f
+            it.color = Color.rgb(120, 108, 110)
+            it.w = pg.width - 140f
+            PageRenderer().measureItem(it)
+            it.x = 70f + it.w / 2f
+            it.y = 14f + it.h / 2f
+            pg.items.add(it)
+        }
+        val at = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it } + 1
+        nb.pages.add(at, pg)
+        gotoPage(at)
+        if (t.withDate) {
+            ensureDateTab(pg)
+            refresh()
+        }
+    }
+
+    private fun showNewPageMenu(anchor: View) {
+        val m = android.widget.PopupMenu(this, anchor)
+        m.menu.add(0, 1000, 0, "Aynı sayfa gibi yeni sayfa")
+        val all = builtinTemplates() + customTemplates()
+        for ((i, t) in all.withIndex()) m.menu.add(0, 2000 + i, 1 + i, t.name + "  ·  " + t.paper.label)
+        m.menu.add(0, 1001, 100, "Kâğıt şablonlarını gör…")
+        m.menu.add(0, 1002, 101, "Şablonlarım: yeni oluştur / sil…")
+        m.setOnMenuItemClickListener { mi ->
+            when {
+                mi.itemId == 1000 -> addPage()
+                mi.itemId == 1001 -> showTemplatePageDialog()
+                mi.itemId == 1002 -> showTemplateManager()
+                mi.itemId >= 2000 -> all.getOrNull(mi.itemId - 2000)?.let { addTemplatePage(it) }
+            }
+            true
+        }
+        m.show()
+    }
+
+    private fun showTemplateManager() {
+        val custom = customTemplates()
+        val labels = custom.map { it.name + "  ·  " + it.paper.label + "  (silmek için dokunun)" } + "＋ Yeni şablon oluştur"
+        AlertDialog.Builder(this)
+            .setTitle("Şablonlarım")
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which == custom.size) {
+                    showNewTemplateDialog()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("\"${custom[which].name}\" silinsin mi?")
+                        .setPositiveButton("Sil") { _, _ ->
+                            saveCustomTemplates(custom.filterIndexed { i, _ -> i != which })
+                        }
+                        .setNegativeButton("Vazgeç", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun showNewTemplateDialog() {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(18f), dp(8f), dp(18f), dp(8f))
+        val nameEdit = EditText(this)
+        nameEdit.hint = "Şablon adı (örneğin Proje toplantısı)"
+        nameEdit.setSingleLine(true)
+        val headEdit = EditText(this)
+        headEdit.hint = "Sayfa başlığı (boş bırakılabilir)"
+        headEdit.setSingleLine(true)
+        val dateBox = CheckBox(this)
+        dateBox.text = "Başlığa bugünün tarihini yaz, gün ayracına bağla"
+        dateBox.isChecked = true
+        box.addView(nameEdit)
+        box.addView(headEdit)
+        box.addView(dateBox)
+        var paperIdx = Paper.RULED.ordinal
+        val grid = PaperGrid(this, Paper.values().map { Pair(it.label, it) }, paperIdx, draw.page.paperColor) { paperIdx = it }
+        box.addView(grid)
+        val sv = ScrollView(this)
+        sv.addView(box)
+        AlertDialog.Builder(this)
+            .setTitle("Yeni sayfa şablonu")
+            .setView(sv)
+            .setPositiveButton("Kaydet") { _, _ ->
+                val name = nameEdit.text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(this, "Şablona bir ad vermelisiniz", Toast.LENGTH_SHORT).show()
+                } else {
+                    saveCustomTemplates(
+                        customTemplates() + PageTemplate(name, Paper.values()[paperIdx], headEdit.text.toString().trim(), dateBox.isChecked, false)
+                    )
+                    Toast.makeText(this, "Şablon kaydedildi; artık + düğmesindeki listede", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
+    // ---- Metin ve çıkartma ----
+
+    private fun showTextDialog(item: PageItem?, x: Float, y: Float) {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(18f), dp(8f), dp(18f), dp(4f))
+        val et = EditText(this)
+        et.setText(item?.text ?: "")
+        et.hint = "Yazınızı yazın (klavye ya da klavyenizin el yazısı girişi)"
+        et.minLines = 3
+        et.gravity = Gravity.TOP
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            try {
+                et.setAutoHandwritingEnabled(true)
+            } catch (e: Throwable) {
+                // Bu cihazda desteklenmiyorsa klavye girişi yine çalışır.
+            }
+        }
+        box.addView(et)
+        val sizes = intArrayOf(32, 44, 60, 90)
+        val sizeNames = arrayOf("Küçük", "Orta", "Büyük", "Çok büyük")
+        val spin = Spinner(this)
+        spin.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, sizeNames)
+        var si = 1
+        if (item != null) {
+            var best = 1e9f
+            for ((i, s) in sizes.withIndex()) if (Math.abs(item.size - s) < best) { best = Math.abs(item.size - s); si = i }
+        }
+        spin.setSelection(si)
+        box.addView(spin)
+        var chosen = item?.color ?: draw.penColor
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        val dots = ArrayList<Pair<View, Int>>()
+        fun paintDots() {
+            for ((v, c) in dots) {
+                val g = GradientDrawable()
+                g.shape = GradientDrawable.OVAL
+                g.setColor(c)
+                if (c == chosen) g.setStroke(dp(3f), Look.accent) else g.setStroke(dp(1f), Look.hairline)
+                v.background = g
+            }
+        }
+        for (c in penPalette) {
+            val v = View(this)
+            val lp = LinearLayout.LayoutParams(dp(30f), dp(30f))
+            lp.setMargins(dp(3f), dp(8f), dp(3f), dp(4f))
+            v.layoutParams = lp
+            v.setOnClickListener {
+                chosen = c
+                paintDots()
+            }
+            dots.add(Pair(v, c))
+            row.addView(v)
+        }
+        paintDots()
+        val hs = HorizontalScrollView(this)
+        hs.addView(row)
+        box.addView(hs)
+        val b = AlertDialog.Builder(this)
+            .setTitle(if (item == null) "Metin kutusu" else "Metni düzenle")
+            .setView(box)
+            .setPositiveButton("Tamam") { _, _ ->
+                val txt = et.text.toString()
+                if (txt.isNotBlank()) {
+                    if (item == null) {
+                        val it = PageItem(PageItem.TEXT, x, y)
+                        it.text = txt
+                        it.size = sizes[spin.selectedItemPosition].toFloat()
+                        it.color = chosen
+                        it.w = minOf(640f, draw.page.width - x - 30f).coerceAtLeast(300f)
+                        draw.addItem(it, true)
+                    } else {
+                        item.text = txt
+                        item.size = sizes[spin.selectedItemPosition].toFloat()
+                        item.color = chosen
+                        draw.itemEdited()
+                    }
+                }
+            }
+            .setNegativeButton("Vazgeç", null)
+        if (item != null) b.setNeutralButton("Sil") { _, _ -> draw.deleteSelected() }
+        val dlg = b.create()
+        dlg.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dlg.show()
+    }
+
+    private fun showStickerDialog() {
+        var dlg: AlertDialog? = null
+        val grid = LinearLayout(this)
+        grid.orientation = LinearLayout.VERTICAL
+        grid.setPadding(dp(10f), dp(6f), dp(10f), dp(6f))
+        var row: LinearLayout? = null
+        for (k in Stickers.names.indices) {
+            if (k % 5 == 0) {
+                row = LinearLayout(this)
+                row.orientation = LinearLayout.HORIZONTAL
+                grid.addView(row)
+            }
+            val v = object : View(this) {
+                override fun onMeasure(w: Int, h: Int) {
+                    setMeasuredDimension(dp(86f), dp(86f))
+                }
+
+                override fun onDraw(c: android.graphics.Canvas) {
+                    val asp = Stickers.aspect(k)
+                    val box = 62f * d
+                    val sw = if (asp >= 1f) box else box * asp
+                    val sh = if (asp >= 1f) box / asp else box
+                    c.save()
+                    c.translate(width / 2f, height / 2f - 6f * d)
+                    Stickers.draw(c, k, sw, sh)
+                    c.restore()
+                    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                    p.setColor(Look.inkSoft)
+                    p.textSize = 10f * d
+                    p.textAlign = android.graphics.Paint.Align.CENTER
+                    c.drawText(Stickers.names[k], width / 2f, height - 4f * d, p)
+                }
+            }
+            v.setOnClickListener {
+                val asp = Stickers.aspect(k)
+                var w = 240f * asp
+                var h = 240f
+                if (w > 560f) {
+                    w = 560f
+                    h = w / asp
+                }
+                val c = draw.viewCenterOnPage()
+                val it = PageItem(PageItem.STICKER, c[0], c[1])
+                it.kind = k
+                it.w = w
+                it.h = h
+                draw.tool = Tool.OBJECT
+                draw.addItem(it)
+                refresh()
+                dlg?.dismiss()
+            }
+            row?.addView(v)
+        }
+        val sv = ScrollView(this)
+        sv.addView(grid)
+        dlg = AlertDialog.Builder(this)
+            .setTitle("Çıkartmalar")
+            .setView(sv)
+            .setNeutralButton("Galeriden resim ekle") { _, _ -> pickImage() }
+            .setPositiveButton("Seç ve taşı") { _, _ ->
+                draw.tool = Tool.OBJECT
+                refresh()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun pickImage() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.type = "image/*"
+        startActivityForResult(intent, REQ_IMAGE)
+    }
+
+    private fun addImageFrom(uri: Uri) {
+        Thread {
+            try {
+                val mime = contentResolver.getType(uri) ?: ""
+                val bounds = android.graphics.BitmapFactory.Options()
+                bounds.inJustDecodeBounds = true
+                contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2400) sample *= 2
+                val opts = android.graphics.BitmapFactory.Options()
+                opts.inSampleSize = sample
+                var bmp = contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
+                    ?: throw java.io.IOException("Resim açılamadı")
+                val maxSide = 1100f
+                val sc = maxSide / maxOf(bmp.width, bmp.height)
+                if (sc < 1f) {
+                    bmp = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt(), (bmp.height * sc).toInt(), true)
+                }
+                val png = mime.contains("png") || mime.contains("webp") || mime.contains("gif")
+                val bos = java.io.ByteArrayOutputStream()
+                if (png) bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+                else bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, bos)
+                val bytes = bos.toByteArray()
+                val b = bmp
+                runOnUiThread {
+                    val c = draw.viewCenterOnPage()
+                    val it = PageItem(PageItem.IMAGE, c[0], c[1])
+                    val asp = b.width.toFloat() / b.height
+                    it.w = if (asp >= 1f) 520f else 520f * asp
+                    it.h = it.w / asp
+                    it.data = bytes
+                    it.bmp = b
+                    draw.tool = Tool.OBJECT
+                    draw.addItem(it)
+                    refresh()
+                }
+            } catch (e: Throwable) {
+                runOnUiThread { Toast.makeText(this, "Resim eklenemedi", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    override fun dispatchKeyEvent(e: android.view.KeyEvent): Boolean {
+        if (e.action == android.view.KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
+            val k = e.keyCode
+            if (k !in intArrayOf(android.view.KeyEvent.KEYCODE_BACK, 24, 25)) info.text = "v$versionText · son tuş kodu: $k"
+            // 308-311: kalem düğmesi/dokunuşu tuş olayları (STYLUS_BUTTON_PRIMARY... TAP)
+            if (k in 308..311 && draw.penDoubleTap) {
+                draw.togglePenEraser()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(e)
     }
 
     private fun toggleSettings(anchor: View) {
@@ -279,6 +738,7 @@ class MainActivity : Activity() {
         else " ${nb.current + 1} / ${nb.pages.size} "
         spreadBtn.active = spread
         rebuildPresets()
+        rebuildKinds()
         rebuildTabs()
 
         val st = sliderTool()
@@ -350,7 +810,17 @@ class MainActivity : Activity() {
         nb.pages.removeAt(idx)
         if (nb.current >= nb.pages.size) nb.current = nb.pages.size - 1
         val heir = nb.pages[minOf(idx, nb.pages.size - 1)]
-        for (t in nb.tabs) if (t.target === gone) t.target = heir
+        val dead = ArrayList<Tab>()
+        for (t in nb.tabs) {
+            if (t.target !== gone) continue
+            if (t.auto) {
+                val same = if (gone.dateKey != 0) nb.pages.firstOrNull { it.dateKey == gone.dateKey } else null
+                if (same != null) t.target = same else dead.add(t)
+            } else {
+                t.target = heir
+            }
+        }
+        nb.tabs.removeAll(dead)
         showCurrent()
         refresh()
         scheduleSave()
@@ -372,6 +842,7 @@ class MainActivity : Activity() {
             REQ_EXPORT -> exportPdfTo(uri)
             REQ_BACKUP -> backupTo(uri)
             REQ_RESTORE -> restoreFrom(uri)
+            REQ_IMAGE -> addImageFrom(uri)
         }
     }
 
@@ -614,21 +1085,34 @@ class MainActivity : Activity() {
     private fun showMoreMenu(anchor: View) {
         val m = android.widget.PopupMenu(this, anchor)
         val names = arrayOf(
-            "PDF ekle", "Şablonlu yeni sayfa", "Kaydet", "PDF olarak dışa aktar",
+            "PDF ekle", "Şablonla yeni sayfa", "Kaydet", "PDF olarak dışa aktar",
             "Bu defterin yedeği", "Bu sayfadaki çizimleri temizle", "Bu sayfayı sil",
-            "Sayfa boyutu ve kâğıt rengi"
+            "Sayfa boyutu ve kâğıt rengi",
+            "Otomatik tarih ayracı: " + (if (autoTabs) "açık (kapatmak için dokunun)" else "kapalı (açmak için dokunun)"),
+            "Kalemle çift dokunuş (kalem ↔ silgi): " + (if (draw.penDoubleTap) "açık" else "kapalı"),
+            "Şablonlarım"
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
         m.setOnMenuItemClickListener { mi ->
             when (mi.itemId) {
                 0 -> pickPdf()
-                1 -> showTemplatePageDialog()
+                1 -> showNewPageMenu(anchor)
                 2 -> saveWithMessage()
                 3 -> startExport()
                 4 -> showBackupDialog()
                 5 -> draw.clearAll()
                 6 -> confirmDeletePage()
                 7 -> showPageStyleDialog()
+                8 -> {
+                    autoTabs = !autoTabs
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("otoayrac_$itemId", autoTabs).apply()
+                    Toast.makeText(this, if (autoTabs) "Gün ayraçları otomatik atanacak" else "Otomatik ayraç kapatıldı", Toast.LENGTH_SHORT).show()
+                }
+                9 -> {
+                    draw.penDoubleTap = !draw.penDoubleTap
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("kalem_cift", draw.penDoubleTap).apply()
+                }
+                10 -> showTemplateManager()
             }
             true
         }
@@ -774,7 +1258,18 @@ class MainActivity : Activity() {
         pageLabel.textSize = 16f
         pageLabel.gravity = Gravity.CENTER_VERTICAL
         draw.onInfo = { msg -> info.text = "v$versionText · $msg" }
-        draw.onChanged = { scheduleSave() }
+        val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
+        autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
+        draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
+        draw.onChanged = {
+            markWritten()
+            scheduleSave()
+        }
+        draw.onToolToggled = {
+            settingsPopup?.dismiss()
+            refresh()
+        }
+        draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
         draw.onTabClick = { t ->
             val idx = nb.pages.indexOf(t.target)
             if (idx >= 0) gotoPage(idx)
@@ -815,20 +1310,22 @@ class MainActivity : Activity() {
         }
         toolRow.addView(iconBtn(Icon.HOME, "Kütüphane") { finish() })
         toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
-        val addBtn = iconBtn(Icon.ADD, "Yeni sayfa (uzun basınca şablon seç)") { addPage() }
+        lateinit var addBtn: IconButton
+        addBtn = iconBtn(Icon.ADD, "Yeni sayfa (şablon seçerek)") { showNewPageMenu(addBtn) }
         addBtn.setOnLongClickListener {
-            showTemplatePageDialog()
+            addPage()
             true
         }
         toolRow.addView(addBtn)
         toolRow.addView(spacer())
         val toolIcons = listOf(
             Triple(Tool.PEN, Icon.PEN, "Kalem"), Triple(Tool.HIGHLIGHTER, Icon.HIGHLIGHTER, "Fosforlu"),
-            Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık")
+            Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık"),
+            Triple(Tool.TEXT, Icon.TEXT, "Metin kutusu (klavyeyle yazı)")
         )
         for ((t, ic, lb) in toolIcons) {
             val b = iconBtn(ic, lb) {
-                if (draw.tool == t && t != Tool.PICKER) {
+                if (draw.tool == t && (t == Tool.PEN || t == Tool.HIGHLIGHTER || t == Tool.ERASER)) {
                     val ab = toolButtons[t]
                     if (ab != null) toggleSettings(ab)
                 } else {
@@ -840,6 +1337,9 @@ class MainActivity : Activity() {
             toolButtons[t] = b
             toolRow.addView(b)
         }
+        val stickerBtn = iconBtn(Icon.STICKER, "Çıkartma ve resim") { showStickerDialog() }
+        toolButtons[Tool.OBJECT] = stickerBtn
+        toolRow.addView(stickerBtn)
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.PAPER, "Sayfa şablonu") { showPaperDialog() })
         toolRow.addView(iconBtn(Icon.TAB, "Ayraç ekle") { showTabDialog(null) })
@@ -887,6 +1387,9 @@ class MainActivity : Activity() {
         panel.setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
         panel.setBackgroundColor(Color.TRANSPARENT)
 
+        kindRow = LinearLayout(this)
+        kindRow.orientation = LinearLayout.HORIZONTAL
+        panel.addView(kindRow)
         presetRow = LinearLayout(this)
         presetRow.orientation = LinearLayout.HORIZONTAL
         presetRow.gravity = Gravity.CENTER_VERTICAL
@@ -986,5 +1489,6 @@ class MainActivity : Activity() {
         private const val REQ_EXPORT = 102
         private const val REQ_BACKUP = 103
         private const val REQ_RESTORE = 104
+        private const val REQ_IMAGE = 105
     }
 }

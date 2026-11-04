@@ -8,7 +8,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 
-enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER }
+enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER, TEXT, OBJECT }
 
 enum class Paper(val label: String) {
     BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı"),
@@ -17,7 +17,7 @@ enum class Paper(val label: String) {
 }
 
 /** Bir çizgi; koordinatlar ve kalınlık sayfa birimindedir, ekran çözünürlüğünden bağımsızdır. */
-class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sens: Float = 0f) {
+class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sens: Float = 0f, val kind: Int = 0) {
     val xs = ArrayList<Float>()
     val ys = ArrayList<Float>()
     val ps = ArrayList<Float>()
@@ -26,7 +26,32 @@ class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sen
     }
 }
 
+/** Sayfadaki metin kutusu, çıkartma ya da resim; (x, y) nesnenin merkezidir, ölçüler sayfa birimindedir. */
+class PageItem(var type: Int, var x: Float, var y: Float) {
+    var w = 300f
+    var h = 300f
+    var rot = 0f
+    var color = android.graphics.Color.BLACK
+    var text = ""
+    var size = 44f
+    var kind = 0
+
+    /** Resim çıkartmasının sıkıştırılmış baytları (JPEG ya da PNG). */
+    var data: ByteArray? = null
+
+    /** Çözülmüş resim; dosyaya yazılmaz. */
+    var bmp: android.graphics.Bitmap? = null
+
+    companion object {
+        const val TEXT = 0
+        const val STICKER = 1
+        const val IMAGE = 2
+    }
+}
+
 sealed class HistoryAction {
+    class ItemAdd(val item: PageItem) : HistoryAction()
+    class ItemRemove(val item: PageItem, val index: Int) : HistoryAction()
     class Add(val stroke: Stroke) : HistoryAction()
     class Erase(val removed: List<Pair<Int, Stroke>>) : HistoryAction()
 }
@@ -46,6 +71,10 @@ class PageData(
 
     /** Kâğıdın rengi (ARGB). */
     var paperColor: Int = -1
+
+    /** Sayfanın ait olduğu gün (yyyyMMdd); 0 ise tarihsiz. Aynı güne ait sayfalar tek ayracı paylaşır. */
+    var dateKey = 0
+    val items = ArrayList<PageItem>()
     val strokes = ArrayList<Stroke>()
 
     /** Arka planda dışa aktarmak için sayfanın o anki halinin kopyası. */
@@ -56,6 +85,8 @@ class PageData(
         p.calYear = calYear
         p.calMonth = calMonth
         p.paperColor = paperColor
+        p.dateKey = dateKey
+        p.items.addAll(items)
         p.strokes.addAll(strokes)
         return p
     }
@@ -65,7 +96,7 @@ class PageData(
 }
 
 /** Sayfanın kenarındaki renkli ayraç; dokununca hedef sayfaya gider. */
-class Tab(var label: String, var color: Int, var target: PageData)
+class Tab(var label: String, var color: Int, var target: PageData, var auto: Boolean = false)
 
 class Notebook {
     val pages = ArrayList<PageData>()
@@ -75,7 +106,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 5
+    private const val VERSION = 6
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -97,12 +128,14 @@ object Storage {
                 o.writeInt(pg.calYear)
                 o.writeInt(pg.calMonth)
                 o.writeInt(pg.paperColor)
+                o.writeInt(pg.dateKey)
                 o.writeInt(pg.strokes.size)
                 for (s in pg.strokes) {
                     o.writeInt(s.color)
                     o.writeFloat(s.width)
                     o.writeBoolean(s.highlighter)
                     o.writeFloat(s.sens)
+                    o.writeInt(s.kind)
                     val n = s.xs.size
                     o.writeInt(n)
                     for (i in 0 until n) {
@@ -111,6 +144,19 @@ object Storage {
                         o.writeFloat(s.ps[i])
                     }
                 }
+                o.writeInt(pg.items.size)
+                for (it in pg.items) {
+                    o.writeInt(it.type)
+                    o.writeFloat(it.x); o.writeFloat(it.y)
+                    o.writeFloat(it.w); o.writeFloat(it.h); o.writeFloat(it.rot)
+                    o.writeInt(it.color)
+                    o.writeUTF(it.text)
+                    o.writeFloat(it.size)
+                    o.writeInt(it.kind)
+                    val dt = it.data
+                    o.writeInt(dt?.size ?: -1)
+                    if (dt != null) o.write(dt)
+                }
             }
             val valid = nb.tabs.filter { nb.pages.indexOf(it.target) >= 0 }
             o.writeInt(valid.size)
@@ -118,6 +164,7 @@ object Storage {
                 o.writeUTF(t.label)
                 o.writeInt(t.color)
                 o.writeInt(nb.pages.indexOf(t.target))
+                o.writeBoolean(t.auto)
             }
         }
         if (!tmp.renameTo(file)) {
@@ -132,7 +179,7 @@ object Storage {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
                 val ver = i.readInt()
-                if (ver < 1 || ver > 5) return null
+                if (ver < 1 || ver > 6) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()
@@ -150,14 +197,16 @@ object Storage {
                         pg.calMonth = i.readInt()
                     }
                     if (ver >= 5) pg.paperColor = i.readInt()
+                    if (ver >= 6) pg.dateKey = i.readInt()
                     val sc = i.readInt()
                     for (j in 0 until sc) {
                         val color = i.readInt()
                         val sw = i.readFloat()
                         val hl = i.readBoolean()
                         val sens = i.readFloat()
+                        val kind = if (ver >= 6) i.readInt() else 0
                         val n = i.readInt()
-                        val s = Stroke(color, sw, hl, sens)
+                        val s = Stroke(color, sw, hl, sens, kind)
                         for (q in 0 until n) {
                             val x = i.readFloat()
                             val y = i.readFloat()
@@ -165,6 +214,24 @@ object Storage {
                             s.add(x, y, p)
                         }
                         pg.strokes.add(s)
+                    }
+                    if (ver >= 6) {
+                        val ic = i.readInt()
+                        for (q in 0 until ic) {
+                            val it = PageItem(i.readInt(), i.readFloat(), i.readFloat())
+                            it.w = i.readFloat(); it.h = i.readFloat(); it.rot = i.readFloat()
+                            it.color = i.readInt()
+                            it.text = i.readUTF()
+                            it.size = i.readFloat()
+                            it.kind = i.readInt()
+                            val len = i.readInt()
+                            if (len >= 0) {
+                                val b = ByteArray(len)
+                                i.readFully(b)
+                                it.data = b
+                            }
+                            pg.items.add(it)
+                        }
                     }
                     nb.pages.add(pg)
                 }
@@ -175,7 +242,8 @@ object Storage {
                         val label = i.readUTF()
                         val color = i.readInt()
                         val idx = i.readInt()
-                        if (idx in 0 until nb.pages.size) nb.tabs.add(Tab(label, color, nb.pages[idx]))
+                        val auto = if (ver >= 6) i.readBoolean() else false
+                        if (idx in 0 until nb.pages.size) nb.tabs.add(Tab(label, color, nb.pages[idx], auto))
                     }
                 }
                 nb.current = nb.current.coerceIn(0, nb.pages.size - 1)

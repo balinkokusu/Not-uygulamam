@@ -270,21 +270,141 @@ class PageRenderer {
         }
     }
 
+    private fun hash(i: Int, salt: Int = 0): Float {
+        var h = i * 374761393 + salt * 668265263
+        h = (h xor (h ushr 13)) * 1274126177
+        h = h xor (h ushr 16)
+        return (h and 0xFFFF) / 65535f
+    }
+
+    /** Kalem çizgisinin i. parçasını (i-1 ile i arası) türüne göre çizer. */
+    fun drawPenSegment(c: Canvas, s: Stroke, i: Int, last: Boolean) {
+        val x0 = s.xs[i - 1]
+        val y0 = s.ys[i - 1]
+        val x1 = s.xs[i]
+        val y1 = s.ys[i]
+        var w = segmentWidth(s, i)
+        linePaint.setColor(s.color)
+        linePaint.alpha = 255
+        linePaint.strokeCap = Paint.Cap.ROUND
+        when (s.kind) {
+            2 -> {
+                // Kurşun kalem: yarı saydam, hafif titrek iki geçiş
+                val j = (hash(i) - 0.5f) * w * 0.7f
+                val j2 = (hash(i, 7) - 0.5f) * w * 0.7f
+                linePaint.alpha = 120
+                linePaint.strokeWidth = w * 0.95f
+                c.drawLine(x0, y0, x1, y1, linePaint)
+                linePaint.alpha = 80
+                linePaint.strokeWidth = w * 0.55f
+                c.drawLine(x0 + j, y0 + j2, x1 + j, y1 + j2, linePaint)
+                linePaint.alpha = 255
+            }
+            3 -> {
+                // Fırça: uçlarda incelen, basınca kalınlaşan çizgi
+                val n = s.xs.size
+                var t = minOf(1f, 0.3f + i / 7f)
+                if (last) t = minOf(t, 0.3f + (n - 1 - i) / 7f)
+                w *= t
+                linePaint.strokeWidth = w
+                c.drawLine(x0, y0, x1, y1, linePaint)
+            }
+            else -> {
+                linePaint.strokeWidth = w
+                c.drawLine(x0, y0, x1, y1, linePaint)
+            }
+        }
+    }
+
+    private fun stamp(c: Canvas, kind: Int, x: Float, y: Float, r: Float, color: Int) {
+        fillPaint.setColor(color)
+        fillPaint.alpha = 215
+        path.reset()
+        if (kind == 2) {
+            for (i in 0 until 10) {
+                val rr = if (i % 2 == 0) r else r * 0.45f
+                val a = Math.toRadians(-90.0 + i * 36.0)
+                val px = x + rr * Math.cos(a).toFloat()
+                val py = y + rr * Math.sin(a).toFloat()
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            path.close()
+        } else {
+            val sz = r * 0.9f
+            path.moveTo(x, y + sz * 0.9f)
+            path.cubicTo(x - sz * 1.5f, y - sz * 0.1f, x - sz * 0.7f, y - sz * 1.1f, x, y - sz * 0.4f)
+            path.cubicTo(x + sz * 0.7f, y - sz * 1.1f, x + sz * 1.5f, y - sz * 0.1f, x, y + sz * 0.9f)
+            path.close()
+        }
+        c.drawPath(path, fillPaint)
+        fillPaint.alpha = 255
+    }
+
+    private fun drawHighlighter(c: Canvas, s: Stroke) {
+        val n = s.xs.size
+        linePaint.setColor(s.color)
+        linePaint.strokeWidth = s.width
+        if (s.kind == 2 || s.kind == 3) {
+            // Şekilli fosforlu: çizgi boyunca yıldız ya da kalp damgaları
+            val step = s.width * 0.95f
+            var carry = 0f
+            stamp(c, s.kind, s.xs[0], s.ys[0], s.width * 0.55f, s.color)
+            for (i in 1 until n) {
+                val dx = s.xs[i] - s.xs[i - 1]
+                val dy = s.ys[i] - s.ys[i - 1]
+                val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                if (len == 0f) continue
+                var d = step - carry
+                while (d <= len) {
+                    val t = d / len
+                    stamp(c, s.kind, s.xs[i - 1] + dx * t, s.ys[i - 1] + dy * t, s.width * 0.55f, s.color)
+                    d += step
+                }
+                carry = len - (d - step)
+            }
+            return
+        }
+        linePaint.alpha = if (s.kind == 1) 85 else 110
+        linePaint.strokeCap = Paint.Cap.SQUARE
+        path.reset()
+        path.moveTo(s.xs[0], s.ys[0])
+        if (n == 1) path.lineTo(s.xs[0] + 0.1f, s.ys[0])
+        for (i in 1 until n) path.lineTo(s.xs[i], s.ys[i])
+        c.drawPath(path, linePaint)
+        linePaint.alpha = 255
+        linePaint.strokeCap = Paint.Cap.ROUND
+        if (s.kind == 1) {
+            // Pırıltılı fosforlu: bandın üstüne beyaz ve altın ışıltılar
+            var k = 0
+            var carry = 0f
+            val step = s.width * 0.45f
+            for (i in 1 until n) {
+                val dx = s.xs[i] - s.xs[i - 1]
+                val dy = s.ys[i] - s.ys[i - 1]
+                val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                if (len == 0f) continue
+                var d = step - carry
+                while (d <= len) {
+                    val t = d / len
+                    val off = (hash(k, 3) - 0.5f) * s.width * 0.9f
+                    val px = s.xs[i - 1] + dx * t - dy / len * off
+                    val py = s.ys[i - 1] + dy * t + dx / len * off
+                    val big = hash(k, 5) > 0.75f
+                    fillPaint.setColor(if (hash(k, 9) > 0.5f) Color.WHITE else Color.rgb(255, 214, 120))
+                    c.drawCircle(px, py, if (big) s.width * 0.09f else s.width * 0.05f, fillPaint)
+                    k++
+                    d += step
+                }
+                carry = len - (d - step)
+            }
+        }
+    }
+
     fun drawStroke(c: Canvas, s: Stroke) {
         val n = s.xs.size
         if (n == 0) return
         if (s.highlighter) {
-            linePaint.setColor(s.color)
-            linePaint.alpha = 110
-            linePaint.strokeWidth = s.width
-            linePaint.strokeCap = Paint.Cap.SQUARE
-            path.reset()
-            path.moveTo(s.xs[0], s.ys[0])
-            if (n == 1) path.lineTo(s.xs[0] + 0.1f, s.ys[0])
-            for (i in 1 until n) path.lineTo(s.xs[i], s.ys[i])
-            c.drawPath(path, linePaint)
-            linePaint.alpha = 255
-            linePaint.strokeCap = Paint.Cap.ROUND
+            drawHighlighter(c, s)
             return
         }
         linePaint.setColor(s.color)
@@ -295,11 +415,61 @@ class PageRenderer {
             c.drawCircle(s.xs[0], s.ys[0], s.width * widthFactor(s, s.ps[0]) * 0.5f, fillPaint)
             return
         }
-        for (i in 1 until n) {
-            linePaint.strokeWidth = segmentWidth(s, i)
-            c.drawLine(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], linePaint)
-        }
+        for (i in 1 until n) drawPenSegment(c, s, i, true)
     }
+
+    // ---- Sayfa nesneleri: metin, çıkartma, resim ----
+
+    private val textPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
+
+    private fun layoutOf(it: PageItem): android.text.StaticLayout {
+        textPaint.setColor(it.color)
+        textPaint.textSize = it.size
+        textPaint.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+        val txt = if (it.text.isEmpty()) " " else it.text
+        return android.text.StaticLayout.Builder.obtain(txt, 0, txt.length, textPaint, maxOf(40, it.w.toInt())).build()
+    }
+
+    /** Metin kutusunun yüksekliğini günceller. */
+    fun measureItem(it: PageItem) {
+        if (it.type == PageItem.TEXT) it.h = layoutOf(it).height.toFloat() + 12f
+    }
+
+    fun drawItems(c: Canvas, page: PageData) {
+        for (it in page.items) drawItem(c, it)
+    }
+
+    fun drawItem(c: Canvas, it: PageItem) {
+        c.save()
+        c.translate(it.x, it.y)
+        c.rotate(it.rot)
+        when (it.type) {
+            PageItem.TEXT -> {
+                val lay = layoutOf(it)
+                it.h = lay.height.toFloat() + 12f
+                c.translate(-it.w / 2f, -it.h / 2f + 6f)
+                lay.draw(c)
+            }
+            PageItem.STICKER -> Stickers.draw(c, it.kind, it.w, it.h)
+            else -> {
+                var b = it.bmp
+                if (b == null) {
+                    val d = it.data
+                    if (d != null) {
+                        b = android.graphics.BitmapFactory.decodeByteArray(d, 0, d.size)
+                        it.bmp = b
+                    }
+                }
+                if (b != null) {
+                    val r = RectF(-it.w / 2f, -it.h / 2f, it.w / 2f, it.h / 2f)
+                    c.drawBitmap(b, null, r, bmpPaint)
+                }
+            }
+        }
+        c.restore()
+    }
+
+    private val bmpPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
 }
 
 /** Defteri, çizimleri PDF sayfalarının üstüne işleyerek tek bir PDF dosyasına yazar. */
@@ -333,6 +503,7 @@ object PdfExporter {
                     }
                 }
                 renderer.drawPaper(c, pg)
+                renderer.drawItems(c, pg)
                 for (s in pg.strokes) renderer.drawStroke(c, s)
                 doc.finishPage(page)
             }
