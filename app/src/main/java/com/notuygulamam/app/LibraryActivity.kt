@@ -577,37 +577,9 @@ class LibraryActivity : Activity() {
 
             if (existing == null) {
                 content.addView(label("İlk sayfanın kâğıdı (ya da hazır defter)"))
-                val paperRow = LinearLayout(this)
-                paperRow.orientation = LinearLayout.HORIZONTAL
-                val paperViews = ArrayList<TextView>()
-                fun updPaper() {
-                    for ((i, tv) in paperViews.withIndex()) {
-                        tv.setBackgroundColor(if (i == paperIdx) Look.ink else Look.accentSoft)
-                        tv.setTextColor(if (i == paperIdx) Color.WHITE else Color.BLACK)
-                    }
-                }
-                val chipLabels = Paper.values().map { it.label } + ("Planlayıcı " + plannerYear + " (12 ay, ayraçlı)")
-                for ((i, chipLabel) in chipLabels.withIndex()) {
-                    val tv = TextView(this)
-                    tv.text = chipLabel
-                    tv.textSize = 14f
-                    tv.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
-                    val lp = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                    lp.setMargins(0, 0, dp(6f), 0)
-                    tv.layoutParams = lp
-                    tv.setOnClickListener {
-                        paperIdx = i
-                        updPaper()
-                    }
-                    paperViews.add(tv)
-                    paperRow.addView(tv)
-                }
-                updPaper()
-                val paperScroll = HorizontalScrollView(this)
-                paperScroll.addView(paperRow)
-                content.addView(paperScroll)
+                val plannerPage = Pair("Planlayıcı " + plannerYear, Paper.YEAR)
+                val entries = Paper.values().map { Pair(it.label, it) } + plannerPage
+                content.addView(PaperGrid(this, entries, paperIdx, Color.WHITE) { i -> paperIdx = i })
                 content.addView(chooser)
             }
         }

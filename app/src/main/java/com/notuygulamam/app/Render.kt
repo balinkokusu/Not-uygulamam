@@ -304,7 +304,8 @@ class PageRenderer {
 
 /** Defteri, çizimleri PDF sayfalarının üstüne işleyerek tek bir PDF dosyasına yazar. */
 object PdfExporter {
-    private const val PAGE_WIDTH_PT = 595
+    /** 1200 sayfa birimi = 210 mm = 595,28 pt; sayfalar fiziksel boyutta (A3, A4, A5 ...) yazılır. */
+    private const val K = 595.28f / 1200f
 
     fun export(pages: List<PageData>, pdfDir: File, out: OutputStream) {
         val doc = PdfDocument()
@@ -313,12 +314,12 @@ object PdfExporter {
         val rect = RectF()
         try {
             for ((i, pg) in pages.withIndex()) {
-                val hPt = max(1, (PAGE_WIDTH_PT * pg.height / pg.width).toInt())
-                val info = PdfDocument.PageInfo.Builder(PAGE_WIDTH_PT, hPt, i + 1).create()
+                val wPt = max(1, Math.round(pg.width * K))
+                val hPt = max(1, Math.round(pg.height * K))
+                val info = PdfDocument.PageInfo.Builder(wPt, hPt, i + 1).create()
                 val page = doc.startPage(info)
                 val c = page.canvas
-                val k = PAGE_WIDTH_PT / pg.width
-                c.scale(k, k)
+                c.scale(K, K)
                 c.drawColor(pg.paperColor)
                 val name = pg.pdfName
                 if (name != null) {

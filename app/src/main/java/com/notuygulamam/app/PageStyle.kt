@@ -1,7 +1,11 @@
 package com.notuygulamam.app
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
@@ -11,24 +15,120 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
+import kotlin.math.max
 
-/** Sayfa boyutu ve kâğıt rengi seçici; yeni defter penceresinde ve sayfa ayarları penceresinde kullanılır. */
+/** 1200 sayfa birimi = 210 mm (A4 genişliği). Boyutlar bu orana göre milimetreden hesaplanır. */
+object PageUnits {
+    const val PER_MM = 1200f / 210f
+    fun mm(v: Float): Float = v * PER_MM
+}
+
+/** Kâğıt şablonunun küçük önizlemesi (gerçek çizim koduyla çizilir). */
+class PaperThumb(
+    context: Context,
+    private val paper: Paper,
+    private val label: String,
+    private val color: Int,
+    var selected: Boolean = false
+) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val renderer = PageRenderer()
+    private val page = PageData(1200f, 1697f, paper)
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = 12f * d
+    }
+
+    init {
+        val cal = java.util.Calendar.getInstance()
+        page.calYear = cal.get(java.util.Calendar.YEAR)
+        page.calMonth = cal.get(java.util.Calendar.MONTH) + 1
+        page.paperColor = color
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension((104 * d).toInt(), (172 * d).toInt())
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width - 16 * d
+        val h = w * 1.414f
+        rect.set(8 * d, 6 * d, 8 * d + w, 6 * d + h)
+        p.style = Paint.Style.FILL
+        for (g in 1..4) {
+            p.setColor(Color.argb(16, 70, 40, 45))
+            c.drawRoundRect(rect.left - g * d, rect.top + d, rect.right + g * d, rect.bottom + 3 * d + g * d, 6 * d, 6 * d, p)
+        }
+        c.save()
+        c.clipRect(rect)
+        c.translate(rect.left, rect.top)
+        val k = w / 1200f
+        c.scale(k, k)
+        c.drawColor(color)
+        renderer.drawPaper(c, page)
+        c.restore()
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = if (selected) 3f * d else 1f * d
+        p.setColor(if (selected) Look.accent else Look.hairline)
+        c.drawRect(rect, p)
+        text.setColor(if (selected) Look.accent else Look.ink)
+        text.typeface = if (selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        c.drawText(label, width / 2f, rect.bottom + 20 * d, text)
+    }
+}
+
+/** Kâğıt şablonlarını önizlemeleriyle gösteren, satırlara bölünmüş seçim ızgarası. */
+class PaperGrid(
+    context: Context,
+    entries: List<Pair<String, Paper>>,
+    selectedIdx: Int,
+    paperColor: Int,
+    private val onPick: (Int) -> Unit
+) : LinearLayout(context) {
+    private val thumbs = ArrayList<PaperThumb>()
+
+    init {
+        orientation = VERTICAL
+        var row: LinearLayout? = null
+        for ((i, e) in entries.withIndex()) {
+            if (i % 5 == 0) {
+                row = LinearLayout(context)
+                row.orientation = HORIZONTAL
+                addView(row)
+            }
+            val t = PaperThumb(context, e.second, e.first, paperColor, i == selectedIdx)
+            t.setOnClickListener {
+                for ((k, th) in thumbs.withIndex()) {
+                    th.selected = k == i
+                    th.invalidate()
+                }
+                onPick(i)
+            }
+            thumbs.add(t)
+            row?.addView(t)
+        }
+    }
+}
+
+/** Sayfa boyutu (A3, A4, A5 gibi yazdırmaya uygun ya da özel) ve kâğıt rengi seçici. */
 class PageStyleChooser(
     context: Context,
     initW: Float,
     initH: Float,
     initColor: Int
 ) : LinearLayout(context) {
-    class Size(val label: String, val w: Float, val h: Float)
+    class Size(val label: String, val sub: String, val w: Float, val h: Float)
 
     private val d = resources.displayMetrics.density
     private val sizes = listOf(
-        Size("A4 dikey", 1200f, 1697f),
-        Size("A4 yatay", 1697f, 1200f),
-        Size("Ajanda", 1000f, 1400f),
-        Size("Letter", 1200f, 1553f),
-        Size("Kare", 1200f, 1200f),
-        Size("16:9 yatay", 1700f, 956f)
+        mk("A3 dikey", 297f, 420f), mk("A3 yatay", 420f, 297f),
+        mk("A4 dikey", 210f, 297f), mk("A4 yatay", 297f, 210f),
+        mk("A5 dikey", 148f, 210f), mk("A5 yatay", 210f, 148f),
+        mk("A6 dikey", 105f, 148f), mk("B5 dikey", 176f, 250f),
+        mk("Letter", 216f, 279f), mk("Kare", 200f, 200f),
+        Size("16:9 yatay", "ekran", 1700f, 956f)
     )
     private val customIdx = sizes.size
     private val colors = listOf(
@@ -42,49 +142,84 @@ class PageStyleChooser(
         Pair("Koyu", Color.rgb(34, 35, 40))
     )
 
+    private fun mk(label: String, wmm: Float, hmm: Float) =
+        Size(label, "${wmm.toInt()}×${hmm.toInt()} mm", PageUnits.mm(wmm), PageUnits.mm(hmm))
+
     private var sizeIdx = customIdx
     var pageColor: Int = initColor
         private set
-    private val chips = ArrayList<TextView>()
+    private val chips = ArrayList<SizeChip>()
     private val swatches = ArrayList<Pair<View, Int>>()
     private val customRow = LinearLayout(context)
     private val wEdit = EditText(context)
     private val hEdit = EditText(context)
 
     val pageW: Float
-        get() = if (sizeIdx < customIdx) sizes[sizeIdx].w else cmToUnits(wEdit.text.toString(), 21f)
+        get() = if (sizeIdx < customIdx) sizes[sizeIdx].w else PageUnits.mm(cm(wEdit.text.toString(), 21f) * 10f)
     val pageH: Float
-        get() = if (sizeIdx < customIdx) sizes[sizeIdx].h else cmToUnits(hEdit.text.toString(), 29.7f)
+        get() = if (sizeIdx < customIdx) sizes[sizeIdx].h else PageUnits.mm(cm(hEdit.text.toString(), 29.7f) * 10f)
 
-    private fun cmToUnits(t: String, fallback: Float): Float {
-        val cm = t.replace(',', '.').toFloatOrNull() ?: fallback
-        return (cm.coerceIn(5f, 60f) * 1200f / 21f)
-    }
+    private fun cm(t: String, fallback: Float): Float =
+        (t.replace(',', '.').toFloatOrNull() ?: fallback).coerceIn(4f, 80f)
 
     private fun dp(v: Float) = (v * d).toInt()
+
+    /** Sayfa oranını gösteren küçük çerçeveli seçim kutusu. */
+    private inner class SizeChip(context: Context, val size: Size?, val selectedProvider: () -> Boolean) : View(context) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val r = RectF()
+        private val t = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            setMeasuredDimension(dp(86f), dp(104f))
+        }
+
+        override fun onDraw(c: Canvas) {
+            val sel = selectedProvider()
+            val maxSide = 46f * this@PageStyleChooser.d
+            val w0 = size?.w ?: 1200f
+            val h0 = size?.h ?: 1697f
+            val k = maxSide / max(w0, h0)
+            val pw = w0 * k
+            val ph = h0 * k
+            r.set(width / 2f - pw / 2f, 8f * this@PageStyleChooser.d + (maxSide - ph) / 2f, width / 2f + pw / 2f,
+                8f * this@PageStyleChooser.d + (maxSide - ph) / 2f + ph)
+            p.style = Paint.Style.FILL
+            p.setColor(if (size == null) Look.accentSoft else Color.WHITE)
+            c.drawRect(r, p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = (if (sel) 3f else 1.2f) * this@PageStyleChooser.d
+            p.setColor(if (sel) Look.accent else Look.inkSoft)
+            c.drawRect(r, p)
+            t.setColor(if (sel) Look.accent else Look.ink)
+            t.typeface = if (sel) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            t.textSize = 12f * this@PageStyleChooser.d
+            c.drawText(size?.label ?: "Özel (cm)", width / 2f, 72f * this@PageStyleChooser.d, t)
+            t.typeface = Typeface.DEFAULT
+            t.textSize = 10f * this@PageStyleChooser.d
+            t.setColor(Look.inkSoft)
+            c.drawText(size?.sub ?: "", width / 2f, 88f * this@PageStyleChooser.d, t)
+        }
+    }
 
     init {
         orientation = VERTICAL
         for ((i, s) in sizes.withIndex()) {
-            if (abs(s.w - initW) < 6f && abs(s.h - initH) < 6f) sizeIdx = i
+            if (abs(s.w - initW) < 8f && abs(s.h - initH) < 8f && sizeIdx == customIdx) sizeIdx = i
         }
         addView(caption("Sayfa boyutu"))
         val row = LinearLayout(context)
         row.orientation = HORIZONTAL
         for (i in 0..customIdx) {
-            val tv = TextView(context)
-            tv.text = if (i < customIdx) sizes[i].label else "Özel (cm)"
-            tv.textSize = 14f
-            tv.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
-            val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, 0, dp(6f), 0)
-            tv.layoutParams = lp
-            tv.setOnClickListener {
+            val chip = SizeChip(context, if (i < customIdx) sizes[i] else null) { sizeIdx == i }
+            chip.setOnClickListener {
                 sizeIdx = i
                 update()
             }
-            chips.add(tv)
-            row.addView(tv)
+            chips.add(chip)
+            row.addView(chip)
         }
         val sc = HorizontalScrollView(context)
         sc.isHorizontalScrollBarEnabled = false
@@ -96,7 +231,7 @@ class PageStyleChooser(
         for ((e, v) in listOf(Pair(wEdit, initW), Pair(hEdit, initH))) {
             e.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             e.setSingleLine(true)
-            e.setText(String.format(java.util.Locale.US, "%.1f", v * 21f / 1200f))
+            e.setText(String.format(java.util.Locale.US, "%.1f", v / PageUnits.PER_MM / 10f))
             e.minEms = 3
         }
         customRow.addView(TextView(context).apply { text = "Genişlik " })
@@ -132,22 +267,19 @@ class PageStyleChooser(
         val tv = TextView(context)
         tv.text = t
         tv.textSize = 13f
-        tv.setTextColor(Color.rgb(90, 94, 104))
+        tv.setTextColor(Look.inkSoft)
         tv.setPadding(0, dp(12f), 0, dp(4f))
         return tv
     }
 
     private fun update() {
-        for ((i, tv) in chips.withIndex()) {
-            tv.setBackgroundColor(if (i == sizeIdx) Look.ink else Look.accentSoft)
-            tv.setTextColor(if (i == sizeIdx) Color.WHITE else Color.BLACK)
-        }
+        for (c in chips) c.invalidate()
         customRow.visibility = if (sizeIdx == customIdx) View.VISIBLE else View.GONE
         for ((v, c) in swatches) {
             val g = GradientDrawable()
             g.shape = GradientDrawable.OVAL
             g.setColor(c)
-            if (c == pageColor) g.setStroke(dp(4f), Look.accent) else g.setStroke(dp(1f), Color.GRAY)
+            if (c == pageColor) g.setStroke(dp(4f), Look.accent) else g.setStroke(dp(1f), Look.hairline)
             v.background = g
         }
     }

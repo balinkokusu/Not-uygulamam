@@ -310,7 +310,17 @@ class MainActivity : Activity() {
 
     /** Açık sayfa(lar)ı çizim alanına yükler; çift sayfa görünümünde çift numaralı sayfadan başlayan ikiliyi gösterir. */
     private fun showCurrent() {
-        if (spread) nb.current -= nb.current % 2
+        if (spread) {
+            nb.current -= nb.current % 2
+            if (nb.current + 1 >= nb.pages.size) {
+                // Çift sayfa görünümünde her zaman bir ikili olsun diye boş eş sayfa eklenir.
+                val l = nb.pages[nb.current]
+                val np = if (l.pdfName == null) PageData(l.width, l.height, l.paper) else PageData(1200f, 1697f, Paper.BLANK)
+                if (l.pdfName == null) np.paperColor = l.paperColor
+                nb.pages.add(np)
+                scheduleSave()
+            }
+        }
         val left = nb.pages[nb.current]
         val right = if (spread && nb.current + 1 < nb.pages.size) nb.pages[nb.current + 1] else null
         draw.showPage(left, right)
@@ -670,10 +680,11 @@ class MainActivity : Activity() {
     }
 
     private fun showTemplatePageDialog() {
-        val labels = Paper.values().map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Yeni sayfa için şablon")
-            .setItems(labels) { _, which ->
+        var dlg: AlertDialog? = null
+        val entries = Paper.values().map { Pair(it.label, it) }
+        val grid = PaperGrid(this, entries, -1, draw.page.paperColor) { which ->
+            dlg?.dismiss()
+            run {
                 val cur = draw.page
                 val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, Paper.values()[which])
                 else PageData(1200f, 1697f, Paper.values()[which])
@@ -682,6 +693,12 @@ class MainActivity : Activity() {
                 nb.pages.add(at, pg)
                 gotoPage(at)
             }
+        }
+        val sv = android.widget.ScrollView(this)
+        sv.addView(grid)
+        dlg = AlertDialog.Builder(this)
+            .setTitle("Yeni sayfa için şablon")
+            .setView(sv)
             .setNegativeButton("Vazgeç", null)
             .show()
     }
@@ -702,13 +719,19 @@ class MainActivity : Activity() {
     }
 
     private fun showPaperDialog() {
-        val labels = Paper.values().map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
+        var dlg: AlertDialog? = null
+        val entries = Paper.values().map { Pair(it.label, it) }
+        val grid = PaperGrid(this, entries, draw.paper.ordinal, draw.page.paperColor) { which ->
+            draw.paper = Paper.values()[which]
+            refresh()
+            dlg?.dismiss()
+        }
+        val sv = android.widget.ScrollView(this)
+        sv.addView(grid)
+        dlg = AlertDialog.Builder(this)
             .setTitle("Kağıt stili (bu sayfa)")
-            .setItems(labels) { _, which ->
-                draw.paper = Paper.values()[which]
-                refresh()
-            }
+            .setView(sv)
+            .setNegativeButton("Kapat", null)
             .show()
     }
 

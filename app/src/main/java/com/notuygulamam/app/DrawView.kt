@@ -244,6 +244,7 @@ class DrawView(context: Context) : View(context) {
             c.drawPath(tabPath, tabPaint)
             // Üstü açık, altı koyu pastel geçiş
             tabRect.set(left, top, TAB_IN, top + h)
+            tabPaint.setColor(Color.BLACK)
             tabPaint.shader = LinearGradient(
                 0f, top, 0f, top + h, lighten(t.color, 0.5f), t.color, Shader.TileMode.CLAMP
             )
@@ -344,6 +345,9 @@ class DrawView(context: Context) : View(context) {
         gestureRemoved.clear()
         bgs.clear()
         computeTransform()
+        gSc0 = sc
+        gOx0 = ox
+        gOy0 = oy
         requestBg()
         rebuildBase()
     }
@@ -636,14 +640,26 @@ class DrawView(context: Context) : View(context) {
         return maxDev < max(len * 0.08f, 12f)
     }
 
+    private var shapeFrozen = false
+
     private fun onHold() {
         val s = current ?: return
-        if (!holdToStraighten || straightLive || s.xs.size < 3) return
-        val dx = s.xs[s.xs.size - 1] - s.xs[0]
-        val dy = s.ys[s.ys.size - 1] - s.ys[0]
-        if (hypot(dx, dy) < 20f) return
-        straighten(s)
-        straightLive = true
+        if (!holdToStraighten || straightLive || shapeFrozen || s.xs.size < 6) return
+        val r = ShapeRecognizer.recognize(s.xs, s.ys) ?: return
+        if (r.isLine) {
+            straighten(s)
+            straightLive = true
+        } else {
+            var avgP = 0f
+            for (p in s.ps) avgP += p
+            avgP /= s.ps.size
+            s.xs.clear()
+            s.ys.clear()
+            s.ps.clear()
+            for (i in r.xs.indices) s.add(r.xs[i], r.ys[i], avgP)
+            straightLive = true
+            shapeFrozen = true
+        }
         rebuildBase()
         invalidate()
     }
@@ -654,7 +670,7 @@ class DrawView(context: Context) : View(context) {
             holdX = x
             holdY = y
             holdHandler.removeCallbacks(holdRunnable)
-            holdHandler.postDelayed(holdRunnable, 600L)
+            holdHandler.postDelayed(holdRunnable, HOLD_MS)
         }
     }
 
@@ -734,6 +750,7 @@ class DrawView(context: Context) : View(context) {
             requestBg()
             rebuildBase()
         }
+        invalidate()
     }
 
     /** Çok parmaklı dokunuşu işler; olay buna aitse true döner. */
@@ -851,6 +868,7 @@ class DrawView(context: Context) : View(context) {
                 strokeActive = true
                 strokeFromStylus = isStylus
                 straightLive = false
+                shapeFrozen = false
                 gestureErasing = tool == Tool.ERASER ||
                     type == MotionEvent.TOOL_TYPE_ERASER ||
                     (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
@@ -870,7 +888,7 @@ class DrawView(context: Context) : View(context) {
                     holdY = e.y
                     if (holdToStraighten) {
                         holdHandler.removeCallbacks(holdRunnable)
-                        holdHandler.postDelayed(holdRunnable, 600L)
+                        holdHandler.postDelayed(holdRunnable, HOLD_MS)
                     }
                     if (!hl) {
                         val r = s.width * widthFactor(s, s.ps[0]) * 0.5f
@@ -896,7 +914,9 @@ class DrawView(context: Context) : View(context) {
                 } else {
                     val s = current
                     if (s != null) {
-                        if (straightLive) {
+                        if (shapeFrozen) {
+                            // Şekil oturtuldu; kalem kalkana kadar değişmez.
+                        } else if (straightLive) {
                             setStraightEnd(s, pageX(e.x), pageY(e.y))
                             invalidate()
                         } else {
@@ -1031,6 +1051,7 @@ class DrawView(context: Context) : View(context) {
         /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
         const val UNIT = 2.2f
         const val SPREAD_GAP = 28f
+        const val HOLD_MS = 320L
         const val TAB_OUT = 50f
         const val TAB_IN = 6f
         const val TAB_GUTTER = 68f
