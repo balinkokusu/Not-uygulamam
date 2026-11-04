@@ -29,7 +29,7 @@ class PaperThumb(
     private val paper: Paper,
     private val label: String,
     private val color: Int,
-    var selected: Boolean = false
+    var chosen: Boolean = false
 ) : View(context) {
     private val d = resources.displayMetrics.density
     private val renderer = PageRenderer()
@@ -70,11 +70,11 @@ class PaperThumb(
         renderer.drawPaper(c, page)
         c.restore()
         p.style = Paint.Style.STROKE
-        p.strokeWidth = if (selected) 3f * d else 1f * d
-        p.setColor(if (selected) Look.accent else Look.hairline)
+        p.strokeWidth = if (chosen) 3f * d else 1f * d
+        p.setColor(if (chosen) Look.accent else Look.hairline)
         c.drawRect(rect, p)
-        text.setColor(if (selected) Look.accent else Look.ink)
-        text.typeface = if (selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        text.setColor(if (chosen) Look.accent else Look.ink)
+        text.typeface = if (chosen) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         c.drawText(label, width / 2f, rect.bottom + 20 * d, text)
     }
 }
@@ -101,7 +101,7 @@ class PaperGrid(
             val t = PaperThumb(context, e.second, e.first, paperColor, i == selectedIdx)
             t.setOnClickListener {
                 for ((k, th) in thumbs.withIndex()) {
-                    th.selected = k == i
+                    th.chosen = k == i
                     th.invalidate()
                 }
                 onPick(i)
