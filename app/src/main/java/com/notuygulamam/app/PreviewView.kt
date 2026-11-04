@@ -40,16 +40,20 @@ class PreviewView(context: Context, private val draw: DrawView) : View(context) 
     }
 
     companion object {
+        /** Kalem türüne göre basınç duyarlılığı; 0 basınçtan bağımsız, 1 en duyarlı. */
+        fun penSens(kind: Int, ps: Float): Float = when (kind) {
+            1 -> 0.04f
+            2 -> 0.35f
+            3 -> 1f
+            4 -> 0.08f
+            else -> ps * 0.55f
+        }
+
         /** Örnek bir dalga çizgisi; basınç ortada artar ki kalem türlerinin farkı görülsün. */
         fun sampleStroke(hl: Boolean, color: Int, width: Float, kind: Int, ps: Float, length: Float): Stroke {
-            val sens = if (hl) 0f else when (kind) {
-                1 -> 0.12f
-                2 -> 0.35f
-                3 -> maxOf(0.8f, ps)
-                else -> ps
-            }
+            val sens = if (hl) 0f else penSens(kind, ps)
             val s = Stroke(color, width, hl, sens, kind)
-            val n = 48
+            val n = 150
             for (i in 0..n) {
                 val t = i / n.toFloat()
                 val y = (sin(t * 6.28f) * 20f)

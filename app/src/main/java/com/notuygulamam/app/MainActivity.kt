@@ -199,7 +199,7 @@ class MainActivity : Activity() {
             private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             private val rend = PageRenderer()
             override fun onMeasure(w: Int, h: Int) {
-                setMeasuredDimension(dp(104f), dp(60f))
+                setMeasuredDimension(dp(92f), dp(60f))
             }
 
             override fun onDraw(c: android.graphics.Canvas) {
@@ -223,7 +223,7 @@ class MainActivity : Activity() {
                 c.drawText(label, width / 2f, height - 9f * d, paint)
             }
         }
-        val lp = LinearLayout.LayoutParams(dp(104f), dp(60f))
+        val lp = LinearLayout.LayoutParams(dp(92f), dp(60f))
         lp.setMargins(dp(2f), 0, dp(2f), dp(4f))
         chip.layoutParams = lp
         chip.setOnClickListener {
@@ -278,8 +278,8 @@ class MainActivity : Activity() {
         }
         kindRow.visibility = View.VISIBLE
         if (st == Tool.PEN) {
-            val names = listOf("Dolma", "Tükenmez", "Kurşun", "Fırça")
-            for ((i, n) in names.withIndex()) kindRow.addView(kindChip(n, false, i, draw.penKind == i))
+            val order = listOf(Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun", 2))
+            for ((n, k) in order) kindRow.addView(kindChip(n, false, k, draw.penKind == k))
         } else {
             val names = listOf("Düz", "Pırıltılı", "Yıldız", "Kalp")
             for ((i, n) in names.withIndex()) kindRow.addView(kindChip(n, true, i, draw.hlKind == i))
@@ -396,6 +396,32 @@ class MainActivity : Activity() {
         m.show()
     }
 
+    private fun showAddPlannerDialog() {
+        val now = java.util.Calendar.getInstance()
+        val y = now.get(java.util.Calendar.YEAR) + if (now.get(java.util.Calendar.MONTH) >= 8) 1 else 0
+        val years = intArrayOf(y, y + 1, y - 1)
+        AlertDialog.Builder(this)
+            .setTitle("Hangi yılın planlayıcısı eklensin?")
+            .setItems(years.map { "Planlayıcı $it" }.toTypedArray()) { _, which ->
+                val cur = draw.page
+                val built = Planner.build(years[which])
+                for (pg in built.pages) {
+                    if (cur.pdfName == null) {
+                        pg.width = cur.width
+                        pg.height = cur.height
+                        pg.paperColor = cur.paperColor
+                    }
+                }
+                val start = nb.pages.size
+                nb.pages.addAll(built.pages)
+                nb.tabs.addAll(built.tabs)
+                gotoPage(start)
+                Toast.makeText(this, "Planlayıcı defterin sonuna eklendi (sayfa ${start + 1})", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
     private fun showTemplateManager() {
         val custom = customTemplates()
         val labels = custom.map { it.name + "  ·  " + it.paper.label + "  (silmek için dokunun)" } + "＋ Yeni şablon oluştur"
@@ -495,12 +521,12 @@ class MainActivity : Activity() {
                 t.background = g
             }
         }
-        for (i in PageRenderer.FONT_NAMES.indices) {
+        for (i in Fonts.names.indices) {
             val t = TextView(this)
-            t.text = "Aa Ğş\n" + PageRenderer.FONT_NAMES[i]
+            t.text = "Aa Ğş\n" + Fonts.names[i]
             t.gravity = Gravity.CENTER
             t.textSize = 15f
-            t.typeface = android.graphics.Typeface.create(PageRenderer.FONT_FAMILIES[i], android.graphics.Typeface.NORMAL)
+            t.typeface = Fonts.get(i, android.graphics.Typeface.NORMAL)
             t.setTextColor(Look.ink)
             t.setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -712,7 +738,9 @@ class MainActivity : Activity() {
     override fun dispatchKeyEvent(e: android.view.KeyEvent): Boolean {
         if (e.action == android.view.KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
             val k = e.keyCode
-            if (k !in intArrayOf(android.view.KeyEvent.KEYCODE_BACK, 24, 25)) info.text = "v$versionText · son tuş kodu: $k"
+            if (k !in intArrayOf(android.view.KeyEvent.KEYCODE_BACK, 24, 25)) {
+                info.text = "v$versionText · son tuş kodu: $k (kalem=" + (if (draw.tool == Tool.ERASER) "silgi" else "kalem") + ")"
+            }
             // 308-311: kalem düğmesi/dokunuşu tuş olayları (STYLUS_BUTTON_PRIMARY... TAP)
             // 718: bu cihazda kalemin çift dokunuşu/düğmesi olarak görülen tuş kodu
             if ((k in 308..311 || k == 718) && draw.penDoubleTap) {
@@ -1175,7 +1203,8 @@ class MainActivity : Activity() {
             "Sayfa boyutu ve kâğıt rengi",
             "Otomatik tarih ayracı: " + (if (autoTabs) "açık (kapatmak için dokunun)" else "kapalı (açmak için dokunun)"),
             "Kalemle çift dokunuş (kalem ↔ silgi): " + (if (draw.penDoubleTap) "açık" else "kapalı"),
-            "Şablonlarım"
+            "Şablonlarım",
+            "Planlayıcıyı bu deftere ekle (yıllık takvim, 12 ay, ayraçlar)"
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
         m.setOnMenuItemClickListener { mi ->
@@ -1198,6 +1227,7 @@ class MainActivity : Activity() {
                     getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("kalem_cift", draw.penDoubleTap).apply()
                 }
                 10 -> showTemplateManager()
+                11 -> showAddPlannerDialog()
             }
             true
         }
@@ -1309,6 +1339,7 @@ class MainActivity : Activity() {
         itemId = intent.getStringExtra("id") ?: ""
         spread = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("cift_$itemId", false)
         d = resources.displayMetrics.density
+        Fonts.init(assets)
         versionText = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: ""
         } catch (e: Exception) {
@@ -1346,6 +1377,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
+        draw.scribbleErase = prefs.getBoolean("karala", true)
         draw.onChanged = {
             markWritten()
             scheduleSave()
@@ -1533,6 +1565,14 @@ class MainActivity : Activity() {
         holdBox.isChecked = draw.holdToStraighten
         holdBox.setOnCheckedChangeListener { _, checked -> draw.holdToStraighten = checked }
         panel.addView(holdBox)
+        val scribbleBox = CheckBox(this)
+        scribbleBox.text = "Yazının üstünü karalayınca silinsin"
+        scribbleBox.isChecked = draw.scribbleErase
+        scribbleBox.setOnCheckedChangeListener { _, checked ->
+            draw.scribbleErase = checked
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("karala", checked).apply()
+        }
+        panel.addView(scribbleBox)
 
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(bar(dp(20f).toFloat()))

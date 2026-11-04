@@ -50,6 +50,10 @@ class DrawView(context: Context) : View(context) {
 
     /** Kalemle hızlı iki kez dokunmak kalem ile silgi arasında geçiş yapar. */
     var penDoubleTap = true
+
+    /** Yazının üstünü karalayınca altındaki çizgiler silinir. */
+    var scribbleErase = true
+    private var lastToggleMs = 0L
     private var lastDrawTool = Tool.PEN
     var onToolToggled: (() -> Unit)? = null
 
@@ -773,6 +777,9 @@ class DrawView(context: Context) : View(context) {
 
     /** Kalem ile silgi arasında geçiş yapar. */
     fun togglePenEraser() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastToggleMs < 700L) return
+        lastToggleMs = now
         if (tool == Tool.ERASER) {
             tool = lastDrawTool
         } else {
@@ -1154,13 +1161,7 @@ class DrawView(context: Context) : View(context) {
                     if (eraseAt(gx, gy)) rebuildBase()
                 } else {
                     val hl = tool == Tool.HIGHLIGHTER
-                    val ps0 = pressureSensitivity / 100f
-                    val sens = when (penKind) {
-                        1 -> 0.12f
-                        2 -> 0.35f
-                        3 -> max(0.8f, ps0)
-                        else -> ps0
-                    }
+                    val sens = PreviewView.penSens(penKind, pressureSensitivity / 100f)
                     val s = if (hl) Stroke(hlColor, hlWidthDp * UNIT, true, 0f, hlKind)
                     else Stroke(penColor, penWidthDp * UNIT, false, sens, penKind)
                     s.add(gx, gy, if (hl) 0.5f else normP(e.pressure))
@@ -1276,6 +1277,11 @@ class DrawView(context: Context) : View(context) {
                     gestureRemovedItems.clear()
                 } else {
                     val s = current
+                    if (s != null && scribbleErase && !s.highlighter && !straightLive && !shapeFrozen &&
+                        isScribble(s) && eraseUnderScribble(s)
+                    ) {
+                        return true
+                    }
                     if (s != null) {
                         var needsBake = s.highlighter || straightLive || s.kind == 3
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
@@ -1293,6 +1299,106 @@ class DrawView(context: Context) : View(context) {
                 }
             }
         }
+        return true
+    }
+
+    /** Aynı bölgede ileri geri sık yön değiştiren, kısa ve sık bir çizgi mi (karalama)? */
+    private fun isScribble(s: Stroke): Boolean {
+        val n = s.xs.size
+        if (n < 12) return false
+        var minX = s.xs[0]
+        var maxX = minX
+        var minY = s.ys[0]
+        var maxY = minY
+        var len = 0f
+        for (i in 0 until n) {
+            minX = min(minX, s.xs[i]); maxX = max(maxX, s.xs[i])
+            minY = min(minY, s.ys[i]); maxY = max(maxY, s.ys[i])
+            if (i > 0) len += hypot(s.xs[i] - s.xs[i - 1], s.ys[i] - s.ys[i - 1])
+        }
+        val horizontal = (maxX - minX) >= (maxY - minY)
+        val ext = if (horizontal) maxX - minX else maxY - minY
+        if (ext < 60f || len < 3.2f * ext) return false
+        val lo = if (horizontal) minX else minY
+        val hi = if (horizontal) maxX else maxY
+        var px = s.xs[0]
+        var py = s.ys[0]
+        var ldx = 0f
+        var ldy = 0f
+        var total = 0
+        var edge = 0
+        var lastSide = 0
+        var alternating = 0
+        for (i in 1 until n) {
+            val dx = s.xs[i] - px
+            val dy = s.ys[i] - py
+            val m = hypot(dx, dy)
+            if (m < 10f) continue
+            if (ldx != 0f || ldy != 0f) {
+                val dot = dx * ldx + dy * ldy
+                if (dot / (m * hypot(ldx, ldy)) < -0.3f) {
+                    total++
+                    val a = if (horizontal) px else py
+                    val side = if (a - lo < 0.22f * ext) -1 else if (hi - a < 0.22f * ext) 1 else 0
+                    if (side != 0) {
+                        edge++
+                        if (side != lastSide) alternating++
+                        lastSide = side
+                    }
+                }
+            }
+            ldx = dx
+            ldy = dy
+            px = s.xs[i]
+            py = s.ys[i]
+        }
+        return edge >= 4 && edge >= 0.75f * total && alternating >= 3
+    }
+
+    /** Karalamanın kapladığı alandaki çizgileri ve yazıları siler; silinecek bir şey yoksa false döner. */
+    private fun eraseUnderScribble(s: Stroke): Boolean {
+        var minX = s.xs[0]
+        var maxX = minX
+        var minY = s.ys[0]
+        var maxY = minY
+        for (i in s.xs.indices) {
+            minX = min(minX, s.xs[i]); maxX = max(maxX, s.xs[i])
+            minY = min(minY, s.ys[i]); maxY = max(maxY, s.ys[i])
+        }
+        val pad = 26f
+        val victims = ArrayList<Pair<Int, Stroke>>()
+        if (eraseInk) {
+            for (i in strokes.indices.reversed()) {
+                val t = strokes[i]
+                var inside = 0
+                for (k in t.xs.indices) {
+                    if (t.xs[k] in (minX - pad)..(maxX + pad) && t.ys[k] in (minY - pad)..(maxY + pad)) inside++
+                }
+                if (t.xs.isNotEmpty() && inside >= 0.5f * t.xs.size) victims.add(Pair(i, t))
+            }
+        }
+        val itemVictims = ArrayList<Pair<Int, PageItem>>()
+        if (eraseText) {
+            for (k in page.items.indices.reversed()) {
+                val it = page.items[k]
+                if (it.type == PageItem.TEXT && it.x in (minX - pad)..(maxX + pad) && it.y in (minY - pad)..(maxY + pad)) {
+                    itemVictims.add(Pair(k, it))
+                }
+            }
+        }
+        if (victims.isEmpty() && itemVictims.isEmpty()) return false
+        for ((i, _) in victims) strokes.removeAt(i)
+        for ((k, it) in itemVictims) {
+            page.items.removeAt(k)
+            if (selectedItem === it) selectedItem = null
+        }
+        if (victims.isNotEmpty()) undoStack.add(HistoryAction.Erase(victims))
+        if (itemVictims.isNotEmpty()) undoStack.add(HistoryAction.ItemsErase(itemVictims))
+        redoStack.clear()
+        current = null
+        straightLive = false
+        rebuildBase()
+        onChanged?.invoke()
         return true
     }
 

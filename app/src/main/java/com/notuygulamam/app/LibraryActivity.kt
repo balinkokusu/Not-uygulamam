@@ -389,8 +389,13 @@ class LibraryActivity : Activity() {
     private fun showNewMenu() {
         AlertDialog.Builder(this)
             .setTitle("Yeni")
-            .setItems(arrayOf("Yeni defter", "Yeni klasör")) { _, which ->
-                showEditor(null, which == 1)
+            .setItems(arrayOf("Yeni defter", "Planlayıcı $plannerYear (hazır defter)", "Planlayıcı ${plannerYear + 1}", "Yeni klasör")) { _, which ->
+                when (which) {
+                    0 -> showEditor(null, false)
+                    1 -> showEditor(null, false, plannerYear)
+                    2 -> showEditor(null, false, plannerYear + 1)
+                    else -> showEditor(null, true)
+                }
             }
             .show()
     }
@@ -459,12 +464,18 @@ class LibraryActivity : Activity() {
     }
 
     /** Yeni defter/klasör oluşturma ve var olanı düzenleme penceresi. */
-    private fun showEditor(existing: LibraryItem?, isFolder: Boolean) {
+    private val plannerYear: Int
+        get() {
+            val c = java.util.Calendar.getInstance()
+            return c.get(java.util.Calendar.YEAR) + if (c.get(java.util.Calendar.MONTH) >= 8) 1 else 0
+        }
+
+    private fun showEditor(existing: LibraryItem?, isFolder: Boolean, presetPlanner: Int = 0) {
         val draft = existing?.copy() ?: LibraryItem(store.newId(), isFolder, "", folderId)
         if (existing == null) draft.color = palette[if (isFolder) 4 else 0]
-        var paperIdx = Paper.RULED.ordinal
-        val nowCal = java.util.Calendar.getInstance()
-        val plannerYear = nowCal.get(java.util.Calendar.YEAR) + if (nowCal.get(java.util.Calendar.MONTH) >= 8) 1 else 0
+        var paperIdx = if (presetPlanner > 0) Paper.values().size else Paper.RULED.ordinal
+        val plannerYear = if (presetPlanner > 0) presetPlanner else this.plannerYear
+        if (existing == null && presetPlanner > 0) draft.title = "Planlayıcı $presetPlanner"
         var committed = false
         val chooser = PageStyleChooser(this, 1200f, 1697f, Color.WHITE)
         val thumbs = ArrayList<View>()

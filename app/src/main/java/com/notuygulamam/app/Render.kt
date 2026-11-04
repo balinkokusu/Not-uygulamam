@@ -42,9 +42,43 @@ class PageRenderer {
     /** Duyarlılık 0'da çarpan 1; 1'de çarpan 0,2 (hafif basınç) ile 2,8 (tam basınç) arasında. */
     fun widthFactor(s: Stroke, p: Float): Float = 1f - s.sens * 0.85f + s.sens * 3.0f * p
 
+    private fun kindScale(k: Int): Float = when (k) {
+        1 -> 0.7f
+        2 -> 0.9f
+        3 -> 1.9f
+        4 -> 1.8f
+        else -> 1f
+    }
+
+    /** Son üç parçanın ortalama uzunluğundan hız tahmini: hızlı çizgi 0,4'e, yavaş çizgi 1'e yaklaşır. */
+    private fun speedFactor(s: Stroke, i: Int): Float {
+        var sum = 0f
+        var cnt = 0
+        for (j in max(1, i - 2)..i) {
+            sum += Math.hypot((s.xs[j] - s.xs[j - 1]).toDouble(), (s.ys[j] - s.ys[j - 1]).toDouble()).toFloat()
+            cnt++
+        }
+        val len = sum / cnt
+        return (1f / (1f + len * 0.12f)).coerceIn(0.4f, 1f)
+    }
+
     fun segmentWidth(s: Stroke, i: Int): Float {
         val p = (s.ps[i] + s.ps[i - 1]) / 2f
-        return s.width * widthFactor(s, p)
+        var w = s.width * widthFactor(s, p) * kindScale(s.kind)
+        when (s.kind) {
+            0 -> {
+                // Dolma kalem: uç açısı yüzünden çizginin yönüne göre kalınlık değişir
+                val dx = s.xs[i] - s.xs[i - 1]
+                val dy = s.ys[i] - s.ys[i - 1]
+                if (dx != 0f || dy != 0f) {
+                    val ang = Math.atan2(dy.toDouble(), dx.toDouble())
+                    w *= (0.4 + 0.6 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 1.25f
+                }
+            }
+            3 -> w *= speedFactor(s, i)
+            4 -> w *= 0.92f + 0.16f * (1f - speedFactor(s, i))
+        }
+        return w
     }
 
     fun drawPaper(c: Canvas, page: PageData) {
@@ -289,22 +323,33 @@ class PageRenderer {
         linePaint.strokeCap = Paint.Cap.ROUND
         when (s.kind) {
             2 -> {
-                // Kurşun kalem: yarı saydam, hafif titrek iki geçiş
-                val j = (hash(i) - 0.5f) * w * 0.7f
-                val j2 = (hash(i, 7) - 0.5f) * w * 0.7f
-                linePaint.alpha = 120
-                linePaint.strokeWidth = w * 0.95f
+                // Kurşun kalem: hafif saydam iz ve üzerine serpilmiş grafit taneleri
+                val p = (s.ps[i] + s.ps[i - 1]) / 2f
+                val len = Math.hypot((x1 - x0).toDouble(), (y1 - y0).toDouble()).toFloat()
+                val base = s.width * 0.9f * (0.75f + 0.5f * p)
+                linePaint.alpha = (45 + 70 * p).toInt().coerceAtMost(255)
+                linePaint.strokeWidth = base * 0.8f
                 c.drawLine(x0, y0, x1, y1, linePaint)
-                linePaint.alpha = 80
-                linePaint.strokeWidth = w * 0.55f
-                c.drawLine(x0 + j, y0 + j2, x1 + j, y1 + j2, linePaint)
                 linePaint.alpha = 255
+                fillPaint.setColor(s.color)
+                val steps = max(1, (len / (base * 0.28f)).toInt() + 1)
+                for (k in 0 until steps) {
+                    val t = (k + hash(i * 31 + k, 11)) / steps
+                    val h1 = hash(i * 31 + k, 1)
+                    val h2 = hash(i * 31 + k, 2)
+                    val h3 = hash(i * 31 + k, 3)
+                    val px = x0 + (x1 - x0) * t + (h1 - 0.5f) * base * 1.1f
+                    val py = y0 + (y1 - y0) * t + (h2 - 0.5f) * base * 1.1f
+                    fillPaint.alpha = (40 + 150 * h3 * (0.5f + p)).toInt().coerceIn(0, 255)
+                    c.drawCircle(px, py, base * (0.07f + 0.16f * h3), fillPaint)
+                }
+                fillPaint.alpha = 255
             }
             3 -> {
-                // Fırça: uçlarda incelen, basınca kalınlaşan çizgi
+                // Fırça: başta ve sonda incelen çizgi
                 val n = s.xs.size
-                var t = minOf(1f, 0.3f + i / 7f)
-                if (last) t = minOf(t, 0.3f + (n - 1 - i) / 7f)
+                var t = minOf(1f, 0.25f + i / 10f)
+                if (last) t = minOf(t, 0.25f + (n - 1 - i) / 10f)
                 w *= t
                 linePaint.strokeWidth = w
                 c.drawLine(x0, y0, x1, y1, linePaint)
@@ -420,14 +465,6 @@ class PageRenderer {
 
     // ---- Sayfa nesneleri: metin, çıkartma, resim ----
 
-    companion object {
-        val FONT_NAMES = arrayOf("Düz", "İnce", "Kalın", "Dar", "Kitap", "Daktilo", "El yazısı", "Gündelik")
-        val FONT_FAMILIES = arrayOf(
-            "sans-serif", "sans-serif-light", "sans-serif-black", "sans-serif-condensed",
-            "serif", "monospace", "cursive", "casual"
-        )
-    }
-
     private val itemText = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
 
     private fun layoutOf(it: PageItem): android.text.StaticLayout {
@@ -436,7 +473,7 @@ class PageRenderer {
         val flags = if (it.type == PageItem.TEXT) it.kind else 0
         val style = (if (flags and 256 != 0) android.graphics.Typeface.BOLD else 0) or
             (if (flags and 512 != 0) android.graphics.Typeface.ITALIC else 0)
-        itemText.typeface = android.graphics.Typeface.create(FONT_FAMILIES[(flags and 255).coerceIn(0, FONT_FAMILIES.size - 1)], style)
+        itemText.typeface = Fonts.get(flags and 255, style)
         val txt = if (it.text.isEmpty()) " " else it.text
         return android.text.StaticLayout.Builder.obtain(txt, 0, txt.length, itemText, maxOf(40, it.w.toInt())).build()
     }
