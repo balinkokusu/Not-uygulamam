@@ -284,3 +284,46 @@ class PageStyleChooser(
         }
     }
 }
+
+/** Sayfa listesi için bir sayfanın küçük resmi. */
+class PageThumb(context: Context, private val page: PageData) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val renderer = PageRenderer()
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = 62f
+        val h = (w * page.height / page.width).coerceIn(44f, 100f)
+        setMeasuredDimension((w * d).toInt() + (8 * d).toInt(), (h * d).toInt() + (4 * d).toInt())
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width - 8f * d
+        val h = height - 4f * d
+        c.save()
+        c.translate(4f * d, 2f * d)
+        c.clipRect(0f, 0f, w, h)
+        c.drawColor(page.paperColor)
+        if (page.pdfName != null) {
+            c.drawColor(Color.WHITE)
+            txt.setColor(Look.inkSoft)
+            txt.textSize = 11f * d
+            c.drawText("PDF", w / 2f, h / 2f, txt)
+        } else {
+            val k = w / page.width
+            c.save()
+            c.scale(k, k)
+            renderer.drawPaper(c, page)
+            renderer.drawItems(c, page, false)
+            for (s in page.strokes) renderer.drawStroke(c, s)
+            renderer.drawItems(c, page, true)
+            c.restore()
+        }
+        c.restore()
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = d
+        p.setColor(Look.hairline)
+        c.drawRect(4f * d, 2f * d, 4f * d + w, 2f * d + h, p)
+    }
+}

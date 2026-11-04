@@ -60,6 +60,14 @@ class DrawView(context: Context) : View(context) {
     /** Seçili metin/çıkartma/resim. */
     var selectedItem: PageItem? = null
         private set
+    var onSelection: (() -> Unit)? = null
+
+    private fun setSel(it: PageItem?) {
+        if (selectedItem !== it) {
+            selectedItem = it
+            onSelection?.invoke()
+        }
+    }
 
     /** Metin aracıyla boşa dokunulunca (item=null, x, y) ya da seçili metne tekrar dokunulunca çağrılır. */
     var onTextTap: ((PageItem?, Float, Float) -> Unit)? = null
@@ -395,7 +403,7 @@ class DrawView(context: Context) : View(context) {
         undoStack = p.undo
         redoStack = p.redo
         current = null
-        selectedItem = null
+        setSel(null)
         strokeActive = false
         straightLive = false
         gestureRemoved.clear()
@@ -535,8 +543,9 @@ class DrawView(context: Context) : View(context) {
                 c.drawBitmap(b, null, bgRect, bgPaint)
             }
             renderer.drawPaper(c, pg)
-            renderer.drawItems(c, pg)
+            renderer.drawItems(c, pg, false)
             for (s in pg.strokes) drawStroke(c, s)
+            renderer.drawItems(c, pg, true)
             c.restore()
         }
         invalidate()
@@ -641,7 +650,45 @@ class DrawView(context: Context) : View(context) {
         page.items.add(it)
         undoStack.add(HistoryAction.ItemAdd(it))
         redoStack.clear()
-        selectedItem = it
+        setSel(it)
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    private fun reorder(newIndex: (Int, Int) -> Int) {
+        val it = selectedItem ?: return
+        val i = page.items.indexOf(it)
+        if (i < 0) return
+        val j = newIndex(i, page.items.size).coerceIn(0, page.items.size - 1)
+        if (j == i) return
+        page.items.removeAt(i)
+        page.items.add(j, it)
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    fun bringForward() = reorder { i, _ -> i + 1 }
+    fun sendBackward() = reorder { i, _ -> i - 1 }
+    fun bringToFront() = reorder { _, n -> n - 1 }
+    fun sendToBack() = reorder { _, _ -> 0 }
+
+    /** Nesneyi çizgilerin üstüne ya da altına alır. */
+    fun toggleAbove() {
+        val it = selectedItem ?: return
+        it.above = !it.above
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    fun duplicateSelected() {
+        val it = selectedItem ?: return
+        val c = it.copy()
+        c.x += 40f
+        c.y += 40f
+        page.items.add(c)
+        undoStack.add(HistoryAction.ItemAdd(c))
+        redoStack.clear()
+        setSel(c)
         rebuildBase()
         onChanged?.invoke()
     }
@@ -653,7 +700,7 @@ class DrawView(context: Context) : View(context) {
         page.items.removeAt(idx)
         undoStack.add(HistoryAction.ItemRemove(it, idx))
         redoStack.clear()
-        selectedItem = null
+        setSel(null)
         rebuildBase()
         onChanged?.invoke()
     }
@@ -706,7 +753,7 @@ class DrawView(context: Context) : View(context) {
                 val hit = page.items.lastOrNull { itemHit(it, gx, gy) }
                 if (hit != null) {
                     tapOnSelected = hit === selectedItem
-                    selectedItem = hit
+                    setSel(hit)
                     dragItem = hit
                     dragMode = 1
                     dragSx = gx
@@ -714,7 +761,7 @@ class DrawView(context: Context) : View(context) {
                     itemX0 = hit.x
                     itemY0 = hit.y
                 } else {
-                    selectedItem = null
+                    setSel(null)
                     if (tool == Tool.TEXT) {
                         createPending = true
                         createX = gx
@@ -1302,49 +1349,67 @@ class DrawView(context: Context) : View(context) {
         return true
     }
 
-    /** Aynı bölgede ileri geri sık yön değiştiren, kısa ve sık bir çizgi mi (karalama)? */
+    /** İleri geri sık yön değiştiren, kısa ve sık bir çizgi mi (karalama)? Ana ve dik eksen ayrı ayrı denenir. */
     private fun isScribble(s: Stroke): Boolean {
         val n = s.xs.size
         if (n < 12) return false
-        var minX = s.xs[0]
-        var maxX = minX
-        var minY = s.ys[0]
-        var maxY = minY
+        var mx = 0f
+        var my = 0f
+        for (i in 0 until n) { mx += s.xs[i]; my += s.ys[i] }
+        mx /= n
+        my /= n
+        var sxx = 0f
+        var syy = 0f
+        var sxy = 0f
         var len = 0f
         for (i in 0 until n) {
-            minX = min(minX, s.xs[i]); maxX = max(maxX, s.xs[i])
-            minY = min(minY, s.ys[i]); maxY = max(maxY, s.ys[i])
+            val dx = s.xs[i] - mx
+            val dy = s.ys[i] - my
+            sxx += dx * dx; syy += dy * dy; sxy += dx * dy
             if (i > 0) len += hypot(s.xs[i] - s.xs[i - 1], s.ys[i] - s.ys[i - 1])
         }
-        val horizontal = (maxX - minX) >= (maxY - minY)
-        val ext = if (horizontal) maxX - minX else maxY - minY
-        if (ext < 60f || len < 3.2f * ext) return false
-        val lo = if (horizontal) minX else minY
-        val hi = if (horizontal) maxX else maxY
+        val th = 0.5 * Math.atan2((2f * sxy).toDouble(), (sxx - syy).toDouble())
+        val ux = Math.cos(th).toFloat()
+        val uy = Math.sin(th).toFloat()
+        var loA = Float.MAX_VALUE
+        var hiA = -Float.MAX_VALUE
+        var loB = Float.MAX_VALUE
+        var hiB = -Float.MAX_VALUE
+        for (i in 0 until n) {
+            val a = (s.xs[i] - mx) * ux + (s.ys[i] - my) * uy
+            val b = -(s.xs[i] - mx) * uy + (s.ys[i] - my) * ux
+            loA = min(loA, a); hiA = max(hiA, a)
+            loB = min(loB, b); hiB = max(hiB, b)
+        }
+        val extA = hiA - loA
+        val extB = hiB - loB
+        if (max(extA, extB) < 50f || len < 3f * max(extA, extB)) return false
         var px = s.xs[0]
         var py = s.ys[0]
         var ldx = 0f
         var ldy = 0f
         var total = 0
-        var edge = 0
-        var lastSide = 0
-        var alternating = 0
+        var edgeA = 0
+        var edgeB = 0
+        var altA = 0
+        var altB = 0
+        var sideA = 0
+        var sideB = 0
         for (i in 1 until n) {
             val dx = s.xs[i] - px
             val dy = s.ys[i] - py
             val m = hypot(dx, dy)
-            if (m < 10f) continue
+            if (m < 9f) continue
             if (ldx != 0f || ldy != 0f) {
                 val dot = dx * ldx + dy * ldy
-                if (dot / (m * hypot(ldx, ldy)) < -0.3f) {
+                if (dot / (m * hypot(ldx, ldy)) < -0.15f) {
                     total++
-                    val a = if (horizontal) px else py
-                    val side = if (a - lo < 0.22f * ext) -1 else if (hi - a < 0.22f * ext) 1 else 0
-                    if (side != 0) {
-                        edge++
-                        if (side != lastSide) alternating++
-                        lastSide = side
-                    }
+                    val a = (px - mx) * ux + (py - my) * uy
+                    val b = -(px - mx) * uy + (py - my) * ux
+                    val sa = if (extA >= 40f) (if (a - loA < 0.25f * extA) -1 else if (hiA - a < 0.25f * extA) 1 else 0) else 0
+                    val sb = if (extB >= 40f) (if (b - loB < 0.25f * extB) -1 else if (hiB - b < 0.25f * extB) 1 else 0) else 0
+                    if (sa != 0) { edgeA++; if (sa != sideA) altA++; sideA = sa }
+                    if (sb != 0) { edgeB++; if (sb != sideB) altB++; sideB = sb }
                 }
             }
             ldx = dx
@@ -1352,45 +1417,63 @@ class DrawView(context: Context) : View(context) {
             px = s.xs[i]
             py = s.ys[i]
         }
-        return edge >= 4 && edge >= 0.75f * total && alternating >= 3
+        if (total < 4) return false
+        return (edgeA >= 4 && edgeA >= 0.7f * total && altA >= 3) || (edgeB >= 4 && edgeB >= 0.7f * total && altB >= 3)
     }
 
-    /** Karalamanın kapladığı alandaki çizgileri ve yazıları siler; silinecek bir şey yoksa false döner. */
+    /** Karalamanın yolunun hemen çevresindeki çizgileri ve yazıları siler; silinecek bir şey yoksa false döner. */
     private fun eraseUnderScribble(s: Stroke): Boolean {
-        var minX = s.xs[0]
-        var maxX = minX
-        var minY = s.ys[0]
-        var maxY = minY
-        for (i in s.xs.indices) {
-            minX = min(minX, s.xs[i]); maxX = max(maxX, s.xs[i])
-            minY = min(minY, s.ys[i]); maxY = max(maxY, s.ys[i])
+        val cell = 16f
+        val gw = (page.width / cell).toInt() + 6
+        val gh = (page.height / cell).toInt() + 6
+        val mark = BooleanArray(gw * gh)
+        val radius = max(26f, s.width * 1.6f)
+        val rc = (radius / cell).toInt() + 1
+        fun stampAt(x: Float, y: Float) {
+            val cx = (x / cell).toInt() + 2
+            val cy = (y / cell).toInt() + 2
+            for (gy in cy - rc..cy + rc) for (gx in cx - rc..cx + rc) {
+                if (gx < 0 || gy < 0 || gx >= gw || gy >= gh) continue
+                val ddx = (gx - 2 + 0.5f) * cell - x
+                val ddy = (gy - 2 + 0.5f) * cell - y
+                if (ddx * ddx + ddy * ddy <= radius * radius) mark[gy * gw + gx] = true
+            }
         }
-        val pad = 26f
+        for (i in 1 until s.xs.size) {
+            val len = hypot(s.xs[i] - s.xs[i - 1], s.ys[i] - s.ys[i - 1])
+            val steps = max(1, (len / 8f).toInt())
+            for (k in 0..steps) {
+                val t = k / steps.toFloat()
+                stampAt(s.xs[i - 1] + (s.xs[i] - s.xs[i - 1]) * t, s.ys[i - 1] + (s.ys[i] - s.ys[i - 1]) * t)
+            }
+        }
+        fun marked(x: Float, y: Float): Boolean {
+            val gx = (x / cell).toInt() + 2
+            val gy = (y / cell).toInt() + 2
+            return gx in 0 until gw && gy in 0 until gh && mark[gy * gw + gx]
+        }
         val victims = ArrayList<Pair<Int, Stroke>>()
         if (eraseInk) {
             for (i in strokes.indices.reversed()) {
                 val t = strokes[i]
+                if (t.xs.isEmpty()) continue
                 var inside = 0
-                for (k in t.xs.indices) {
-                    if (t.xs[k] in (minX - pad)..(maxX + pad) && t.ys[k] in (minY - pad)..(maxY + pad)) inside++
-                }
-                if (t.xs.isNotEmpty() && inside >= 0.5f * t.xs.size) victims.add(Pair(i, t))
+                for (k in t.xs.indices) if (marked(t.xs[k], t.ys[k])) inside++
+                if (inside >= 0.7f * t.xs.size) victims.add(Pair(i, t))
             }
         }
         val itemVictims = ArrayList<Pair<Int, PageItem>>()
         if (eraseText) {
             for (k in page.items.indices.reversed()) {
                 val it = page.items[k]
-                if (it.type == PageItem.TEXT && it.x in (minX - pad)..(maxX + pad) && it.y in (minY - pad)..(maxY + pad)) {
-                    itemVictims.add(Pair(k, it))
-                }
+                if (it.type == PageItem.TEXT && marked(it.x, it.y)) itemVictims.add(Pair(k, it))
             }
         }
         if (victims.isEmpty() && itemVictims.isEmpty()) return false
         for ((i, _) in victims) strokes.removeAt(i)
         for ((k, it) in itemVictims) {
             page.items.removeAt(k)
-            if (selectedItem === it) selectedItem = null
+            if (selectedItem === it) setSel(null)
         }
         if (victims.isNotEmpty()) undoStack.add(HistoryAction.Erase(victims))
         if (itemVictims.isNotEmpty()) undoStack.add(HistoryAction.ItemsErase(itemVictims))
@@ -1428,7 +1511,7 @@ class DrawView(context: Context) : View(context) {
             if (allowed && itemNear(it, x, y, r)) {
                 gestureRemovedItems.add(Pair(k, it))
                 page.items.removeAt(k)
-                if (selectedItem === it) selectedItem = null
+                if (selectedItem === it) setSel(null)
                 removedAny = true
             }
             k--
@@ -1476,7 +1559,7 @@ class DrawView(context: Context) : View(context) {
             }
             is HistoryAction.ItemAdd -> {
                 page.items.remove(a.item)
-                if (selectedItem === a.item) selectedItem = null
+                if (selectedItem === a.item) setSel(null)
             }
             is HistoryAction.ItemRemove -> page.items.add(min(a.index, page.items.size), a.item)
             is HistoryAction.ItemsErase -> {
@@ -1499,11 +1582,11 @@ class DrawView(context: Context) : View(context) {
             is HistoryAction.ItemAdd -> page.items.add(a.item)
             is HistoryAction.ItemRemove -> {
                 page.items.remove(a.item)
-                if (selectedItem === a.item) selectedItem = null
+                if (selectedItem === a.item) setSel(null)
             }
             is HistoryAction.ItemsErase -> {
                 for ((_, it) in a.removed) page.items.remove(it)
-                selectedItem = null
+                setSel(null)
             }
         }
         undoStack.add(a)

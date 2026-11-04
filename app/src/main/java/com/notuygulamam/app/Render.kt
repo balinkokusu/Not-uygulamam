@@ -46,7 +46,7 @@ class PageRenderer {
         1 -> 0.7f
         2 -> 0.9f
         3 -> 1.9f
-        4 -> 1.8f
+        4 -> 1.3f
         else -> 1f
     }
 
@@ -76,7 +76,7 @@ class PageRenderer {
                 }
             }
             3 -> w *= speedFactor(s, i)
-            4 -> w *= 0.92f + 0.16f * (1f - speedFactor(s, i))
+            4 -> w *= 0.85f + 0.3f * (1f - speedFactor(s, i))
         }
         return w
     }
@@ -323,25 +323,28 @@ class PageRenderer {
         linePaint.strokeCap = Paint.Cap.ROUND
         when (s.kind) {
             2 -> {
-                // Kurşun kalem: hafif saydam iz ve üzerine serpilmiş grafit taneleri
+                // Kurşun kalem: ince, hafif saydam bir iz ve çizginin içinde kalan ince grafit tanesi
                 val p = (s.ps[i] + s.ps[i - 1]) / 2f
                 val len = Math.hypot((x1 - x0).toDouble(), (y1 - y0).toDouble()).toFloat()
-                val base = s.width * 0.9f * (0.75f + 0.5f * p)
-                linePaint.alpha = (45 + 70 * p).toInt().coerceAtMost(255)
-                linePaint.strokeWidth = base * 0.8f
+                val base = s.width * 0.75f * (0.8f + 0.4f * p)
+                linePaint.alpha = (110 + 80 * p).toInt().coerceAtMost(235)
+                linePaint.strokeWidth = base * 0.62f
                 c.drawLine(x0, y0, x1, y1, linePaint)
                 linePaint.alpha = 255
                 fillPaint.setColor(s.color)
-                val steps = max(1, (len / (base * 0.28f)).toInt() + 1)
+                val steps = max(1, (len / (base * 0.35f)).toInt() + 1)
+                val nx = if (len > 0f) -(y1 - y0) / len else 0f
+                val ny = if (len > 0f) (x1 - x0) / len else 0f
                 for (k in 0 until steps) {
                     val t = (k + hash(i * 31 + k, 11)) / steps
                     val h1 = hash(i * 31 + k, 1)
                     val h2 = hash(i * 31 + k, 2)
                     val h3 = hash(i * 31 + k, 3)
-                    val px = x0 + (x1 - x0) * t + (h1 - 0.5f) * base * 1.1f
-                    val py = y0 + (y1 - y0) * t + (h2 - 0.5f) * base * 1.1f
-                    fillPaint.alpha = (40 + 150 * h3 * (0.5f + p)).toInt().coerceIn(0, 255)
-                    c.drawCircle(px, py, base * (0.07f + 0.16f * h3), fillPaint)
+                    val off = (h1 - 0.5f) * base * 0.8f
+                    val px = x0 + (x1 - x0) * t + nx * off
+                    val py = y0 + (y1 - y0) * t + ny * off
+                    fillPaint.alpha = (30 + 110 * h3 * (0.6f + p)).toInt().coerceIn(0, 200)
+                    c.drawCircle(px, py, base * (0.05f + 0.07f * h2), fillPaint)
                 }
                 fillPaint.alpha = 255
             }
@@ -493,8 +496,9 @@ class PageRenderer {
         if (it.type == PageItem.TEXT) it.h = layoutOf(it).height.toFloat() + 12f
     }
 
-    fun drawItems(c: Canvas, page: PageData) {
-        for (it in page.items) drawItem(c, it)
+    /** above=false: çizgilerin altındaki nesneler, above=true: üstündekiler. */
+    fun drawItems(c: Canvas, page: PageData, above: Boolean = false) {
+        for (it in page.items) if (it.above == above) drawItem(c, it)
     }
 
     fun drawItem(c: Canvas, it: PageItem) {
@@ -561,8 +565,9 @@ object PdfExporter {
                     }
                 }
                 renderer.drawPaper(c, pg)
-                renderer.drawItems(c, pg)
+                renderer.drawItems(c, pg, false)
                 for (s in pg.strokes) renderer.drawStroke(c, s)
+                renderer.drawItems(c, pg, true)
                 doc.finishPage(page)
             }
             doc.writeTo(out)

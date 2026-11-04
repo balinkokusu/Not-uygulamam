@@ -36,6 +36,16 @@ class PageItem(var type: Int, var x: Float, var y: Float) {
     var size = 44f
     var kind = 0
 
+    /** true ise nesne çizgilerin üstünde, false ise altında çizilir. */
+    var above = false
+
+    fun copy(): PageItem {
+        val c = PageItem(type, x, y)
+        c.w = w; c.h = h; c.rot = rot; c.color = color; c.text = text
+        c.size = size; c.kind = kind; c.above = above; c.data = data
+        return c
+    }
+
     /** Resim çıkartmasının sıkıştırılmış baytları (JPEG ya da PNG). */
     var data: ByteArray? = null
 
@@ -107,7 +117,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 6
+    private const val VERSION = 7
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -154,6 +164,7 @@ object Storage {
                     o.writeUTF(it.text)
                     o.writeFloat(it.size)
                     o.writeInt(it.kind)
+                    o.writeBoolean(it.above)
                     val dt = it.data
                     o.writeInt(dt?.size ?: -1)
                     if (dt != null) o.write(dt)
@@ -180,7 +191,7 @@ object Storage {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
                 val ver = i.readInt()
-                if (ver < 1 || ver > 6) return null
+                if (ver < 1 || ver > 7) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()
@@ -225,6 +236,7 @@ object Storage {
                             it.text = i.readUTF()
                             it.size = i.readFloat()
                             it.kind = i.readInt()
+                            if (ver >= 7) it.above = i.readBoolean()
                             val len = i.readInt()
                             if (len >= 0) {
                                 val b = ByteArray(len)

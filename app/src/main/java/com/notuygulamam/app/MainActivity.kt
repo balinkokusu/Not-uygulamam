@@ -65,6 +65,8 @@ class MainActivity : Activity() {
     private lateinit var spreadBtn: IconButton
     private lateinit var presetRow: LinearLayout
     private lateinit var kindRow: LinearLayout
+    private lateinit var itemBar: LinearLayout
+    private lateinit var layerBtn: TextView
     private var autoTabs = true
 
     class PageTemplate(val name: String, val paper: Paper, val header: String, val withDate: Boolean, val builtin: Boolean)
@@ -384,11 +386,13 @@ class MainActivity : Activity() {
         for ((i, t) in all.withIndex()) m.menu.add(0, 2000 + i, 1 + i, t.name + "  ·  " + t.paper.label)
         m.menu.add(0, 1001, 100, "Kâğıt şablonlarını gör…")
         m.menu.add(0, 1002, 101, "Şablonlarım: yeni oluştur / sil…")
+        m.menu.add(0, 1003, 102, "Planlayıcıyı bu deftere ekle…")
         m.setOnMenuItemClickListener { mi ->
             when {
                 mi.itemId == 1000 -> addPage()
                 mi.itemId == 1001 -> showTemplatePageDialog()
                 mi.itemId == 1002 -> showTemplateManager()
+                mi.itemId == 1003 -> showAddPlannerDialog()
                 mi.itemId >= 2000 -> all.getOrNull(mi.itemId - 2000)?.let { addTemplatePage(it) }
             }
             true
@@ -852,6 +856,7 @@ class MainActivity : Activity() {
         spreadBtn.active = spread
         rebuildPresets()
         rebuildKinds()
+        refreshItemBar()
         rebuildTabs()
 
         val st = sliderTool()
@@ -917,23 +922,8 @@ class MainActivity : Activity() {
     }
 
     private fun deleteCurrentPage() {
-        if (nb.pages.size <= 1) return
         val idx = nb.pages.indexOf(draw.page).let { if (it < 0) nb.current else it }
-        val gone = nb.pages[idx]
-        nb.pages.removeAt(idx)
-        if (nb.current >= nb.pages.size) nb.current = nb.pages.size - 1
-        val heir = nb.pages[minOf(idx, nb.pages.size - 1)]
-        val dead = ArrayList<Tab>()
-        for (t in nb.tabs) {
-            if (t.target !== gone) continue
-            if (t.auto) {
-                val same = if (gone.dateKey != 0) nb.pages.firstOrNull { it.dateKey == gone.dateKey } else null
-                if (same != null) t.target = same else dead.add(t)
-            } else {
-                t.target = heir
-            }
-        }
-        nb.tabs.removeAll(dead)
+        if (!removePageAt(idx)) return
         showCurrent()
         refresh()
         scheduleSave()
@@ -1302,19 +1292,145 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun refreshItemBar() {
+        if (!::itemBar.isInitialized) return
+        val sel = draw.selectedItem
+        val show = sel != null && (draw.tool == Tool.TEXT || draw.tool == Tool.OBJECT)
+        itemBar.visibility = if (show) View.VISIBLE else View.GONE
+        if (sel != null) layerBtn.text = if (sel.above) "Çizginin üstünde" else "Çizginin altında"
+    }
+
+    private fun buildItemBar(): LinearLayout {
+        val bar = LinearLayout(this)
+        bar.orientation = LinearLayout.HORIZONTAL
+        bar.gravity = Gravity.CENTER_VERTICAL
+        bar.background = bar(dp(22f).toFloat())
+        bar.elevation = dp(8f).toFloat()
+        bar.setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+        fun chip(label: String, action: () -> Unit): TextView {
+            val t = TextView(this)
+            t.text = label
+            t.textSize = 13f
+            t.setTextColor(Look.ink)
+            t.setPadding(dp(12f), dp(9f), dp(12f), dp(9f))
+            t.setOnClickListener {
+                action()
+                refreshItemBar()
+            }
+            bar.addView(t)
+            return t
+        }
+        chip("En arkaya") { draw.sendToBack() }
+        chip("Arkaya") { draw.sendBackward() }
+        chip("Öne") { draw.bringForward() }
+        chip("En öne") { draw.bringToFront() }
+        layerBtn = chip("Çizginin altında") { draw.toggleAbove() }
+        layerBtn.setTextColor(Look.accent)
+        chip("Çoğalt") { draw.duplicateSelected() }
+        chip("Sil") { draw.deleteSelected() }.setTextColor(Color.rgb(176, 60, 60))
+        bar.visibility = View.GONE
+        return bar
+    }
+
+    private fun removePageAt(idx: Int): Boolean {
+        if (nb.pages.size <= 1 || idx !in nb.pages.indices) return false
+        val gone = nb.pages[idx]
+        nb.pages.removeAt(idx)
+        if (nb.current >= nb.pages.size) nb.current = nb.pages.size - 1
+        val heir = nb.pages[minOf(idx, nb.pages.size - 1)]
+        val dead = ArrayList<Tab>()
+        for (t in nb.tabs) {
+            if (t.target !== gone) continue
+            if (t.auto) {
+                val same = if (gone.dateKey != 0) nb.pages.firstOrNull { it.dateKey == gone.dateKey } else null
+                if (same != null) t.target = same else dead.add(t)
+            } else {
+                t.target = heir
+            }
+        }
+        nb.tabs.removeAll(dead)
+        return true
+    }
+
+    /** Sayfaları küçük resimleriyle listeler; yukarı/aşağı okla sıralanır, çoğaltılır ve silinir. */
     private fun showPagesDialog() {
-        val labels = nb.pages.mapIndexed { i, pg ->
-            val kind = if (pg.pdfName != null) "PDF sayfa ${pg.pdfIndex + 1}" else pg.paper.label
-            val tn = nb.tabs.filter { it.target === pg }.joinToString(", ") { it.label }
-            val tabInfo = if (tn.isEmpty()) "" else "  [ayraç: $tn]"
-            "Sayfa ${i + 1}  ($kind, ${pg.strokes.size} çizgi)$tabInfo"
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Sayfalar")
-            .setItems(labels) { _, which -> gotoPage(which) }
-            .setNeutralButton("Bu sayfayı sil") { _, _ -> deleteCurrentPage() }
+        val keep = draw.page
+        val list = LinearLayout(this)
+        list.orientation = LinearLayout.VERTICAL
+        list.setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+        var dlg: AlertDialog? = null
+        lateinit var rebuild: () -> Unit
+        fun glyph(label: String, on: Boolean, action: () -> Unit): TextView {
+            val t = TextView(this)
+            t.text = label
+            t.textSize = 18f
+            t.gravity = Gravity.CENTER
+            t.setTextColor(if (on) Look.accent else Look.hairline)
+            val lp = LinearLayout.LayoutParams(dp(44f), dp(44f))
+            t.layoutParams = lp
+            if (on) t.setOnClickListener {
+                action()
+                scheduleSave()
+                rebuild()
+            }
+            return t
+        }
+        rebuild = {
+            list.removeAllViews()
+            for ((i, pg) in nb.pages.withIndex()) {
+                val row = LinearLayout(this)
+                row.orientation = LinearLayout.HORIZONTAL
+                row.gravity = Gravity.CENTER_VERTICAL
+                row.setPadding(0, dp(4f), 0, dp(4f))
+                val th = PageThumb(this, pg)
+                th.setOnClickListener {
+                    dlg?.dismiss()
+                    gotoPage(i)
+                }
+                row.addView(th)
+                val tn = nb.tabs.filter { it.target === pg }.joinToString(", ") { it.label }
+                val kind = if (pg.pdfName != null) "PDF sayfa ${pg.pdfIndex + 1}" else pg.paper.label
+                val tv = TextView(this)
+                val extra = ArrayList<String>()
+                if (pg.dateKey != 0) extra.add("${pg.dateKey % 100} ${Planner.SHORT[(pg.dateKey / 100 % 100 - 1).coerceIn(0, 11)]}")
+                if (tn.isNotEmpty()) extra.add("ayraç: $tn")
+                tv.text = "Sayfa ${i + 1}\n$kind" + (if (extra.isEmpty()) "" else "\n" + extra.joinToString(" · "))
+                tv.textSize = 13f
+                tv.setTextColor(if (pg === keep) Look.accent else Look.ink)
+                tv.setPadding(dp(12f), 0, dp(6f), 0)
+                tv.setOnClickListener {
+                    dlg?.dismiss()
+                    gotoPage(i)
+                }
+                row.addView(tv, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(glyph("▲", i > 0) { java.util.Collections.swap(nb.pages, i, i - 1) })
+                row.addView(glyph("▼", i < nb.pages.size - 1) { java.util.Collections.swap(nb.pages, i, i + 1) })
+                row.addView(glyph("⧉", true) {
+                    val cp = pg.snapshot()
+                    cp.items.clear()
+                    for (it in pg.items) cp.items.add(it.copy())
+                    nb.pages.add(i + 1, cp)
+                })
+                row.addView(glyph("✕", nb.pages.size > 1) { removePageAt(i) })
+                list.addView(row)
+            }
+        }
+        rebuild()
+        val sv = ScrollView(this)
+        sv.addView(list)
+        dlg = AlertDialog.Builder(this)
+            .setTitle("Sayfalar (▲▼ sıralar, ⧉ çoğaltır, ✕ siler)")
+            .setView(sv)
             .setNegativeButton("Kapat", null)
-            .show()
+            .create()
+        dlg.setOnDismissListener {
+            val at = nb.pages.indexOf(keep)
+            nb.current = if (at >= 0) at else minOf(nb.current, nb.pages.size - 1)
+            showCurrent()
+            refresh()
+            scheduleSave()
+        }
+        dlg.show()
     }
 
     private fun showPaperDialog() {
@@ -1387,6 +1503,7 @@ class MainActivity : Activity() {
             refresh()
         }
         draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
+        draw.onSelection = { refreshItemBar() }
         draw.onTabClick = { t ->
             var idx = nb.pages.indexOf(t.target)
             val key = t.target.dateKey
@@ -1612,7 +1729,14 @@ class MainActivity : Activity() {
         swLp.setMargins(dp(14f), dp(4f), dp(14f), dp(2f))
         root.addView(swatchScroll, swLp)
         root.addView(statusRow)
-        root.addView(draw, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        itemBar = buildItemBar()
+        val frame = android.widget.FrameLayout(this)
+        frame.addView(draw, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        val ibLp = android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT)
+        ibLp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        ibLp.bottomMargin = dp(16f)
+        frame.addView(itemBar, ibLp)
+        root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
         showCurrent()
