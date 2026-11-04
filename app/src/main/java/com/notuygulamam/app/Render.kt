@@ -420,14 +420,35 @@ class PageRenderer {
 
     // ---- Sayfa nesneleri: metin, çıkartma, resim ----
 
+    companion object {
+        val FONT_NAMES = arrayOf("Düz", "İnce", "Kalın", "Dar", "Kitap", "Daktilo", "El yazısı", "Gündelik")
+        val FONT_FAMILIES = arrayOf(
+            "sans-serif", "sans-serif-light", "sans-serif-black", "sans-serif-condensed",
+            "serif", "monospace", "cursive", "casual"
+        )
+    }
+
     private val itemText = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
 
     private fun layoutOf(it: PageItem): android.text.StaticLayout {
         itemText.setColor(it.color)
         itemText.textSize = it.size
-        itemText.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+        val flags = if (it.type == PageItem.TEXT) it.kind else 0
+        val style = (if (flags and 256 != 0) android.graphics.Typeface.BOLD else 0) or
+            (if (flags and 512 != 0) android.graphics.Typeface.ITALIC else 0)
+        itemText.typeface = android.graphics.Typeface.create(FONT_FAMILIES[(flags and 255).coerceIn(0, FONT_FAMILIES.size - 1)], style)
         val txt = if (it.text.isEmpty()) " " else it.text
         return android.text.StaticLayout.Builder.obtain(txt, 0, txt.length, itemText, maxOf(40, it.w.toInt())).build()
+    }
+
+    /** Kutuyu, en çok maxW genişliğe kadar metne göre daraltır; dokunma alanı gereksiz geniş kalmaz. */
+    fun fitText(it: PageItem, maxW: Float) {
+        it.w = maxW
+        val lay = layoutOf(it)
+        var m = 0f
+        for (i in 0 until lay.lineCount) m = max(m, lay.getLineWidth(i))
+        it.w = (m + 24f).coerceIn(120f, maxW)
+        measureItem(it)
     }
 
     /** Metin kutusunun yüksekliğini günceller. */

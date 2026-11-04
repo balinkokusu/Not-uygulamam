@@ -52,6 +52,7 @@ class PageItem(var type: Int, var x: Float, var y: Float) {
 sealed class HistoryAction {
     class ItemAdd(val item: PageItem) : HistoryAction()
     class ItemRemove(val item: PageItem, val index: Int) : HistoryAction()
+    class ItemsErase(val removed: List<Pair<Int, PageItem>>) : HistoryAction()
     class Add(val stroke: Stroke) : HistoryAction()
     class Erase(val removed: List<Pair<Int, Stroke>>) : HistoryAction()
 }

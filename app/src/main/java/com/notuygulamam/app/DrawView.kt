@@ -129,6 +129,13 @@ class DrawView(context: Context) : View(context) {
     private var strokeFromStylus = false
     private var straightLive = false
     private val gestureRemoved = ArrayList<Pair<Int, Stroke>>()
+    private val gestureRemovedItems = ArrayList<Pair<Int, PageItem>>()
+
+    /** Silgi hangi katmanları siler. */
+    var eraseInk = true
+    var eraseText = true
+    var eraseSticker = true
+    var eraseImage = true
 
     private var base: Bitmap? = null
     private var baseCanvas: Canvas? = null
@@ -981,6 +988,10 @@ class DrawView(context: Context) : View(context) {
         if (current != null || gestureErasing) {
             current = null
             straightLive = false
+            if (gestureErasing && gestureRemovedItems.isNotEmpty()) {
+                undoStack.add(HistoryAction.ItemsErase(ArrayList(gestureRemovedItems)))
+            }
+            gestureRemovedItems.clear()
             if (gestureErasing && gestureRemoved.isNotEmpty()) {
                 undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
                 redoStack.clear()
@@ -1136,6 +1147,7 @@ class DrawView(context: Context) : View(context) {
                     type == MotionEvent.TOOL_TYPE_ERASER ||
                     (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
                 gestureRemoved.clear()
+                gestureRemovedItems.clear()
                 val gx = pageX(e.x)
                 val gy = pageY(e.y)
                 if (gestureErasing) {
@@ -1230,6 +1242,8 @@ class DrawView(context: Context) : View(context) {
                     if (pe != null) for ((idx, st) in pe.asReversed()) strokes.add(min(idx, strokes.size), st)
                     for ((idx, st) in gestureRemoved.asReversed()) strokes.add(min(idx, strokes.size), st)
                     gestureRemoved.clear()
+                    for ((idx, it) in gestureRemovedItems.asReversed()) page.items.add(min(idx, page.items.size), it)
+                    gestureRemovedItems.clear()
                     current = null
                     straightLive = false
                     lastTapStroke = null
@@ -1252,12 +1266,14 @@ class DrawView(context: Context) : View(context) {
                     lastTapTime = 0L
                 }
                 if (gestureErasing) {
-                    if (gestureRemoved.isNotEmpty()) {
-                        undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
+                    if (gestureRemoved.isNotEmpty() || gestureRemovedItems.isNotEmpty()) {
+                        if (gestureRemoved.isNotEmpty()) undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
+                        if (gestureRemovedItems.isNotEmpty()) undoStack.add(HistoryAction.ItemsErase(ArrayList(gestureRemovedItems)))
                         redoStack.clear()
                         onChanged?.invoke()
                     }
                     gestureRemoved.clear()
+                    gestureRemovedItems.clear()
                 } else {
                     val s = current
                     if (s != null) {
@@ -1283,17 +1299,47 @@ class DrawView(context: Context) : View(context) {
     private fun eraseAt(x: Float, y: Float): Boolean {
         val r = eraserRadiusDp * density / sc
         var removedAny = false
-        var i = strokes.size - 1
-        while (i >= 0) {
-            val s = strokes[i]
-            if (hits(s, x, y, r + s.width / 2f)) {
-                gestureRemoved.add(Pair(i, s))
-                strokes.removeAt(i)
+        if (eraseInk) {
+            var i = strokes.size - 1
+            while (i >= 0) {
+                val s = strokes[i]
+                if (hits(s, x, y, r + s.width / 2f)) {
+                    gestureRemoved.add(Pair(i, s))
+                    strokes.removeAt(i)
+                    removedAny = true
+                }
+                i--
+            }
+        }
+        var k = page.items.size - 1
+        while (k >= 0) {
+            val it = page.items[k]
+            val allowed = when (it.type) {
+                PageItem.TEXT -> eraseText
+                PageItem.STICKER -> eraseSticker
+                else -> eraseImage
+            }
+            if (allowed && itemNear(it, x, y, r)) {
+                gestureRemovedItems.add(Pair(k, it))
+                page.items.removeAt(k)
+                if (selectedItem === it) selectedItem = null
                 removedAny = true
             }
-            i--
+            k--
         }
         return removedAny
+    }
+
+    private fun itemNear(it: PageItem, x: Float, y: Float, r: Float): Boolean {
+        renderer.measureItem(it)
+        val a = rad(-it.rot)
+        val dx = x - it.x
+        val dy = y - it.y
+        val lx = dx * Math.cos(a).toFloat() - dy * Math.sin(a).toFloat()
+        val ly = dx * Math.sin(a).toFloat() + dy * Math.cos(a).toFloat()
+        val ex = max(abs(lx) - it.w / 2f, 0f)
+        val ey = max(abs(ly) - it.h / 2f, 0f)
+        return hypot(ex, ey) <= r
     }
 
     private fun hits(s: Stroke, x: Float, y: Float, r: Float): Boolean {
@@ -1327,6 +1373,9 @@ class DrawView(context: Context) : View(context) {
                 if (selectedItem === a.item) selectedItem = null
             }
             is HistoryAction.ItemRemove -> page.items.add(min(a.index, page.items.size), a.item)
+            is HistoryAction.ItemsErase -> {
+                for ((idx, it) in a.removed.asReversed()) page.items.add(min(idx, page.items.size), it)
+            }
         }
         redoStack.add(a)
         rebuildBase()
@@ -1345,6 +1394,10 @@ class DrawView(context: Context) : View(context) {
             is HistoryAction.ItemRemove -> {
                 page.items.remove(a.item)
                 if (selectedItem === a.item) selectedItem = null
+            }
+            is HistoryAction.ItemsErase -> {
+                for ((_, it) in a.removed) page.items.remove(it)
+                selectedItem = null
             }
         }
         undoStack.add(a)

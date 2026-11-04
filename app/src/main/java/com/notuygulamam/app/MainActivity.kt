@@ -237,6 +237,41 @@ class MainActivity : Activity() {
     private fun rebuildKinds() {
         kindRow.removeAllViews()
         val st = sliderTool()
+        if (st == Tool.ERASER) {
+            kindRow.visibility = View.VISIBLE
+            val lbl = TextView(this)
+            lbl.text = "Silinecek katmanlar:"
+            lbl.textSize = 12f
+            lbl.setTextColor(Look.inkSoft)
+            lbl.setPadding(dp(8f), 0, dp(6f), 0)
+            lbl.gravity = Gravity.CENTER_VERTICAL
+            kindRow.addView(lbl)
+            fun chip(name: String, on: Boolean, flip: () -> Unit) {
+                val t = TextView(this)
+                t.text = name
+                t.textSize = 13f
+                t.setPadding(dp(12f), dp(7f), dp(12f), dp(7f))
+                t.setTextColor(if (on) Look.accent else Look.inkSoft)
+                val g = GradientDrawable()
+                g.cornerRadius = dp(12f).toFloat()
+                g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
+                g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
+                t.background = g
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.setMargins(dp(3f), dp(4f), dp(3f), dp(6f))
+                t.layoutParams = lp
+                t.setOnClickListener {
+                    flip()
+                    refresh()
+                }
+                kindRow.addView(t)
+            }
+            chip("Çizim", draw.eraseInk) { draw.eraseInk = !draw.eraseInk }
+            chip("Yazı", draw.eraseText) { draw.eraseText = !draw.eraseText }
+            chip("Çıkartma", draw.eraseSticker) { draw.eraseSticker = !draw.eraseSticker }
+            chip("Resim", draw.eraseImage) { draw.eraseImage = !draw.eraseImage }
+            return
+        }
         if (st != Tool.PEN && st != Tool.HIGHLIGHTER) {
             kindRow.visibility = View.GONE
             return
@@ -441,6 +476,52 @@ class MainActivity : Activity() {
             }
         }
         box.addView(et)
+        var fontIdx = (item?.kind ?: 0) and 255
+        val boldBox = CheckBox(this)
+        boldBox.text = "Kalın"
+        boldBox.isChecked = item != null && (item.kind and 256) != 0
+        val italicBox = CheckBox(this)
+        italicBox.text = "İtalik"
+        italicBox.isChecked = item != null && (item.kind and 512) != 0
+        val fontRow = LinearLayout(this)
+        fontRow.orientation = LinearLayout.HORIZONTAL
+        val fontChips = ArrayList<TextView>()
+        fun paintFonts() {
+            for ((i, t) in fontChips.withIndex()) {
+                val g = GradientDrawable()
+                g.cornerRadius = dp(10f).toFloat()
+                g.setColor(if (i == fontIdx) Look.accentSoft else Color.TRANSPARENT)
+                g.setStroke(dp(if (i == fontIdx) 2f else 1f), if (i == fontIdx) Look.accent else Look.hairline)
+                t.background = g
+            }
+        }
+        for (i in PageRenderer.FONT_NAMES.indices) {
+            val t = TextView(this)
+            t.text = "Aa Ğş\n" + PageRenderer.FONT_NAMES[i]
+            t.gravity = Gravity.CENTER
+            t.textSize = 15f
+            t.typeface = android.graphics.Typeface.create(PageRenderer.FONT_FAMILIES[i], android.graphics.Typeface.NORMAL)
+            t.setTextColor(Look.ink)
+            t.setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.setMargins(dp(3f), dp(8f), dp(3f), dp(4f))
+            t.layoutParams = lp
+            t.setOnClickListener {
+                fontIdx = i
+                paintFonts()
+            }
+            fontChips.add(t)
+            fontRow.addView(t)
+        }
+        paintFonts()
+        val fhs = HorizontalScrollView(this)
+        fhs.addView(fontRow)
+        box.addView(fhs)
+        val styleRow = LinearLayout(this)
+        styleRow.orientation = LinearLayout.HORIZONTAL
+        styleRow.addView(boldBox)
+        styleRow.addView(italicBox)
+        box.addView(styleRow)
         val sizes = intArrayOf(32, 44, 60, 90)
         val sizeNames = arrayOf("Küçük", "Orta", "Büyük", "Çok büyük")
         val spin = Spinner(this)
@@ -492,12 +573,15 @@ class MainActivity : Activity() {
                         it.text = txt
                         it.size = sizes[spin.selectedItemPosition].toFloat()
                         it.color = chosen
-                        it.w = minOf(640f, draw.page.width - x - 30f).coerceAtLeast(300f)
+                        it.kind = fontIdx or (if (boldBox.isChecked) 256 else 0) or (if (italicBox.isChecked) 512 else 0)
+                        PageRenderer().fitText(it, minOf(640f, draw.page.width - x - 30f).coerceAtLeast(300f))
                         draw.addItem(it, true)
                     } else {
                         item.text = txt
                         item.size = sizes[spin.selectedItemPosition].toFloat()
                         item.color = chosen
+                        item.kind = fontIdx or (if (boldBox.isChecked) 256 else 0) or (if (italicBox.isChecked) 512 else 0)
+                        PageRenderer().fitText(item, maxOf(item.w, 400f).coerceAtMost(draw.page.width * 0.9f))
                         draw.itemEdited()
                     }
                 }
@@ -630,7 +714,8 @@ class MainActivity : Activity() {
             val k = e.keyCode
             if (k !in intArrayOf(android.view.KeyEvent.KEYCODE_BACK, 24, 25)) info.text = "v$versionText · son tuş kodu: $k"
             // 308-311: kalem düğmesi/dokunuşu tuş olayları (STYLUS_BUTTON_PRIMARY... TAP)
-            if (k in 308..311 && draw.penDoubleTap) {
+            // 718: bu cihazda kalemin çift dokunuşu/düğmesi olarak görülen tuş kodu
+            if ((k in 308..311 || k == 718) && draw.penDoubleTap) {
                 draw.togglePenEraser()
                 return true
             }
@@ -1271,7 +1356,15 @@ class MainActivity : Activity() {
         }
         draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
         draw.onTabClick = { t ->
-            val idx = nb.pages.indexOf(t.target)
+            var idx = nb.pages.indexOf(t.target)
+            val key = t.target.dateKey
+            if (key != 0 && nb.pages.getOrNull(nb.current)?.dateKey == key) {
+                // O günün ayracı zaten açıksa, dokundukça o günün sonraki sayfasına geçer.
+                val same = nb.pages.indices.filter { nb.pages[it].dateKey == key }
+                val after = same.firstOrNull { it > nb.current + (if (spread) 1 else 0) }
+                idx = after ?: same.first()
+                Toast.makeText(this, "${t.label}: ${same.indexOf(idx) + 1}/${same.size}. sayfa", Toast.LENGTH_SHORT).show()
+            }
             if (idx >= 0) gotoPage(idx)
         }
         draw.onTabLongPress = { t -> showTabDialog(t) }
@@ -1332,6 +1425,9 @@ class MainActivity : Activity() {
                     draw.tool = t
                     settingsPopup?.dismiss()
                     refresh()
+                    if (t == Tool.TEXT) {
+                        Toast.makeText(this, "Yazı yazmak için sayfada bir yere dokunun (kalemle ya da parmakla)", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
             toolButtons[t] = b
