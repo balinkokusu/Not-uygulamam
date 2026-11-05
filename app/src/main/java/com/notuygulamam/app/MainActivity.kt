@@ -1194,7 +1194,10 @@ class MainActivity : Activity() {
             "Otomatik tarih ayracı: " + (if (autoTabs) "açık (kapatmak için dokunun)" else "kapalı (açmak için dokunun)"),
             "Kalemle çift dokunuş (kalem ↔ silgi): " + (if (draw.penDoubleTap) "açık" else "kapalı"),
             "Şablonlarım",
-            "Planlayıcıyı bu deftere ekle (yıllık takvim, 12 ay, ayraçlar)"
+            "Planlayıcıyı bu deftere ekle (yıllık takvim, 12 ay, ayraçlar)",
+            "Cetvel: " + (if (draw.rulerOn) "açık (kapatmak için dokunun)" else "kapalı (açmak için dokunun)"),
+            "Tablo ekle (satır ve sütun sayısı seçerek)",
+            "Yapışkan not ekle"
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
         m.setOnMenuItemClickListener { mi ->
@@ -1218,10 +1221,94 @@ class MainActivity : Activity() {
                 }
                 10 -> showTemplateManager()
                 11 -> showAddPlannerDialog()
+                12 -> {
+                    val on = draw.toggleRuler()
+                    if (on) Toast.makeText(this, "Cetvel: parmakla taşıyın, uçlarından döndürün. Kalemle yakınından çizerseniz çizgi cetvele oturur.", Toast.LENGTH_LONG).show()
+                }
+                13 -> showTableDialog()
+                14 -> showStickyDialog()
             }
             true
         }
         m.show()
+    }
+
+    private fun showTableDialog() {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(20f), dp(8f), dp(20f), dp(8f))
+        fun spin(label: String, max: Int, def: Int): android.widget.NumberPicker {
+            val t = TextView(this); t.text = label; box.addView(t)
+            val np = android.widget.NumberPicker(this)
+            np.minValue = 1; np.maxValue = max; np.value = def
+            box.addView(np)
+            return np
+        }
+        val rows = spin("Satır sayısı", 20, 4)
+        val cols = spin("Sütun sayısı", 10, 3)
+        AlertDialog.Builder(this).setTitle("Tablo ekle").setView(box)
+            .setPositiveButton("Ekle") { _, _ -> draw.addTable(rows.value, cols.value) }
+            .setNegativeButton("Vazgeç", null).show()
+    }
+
+    private fun showStickyDialog() {
+        val colors = intArrayOf(
+            Color.rgb(255, 238, 140), Color.rgb(255, 205, 210), Color.rgb(200, 230, 201), Color.rgb(187, 222, 251)
+        )
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(20f), dp(8f), dp(20f), dp(8f))
+        val et = EditText(this)
+        et.hint = "Not metni (boş bırakıp kalemle de yazabilirsiniz)"
+        et.minLines = 3
+        box.addView(et)
+        val grp = android.widget.RadioGroup(this)
+        grp.orientation = LinearLayout.HORIZONTAL
+        val names = arrayOf("Sarı", "Pembe", "Yeşil", "Mavi")
+        for (i in names.indices) {
+            val rb = android.widget.RadioButton(this); rb.text = names[i]; rb.id = 100 + i
+            grp.addView(rb)
+        }
+        grp.check(100)
+        box.addView(grp)
+        AlertDialog.Builder(this).setTitle("Yapışkan not").setView(box)
+            .setPositiveButton("Ekle") { _, _ ->
+                val col = colors[(grp.checkedRadioButtonId - 100).coerceIn(0, 3)]
+                val bmp = makeStickyBitmap(et.text.toString(), col)
+                val bos = java.io.ByteArrayOutputStream()
+                bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+                val c = draw.viewCenterOnPage()
+                val it = PageItem(PageItem.IMAGE, c[0], c[1])
+                it.w = 460f; it.h = 460f
+                it.data = bos.toByteArray(); it.bmp = bmp; it.above = false
+                draw.tool = Tool.OBJECT
+                draw.addItem(it)
+                refresh()
+            }
+            .setNegativeButton("Vazgeç", null).show()
+    }
+
+    private fun makeStickyBitmap(text: String, color: Int): android.graphics.Bitmap {
+        val s = 460
+        val bmp = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bmp)
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        p.color = Color.argb(60, 0, 0, 0)
+        c.drawRect(22f, 26f, s - 6f, s - 4f, p)
+        p.color = color
+        c.drawRect(14f, 14f, s - 14f, s - 14f, p)
+        p.color = Color.argb(40, 0, 0, 0)
+        val fold = android.graphics.Path()
+        fold.moveTo(s - 14f, s - 90f); fold.lineTo(s - 90f, s - 14f); fold.lineTo(s - 14f, s - 14f); fold.close()
+        c.drawPath(fold, p)
+        if (text.isNotBlank()) {
+            val tp = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            tp.color = Color.rgb(60, 50, 40); tp.textSize = 36f
+            tp.typeface = Fonts.get(2, 0)
+            val lay = android.text.StaticLayout.Builder.obtain(text, 0, text.length, tp, s - 80).build()
+            c.save(); c.translate(40f, 40f); lay.draw(c); c.restore()
+        }
+        return bmp
     }
 
     private fun showPageStyleDialog() {
@@ -1504,6 +1591,23 @@ class MainActivity : Activity() {
         }
         draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
         draw.onSelection = { refreshItemBar() }
+        draw.onLassoMenu = { x, y ->
+            val pm = android.widget.PopupMenu(this, draw)
+            pm.menu.add(0, 1, 1, "Sil")
+            pm.menu.add(0, 2, 2, "Çoğalt")
+            pm.menu.add(0, 3, 3, "Çizgi rengini kalem rengi yap")
+            pm.menu.add(0, 4, 4, "Seçimi bırak")
+            pm.setOnMenuItemClickListener { mi ->
+                when (mi.itemId) {
+                    1 -> draw.lassoDelete()
+                    2 -> draw.lassoDuplicate()
+                    3 -> if (!draw.lassoRecolor(draw.penColor)) Toast.makeText(this, "Seçimde çizgi yok", Toast.LENGTH_SHORT).show()
+                    4 -> draw.clearLasso()
+                }
+                true
+            }
+            pm.show()
+        }
         draw.onTabClick = { t ->
             var idx = nb.pages.indexOf(t.target)
             val key = t.target.dateKey
@@ -1563,7 +1667,9 @@ class MainActivity : Activity() {
         val toolIcons = listOf(
             Triple(Tool.PEN, Icon.PEN, "Kalem"), Triple(Tool.HIGHLIGHTER, Icon.HIGHLIGHTER, "Fosforlu"),
             Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık"),
-            Triple(Tool.TEXT, Icon.TEXT, "Metin kutusu (klavyeyle yazı)")
+            Triple(Tool.TEXT, Icon.TEXT, "Metin kutusu (klavyeyle yazı)"),
+            Triple(Tool.LASSO, Icon.LASSO, "Lasso: çevreleyerek seç, taşı, sil, çoğalt"),
+            Triple(Tool.LASER, Icon.LASER, "Lazer işaretçi (iz bırakmaz)")
         )
         for ((t, ic, lb) in toolIcons) {
             val b = iconBtn(ic, lb) {
@@ -1574,6 +1680,10 @@ class MainActivity : Activity() {
                     draw.tool = t
                     settingsPopup?.dismiss()
                     refresh()
+                    draw.clearLasso()
+                    if (t == Tool.LASSO) {
+                        Toast.makeText(this, "Seçmek istediğiniz şeyin çevresini çizin; sonra sürükleyerek taşıyın, dokunarak menüyü açın", Toast.LENGTH_LONG).show()
+                    }
                     if (t == Tool.TEXT) {
                         Toast.makeText(this, "Yazı yazmak için sayfada bir yere dokunun (kalemle ya da parmakla)", Toast.LENGTH_LONG).show()
                     }

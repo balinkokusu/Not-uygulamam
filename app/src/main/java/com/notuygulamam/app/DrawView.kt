@@ -576,6 +576,9 @@ class DrawView(context: Context) : View(context) {
         }
         if (picking) drawPickerLoupe(c)
         drawSelection(c)
+        drawLasso(c)
+        drawRuler(c)
+        drawLaser(c)
     }
 
     private fun rad(deg: Float) = Math.toRadians(deg.toDouble())
@@ -1145,6 +1148,7 @@ class DrawView(context: Context) : View(context) {
 
         val type = e.getToolType(0)
         val isStylus = type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER
+        if (rulerOn && !isStylus && handleRulerTouch(e)) return true
 
         // Bilgi satırı her olayda değil, yaklaşık 6 kez/saniye güncellenir; aksi hâlde yazı gecikir.
         val now = e.eventTime
@@ -1184,6 +1188,8 @@ class DrawView(context: Context) : View(context) {
         }
 
         if (tool == Tool.TEXT || tool == Tool.OBJECT) return handleItemTouch(e)
+        if (tool == Tool.LASER) return handleLaserTouch(e)
+        if (tool == Tool.LASSO) return handleLassoTouch(e)
 
         if (!isStylus && !fingerDraw) return true
 
@@ -1211,7 +1217,9 @@ class DrawView(context: Context) : View(context) {
                     val sens = PreviewView.penSens(penKind, pressureSensitivity / 100f)
                     val s = if (hl) Stroke(hlColor, hlWidthDp * UNIT, true, 0f, hlKind)
                     else Stroke(penColor, penWidthDp * UNIT, false, sens, penKind)
+                    rulerSnap = rulerOn && rulerDist(gx, gy) < 44f * density / sc
                     s.add(gx, gy, if (hl) 0.5f else normP(e.pressure))
+                    if (rulerSnap) snapLast(s, 0)
                     current = s
                     drawnUpTo = 0
                     holdX = e.x
@@ -1259,6 +1267,7 @@ class DrawView(context: Context) : View(context) {
                                 )
                             }
                             s.add(pageX(e.x), pageY(e.y), if (hl) 0.5f else normP(e.pressure))
+                            if (rulerSnap) snapLast(s, before)
                             if (hl) {
                                 val from = max(0, before - 1)
                                 for (i in from + 1 until s.xs.size) {
@@ -1554,6 +1563,13 @@ class DrawView(context: Context) : View(context) {
         val a = undoStack.removeAt(undoStack.size - 1)
         when (a) {
             is HistoryAction.Add -> strokes.remove(a.stroke)
+            is HistoryAction.Move -> { shift(a.strokes, a.items, -a.dx, -a.dy); clearLasso() }
+            is HistoryAction.Group -> {
+                strokes.removeAll(a.addedS.toSet()); page.items.removeAll(a.addedI.toSet())
+                for ((idx, s) in a.removedS.asReversed()) strokes.add(min(idx, strokes.size), s)
+                for ((idx, it) in a.removedI.asReversed()) page.items.add(min(idx, page.items.size), it)
+                clearLasso(); setSel(null)
+            }
             is HistoryAction.Erase -> {
                 for ((idx, s) in a.removed.asReversed()) strokes.add(min(idx, strokes.size), s)
             }
@@ -1576,6 +1592,13 @@ class DrawView(context: Context) : View(context) {
         val a = redoStack.removeAt(redoStack.size - 1)
         when (a) {
             is HistoryAction.Add -> strokes.add(a.stroke)
+            is HistoryAction.Move -> { shift(a.strokes, a.items, a.dx, a.dy); clearLasso() }
+            is HistoryAction.Group -> {
+                for ((_, s) in a.removedS) strokes.remove(s)
+                for ((_, it) in a.removedI) page.items.remove(it)
+                strokes.addAll(a.addedS); page.items.addAll(a.addedI)
+                clearLasso(); setSel(null)
+            }
             is HistoryAction.Erase -> {
                 for ((_, s) in a.removed) strokes.remove(s)
             }
@@ -1605,7 +1628,363 @@ class DrawView(context: Context) : View(context) {
         onChanged?.invoke()
     }
 
+
+    // ---- Lazer işaretçi: iz bırakmaz, kısa sürede solar ----
+    private val laserX = ArrayList<Float>()
+    private val laserY = ArrayList<Float>()
+    private val laserT = ArrayList<Long>()
+    var laserColor = Color.rgb(230, 30, 40)
+    private val laserPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
+    }
+
+    private fun handleLaserTouch(e: MotionEvent): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) { laserX.add(Float.NaN); laserY.add(Float.NaN); laserT.add(now) }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN || e.actionMasked == MotionEvent.ACTION_MOVE) {
+            for (h in 0 until e.historySize) { laserX.add(e.getHistoricalX(h)); laserY.add(e.getHistoricalY(h)); laserT.add(now) }
+            laserX.add(e.x); laserY.add(e.y); laserT.add(now)
+        }
+        postInvalidateOnAnimation()
+        return true
+    }
+
+    private fun drawLaser(c: Canvas) {
+        if (laserT.isEmpty()) return
+        val now = android.os.SystemClock.uptimeMillis()
+        while (laserT.isNotEmpty() && now - laserT[0] > LASER_MS) { laserX.removeAt(0); laserY.removeAt(0); laserT.removeAt(0) }
+        for (i in 1 until laserT.size) {
+            if (laserX[i].isNaN() || laserX[i - 1].isNaN()) continue
+            val age = (now - laserT[i]).toFloat() / LASER_MS
+            val a = ((1f - age) * 255f).toInt().coerceIn(0, 255)
+            laserPaint.setColor(laserColor); laserPaint.alpha = (a * 0.35f).toInt()
+            laserPaint.strokeWidth = 18f * density
+            c.drawLine(laserX[i - 1], laserY[i - 1], laserX[i], laserY[i], laserPaint)
+            laserPaint.setColor(laserColor); laserPaint.alpha = a
+            laserPaint.strokeWidth = 7f * density
+            c.drawLine(laserX[i - 1], laserY[i - 1], laserX[i], laserY[i], laserPaint)
+        }
+        if (laserT.isNotEmpty()) postInvalidateOnAnimation()
+    }
+
+    // ---- Lasso: serbest çevreleme ile çizgi ve nesne seçimi, taşıma, silme, çoğaltma ----
+    private val lassoXs = ArrayList<Float>()
+    private val lassoYs = ArrayList<Float>()
+    private var lassoDrawing = false
+    private val lassoStrokes = ArrayList<Stroke>()
+    private val lassoItems = ArrayList<PageItem>()
+    private val lassoBox = RectF()
+    private var lassoMoving = false
+    private var lassoLastX = 0f
+    private var lassoLastY = 0f
+    private var lassoDX = 0f
+    private var lassoDY = 0f
+    private var lassoDownT = 0L
+    private var lassoMoved = false
+    var onLassoMenu: ((Float, Float) -> Unit)? = null
+    private val lassoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 2f
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
+    }
+
+    fun hasLasso() = lassoStrokes.isNotEmpty() || lassoItems.isNotEmpty()
+
+    fun clearLasso() {
+        lassoStrokes.clear(); lassoItems.clear(); lassoDrawing = false; lassoMoving = false
+        lassoXs.clear(); lassoYs.clear()
+        invalidate()
+    }
+
+    private fun shift(ss: List<Stroke>, its: List<PageItem>, dx: Float, dy: Float) {
+        for (s in ss) for (i in s.xs.indices) { s.xs[i] = s.xs[i] + dx; s.ys[i] = s.ys[i] + dy }
+        for (it in its) { it.x += dx; it.y += dy }
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    private fun inPoly(x: Float, y: Float): Boolean {
+        var inside = false
+        var j = lassoXs.size - 1
+        for (i in lassoXs.indices) {
+            val xi = lassoXs[i]; val yi = lassoYs[i]; val xj = lassoXs[j]; val yj = lassoYs[j]
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside
+            j = i
+        }
+        return inside
+    }
+
+    private fun computeLassoBox() {
+        var x0 = Float.MAX_VALUE; var y0 = Float.MAX_VALUE; var x1 = -Float.MAX_VALUE; var y1 = -Float.MAX_VALUE
+        for (s in lassoStrokes) for (i in s.xs.indices) {
+            val r = s.width / 2f
+            x0 = min(x0, s.xs[i] - r); x1 = max(x1, s.xs[i] + r); y0 = min(y0, s.ys[i] - r); y1 = max(y1, s.ys[i] + r)
+        }
+        for (it in lassoItems) {
+            renderer.measureItem(it)
+            val r = max(it.w, it.h) / 2f
+            x0 = min(x0, it.x - r); x1 = max(x1, it.x + r); y0 = min(y0, it.y - r); y1 = max(y1, it.y + r)
+        }
+        lassoBox.set(x0 - 12f, y0 - 12f, x1 + 12f, y1 + 12f)
+    }
+
+    private fun selectInLasso() {
+        lassoStrokes.clear(); lassoItems.clear()
+        if (lassoXs.size < 3) return
+        for (s in strokes) {
+            var n = 0
+            for (i in s.xs.indices) if (inPoly(s.xs[i], s.ys[i])) n++
+            if (n * 10 >= s.xs.size * 5) lassoStrokes.add(s)
+        }
+        for (it in page.items) if (inPoly(it.x, it.y)) lassoItems.add(it)
+        if (hasLasso()) computeLassoBox()
+    }
+
+    private fun handleLassoTouch(e: MotionEvent): Boolean {
+        val gx = pageX(e.x); val gy = pageY(e.y)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lassoDownT = e.eventTime; lassoMoved = false
+                if (hasLasso() && lassoBox.contains(gx, gy)) {
+                    lassoMoving = true; lassoLastX = gx; lassoLastY = gy; lassoDX = 0f; lassoDY = 0f
+                } else {
+                    clearLasso()
+                    lassoDrawing = true
+                    lassoXs.add(gx); lassoYs.add(gy)
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (lassoMoving) {
+                    val dx = gx - lassoLastX; val dy = gy - lassoLastY
+                    if (hypot(dx, dy) > 0.5f) lassoMoved = true
+                    lassoLastX = gx; lassoLastY = gy; lassoDX += dx; lassoDY += dy
+                    shift(lassoStrokes, lassoItems, dx, dy)
+                    lassoBox.offset(dx, dy)
+                } else if (lassoDrawing) {
+                    for (h in 0 until e.historySize) { lassoXs.add(pageX(e.getHistoricalX(h))); lassoYs.add(pageY(e.getHistoricalY(h))) }
+                    lassoXs.add(gx); lassoYs.add(gy)
+                }
+                invalidate()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (lassoMoving) {
+                    lassoMoving = false
+                    if (lassoMoved && (lassoDX != 0f || lassoDY != 0f)) {
+                        undoStack.add(HistoryAction.Move(ArrayList(lassoStrokes), ArrayList(lassoItems), lassoDX, lassoDY))
+                        redoStack.clear()
+                    } else if (e.actionMasked == MotionEvent.ACTION_UP) {
+                        onLassoMenu?.invoke(e.x, e.y)
+                    }
+                } else if (lassoDrawing) {
+                    lassoDrawing = false
+                    selectInLasso()
+                    lassoXs.clear(); lassoYs.clear()
+                }
+                invalidate()
+            }
+        }
+        return true
+    }
+
+    private fun drawLasso(c: Canvas) {
+        if (tool != Tool.LASSO) return
+        beginPage(c)
+        lassoPaint.strokeWidth = 2f / sc
+        lassoPaint.setColor(Look.accent)
+        if (lassoDrawing && lassoXs.size > 1) {
+            path.reset()
+            path.moveTo(lassoXs[0], lassoYs[0])
+            for (i in 1 until lassoXs.size) path.lineTo(lassoXs[i], lassoYs[i])
+            c.drawPath(path, lassoPaint)
+        }
+        if (hasLasso()) {
+            fillPaint.setColor(Color.argb(28, 166, 98, 106))
+            c.drawRect(lassoBox, fillPaint)
+            c.drawRect(lassoBox, lassoPaint)
+        }
+        c.restore()
+    }
+
+    fun lassoDelete() {
+        if (!hasLasso()) return
+        val rs = ArrayList<Pair<Int, Stroke>>(); val ri = ArrayList<Pair<Int, PageItem>>()
+        for (s in lassoStrokes) rs.add(Pair(strokes.indexOf(s), s))
+        for (it in lassoItems) ri.add(Pair(page.items.indexOf(it), it))
+        rs.sortBy { it.first }; ri.sortBy { it.first }
+        strokes.removeAll(lassoStrokes.toSet()); page.items.removeAll(lassoItems.toSet())
+        undoStack.add(HistoryAction.Group(rs, ri, emptyList(), emptyList())); redoStack.clear()
+        clearLasso(); rebuildBase(); onChanged?.invoke()
+    }
+
+    fun lassoDuplicate() {
+        if (!hasLasso()) return
+        val off = 40f
+        val ns = ArrayList<Stroke>(); val ni = ArrayList<PageItem>()
+        for (s in lassoStrokes) {
+            val n = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind)
+            for (i in s.xs.indices) n.add(s.xs[i] + off, s.ys[i] + off, s.ps[i])
+            ns.add(n)
+        }
+        for (it in lassoItems) { val n = it.copy(); n.x += off; n.y += off; ni.add(n) }
+        strokes.addAll(ns); page.items.addAll(ni)
+        undoStack.add(HistoryAction.Group(emptyList(), emptyList(), ns, ni)); redoStack.clear()
+        lassoStrokes.clear(); lassoItems.clear(); lassoStrokes.addAll(ns); lassoItems.addAll(ni)
+        computeLassoBox(); rebuildBase(); onChanged?.invoke()
+    }
+
+    /** Seçili çizgilerin rengini değiştirir (geri alınabilir değil; hızlı düzeltme için). */
+    fun lassoRecolor(color: Int): Boolean {
+        if (lassoStrokes.isEmpty()) return false
+        val old = ArrayList(lassoStrokes)
+        val rep = ArrayList<Stroke>()
+        val rs = ArrayList<Pair<Int, Stroke>>()
+        for (s in old) {
+            val n = Stroke(color, s.width, s.highlighter, s.sens, s.kind)
+            for (i in s.xs.indices) n.add(s.xs[i], s.ys[i], s.ps[i])
+            rs.add(Pair(strokes.indexOf(s), s)); rep.add(n)
+        }
+        rs.sortBy { it.first }
+        for ((i, s) in rs.withIndex()) strokes[strokes.indexOf(s.second)] = rep[old.indexOf(s.second)]
+        undoStack.add(HistoryAction.Group(rs, emptyList(), rep, emptyList())); redoStack.clear()
+        lassoStrokes.clear(); lassoStrokes.addAll(rep)
+        rebuildBase(); onChanged?.invoke()
+        return true
+    }
+
+    // ---- Cetvel: parmakla taşınır/döndürülür; yakınından başlayan kalem çizgisi cetvele oturur ----
+    var rulerOn = false
+    private var rx1 = 200f
+    private var ry1 = 600f
+    private var rx2 = 1000f
+    private var ry2 = 600f
+    private var rulerSnap = false
+    private var rulerMode = 0
+    private var rLastX = 0f
+    private var rLastY = 0f
+    private val rulerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun toggleRuler(): Boolean {
+        rulerOn = !rulerOn
+        if (rulerOn) {
+            val c = viewCenterOnPage()
+            rx1 = c[0] - 400f; rx2 = c[0] + 400f; ry1 = c[1]; ry2 = c[1]
+        }
+        invalidate()
+        return rulerOn
+    }
+
+    private fun rulerDist(x: Float, y: Float): Float {
+        val dx = rx2 - rx1; val dy = ry2 - ry1
+        val l2 = dx * dx + dy * dy
+        val t = (((x - rx1) * dx + (y - ry1) * dy) / l2).coerceIn(0f, 1f)
+        return hypot(x - (rx1 + t * dx), y - (ry1 + t * dy))
+    }
+
+    private fun snapLast(s: Stroke, from: Int) {
+        val dx = rx2 - rx1; val dy = ry2 - ry1
+        val l2 = dx * dx + dy * dy
+        for (i in max(0, from) until s.xs.size) {
+            val t = (((s.xs[i] - rx1) * dx + (s.ys[i] - ry1) * dy) / l2).coerceIn(0f, 1f)
+            s.xs[i] = rx1 + t * dx; s.ys[i] = ry1 + t * dy
+        }
+    }
+
+    private fun handleRulerTouch(e: MotionEvent): Boolean {
+        if (e.pointerCount > 1) return false
+        val gx = pageX(e.x); val gy = pageY(e.y)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val thr = 40f * density / sc
+                rulerMode = when {
+                    hypot(gx - rx1, gy - ry1) < thr * 1.6f -> 1
+                    hypot(gx - rx2, gy - ry2) < thr * 1.6f -> 2
+                    rulerDist(gx, gy) < thr -> 3
+                    else -> 0
+                }
+                rLastX = gx; rLastY = gy
+                return rulerMode != 0
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (rulerMode == 0) return false
+                val dx = gx - rLastX; val dy = gy - rLastY
+                when (rulerMode) {
+                    1 -> { rx1 += dx; ry1 += dy }
+                    2 -> { rx2 += dx; ry2 += dy }
+                    else -> { rx1 += dx; ry1 += dy; rx2 += dx; ry2 += dy }
+                }
+                rLastX = gx; rLastY = gy
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val was = rulerMode != 0
+                rulerMode = 0
+                return was
+            }
+        }
+        return false
+    }
+
+    private fun drawRuler(c: Canvas) {
+        if (!rulerOn) return
+        beginPage(c)
+        val dx = rx2 - rx1; val dy = ry2 - ry1
+        val len = hypot(dx, dy)
+        val ang = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+        c.translate(rx1, ry1)
+        c.rotate(ang)
+        rulerPaint.style = Paint.Style.FILL
+        rulerPaint.setColor(Color.argb(120, 240, 214, 150))
+        c.drawRect(0f, -34f, len, 34f, rulerPaint)
+        rulerPaint.style = Paint.Style.STROKE
+        rulerPaint.strokeWidth = 2f
+        rulerPaint.setColor(Color.argb(200, 120, 90, 40))
+        c.drawRect(0f, -34f, len, 34f, rulerPaint)
+        // 1 cm = 1200/21 sayfa birimi
+        val cm = 1200f / 21f
+        var k = 0
+        var x = 0f
+        while (x <= len) {
+            val h = if (k % 5 == 0) 20f else 11f
+            c.drawLine(x, 34f, x, 34f - h, rulerPaint)
+            if (k % 10 == 0) {
+                rulerPaint.style = Paint.Style.FILL
+                rulerPaint.textSize = 18f
+                c.drawText((k / 10).toString(), x + 3f, 8f, rulerPaint)
+                rulerPaint.style = Paint.Style.STROKE
+            }
+            k++
+            x = k * cm / 10f
+        }
+        rulerPaint.style = Paint.Style.FILL
+        rulerPaint.setColor(Color.argb(220, 166, 98, 106))
+        c.drawCircle(0f, 0f, 14f, rulerPaint)
+        c.drawCircle(len, 0f, 14f, rulerPaint)
+        c.restore()
+    }
+
+    /** Satır x sütun tablo çizgilerini kalem çizgisi olarak ekler (tek geri alma adımı). */
+    fun addTable(rows: Int, cols: Int) {
+        val c = viewCenterOnPage()
+        val w = min(page.width - 160f, 900f)
+        val h = min(page.height - 200f, rows * 90f)
+        val x0 = (c[0] - w / 2f).coerceIn(40f, page.width - w - 40f)
+        val y0 = (c[1] - h / 2f).coerceIn(40f, page.height - h - 40f)
+        val added = ArrayList<Stroke>()
+        fun ln(ax: Float, ay: Float, bx: Float, by: Float) {
+            val s = Stroke(penColor, 3f * UNIT, false, 0f, 1)
+            s.add(ax, ay, 0.5f); s.add((ax + bx) / 2f, (ay + by) / 2f, 0.5f); s.add(bx, by, 0.5f)
+            added.add(s)
+        }
+        for (r in 0..rows) ln(x0, y0 + h * r / rows, x0 + w, y0 + h * r / rows)
+        for (k in 0..cols) ln(x0 + w * k / cols, y0, x0 + w * k / cols, y0 + h)
+        strokes.addAll(added)
+        undoStack.add(HistoryAction.Group(emptyList(), emptyList(), added, emptyList()))
+        redoStack.clear()
+        rebuildBase(); onChanged?.invoke()
+    }
+
     companion object {
+        const val LASER_MS = 900L
         /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
         const val UNIT = 2.2f
         const val SPREAD_GAP = 28f

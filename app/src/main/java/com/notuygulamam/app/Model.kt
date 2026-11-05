@@ -8,7 +8,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 
-enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER, TEXT, OBJECT }
+enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER, TEXT, OBJECT, LASSO, LASER }
 
 enum class Paper(val label: String) {
     BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı"),
@@ -67,6 +67,12 @@ sealed class HistoryAction {
     class ItemAdd(val item: PageItem) : HistoryAction()
     class ItemRemove(val item: PageItem, val index: Int) : HistoryAction()
     class ItemsErase(val removed: List<Pair<Int, PageItem>>) : HistoryAction()
+    class Move(val strokes: List<Stroke>, val items: List<PageItem>, val dx: Float, val dy: Float) : HistoryAction()
+    /** Lasso ile silme/çoğaltma: çıkarılanlar geri konur, eklenenler geri alınınca çıkarılır. */
+    class Group(
+        val removedS: List<Pair<Int, Stroke>>, val removedI: List<Pair<Int, PageItem>>,
+        val addedS: List<Stroke>, val addedI: List<PageItem>
+    ) : HistoryAction()
     class Add(val stroke: Stroke) : HistoryAction()
     class Erase(val removed: List<Pair<Int, Stroke>>) : HistoryAction()
 }
