@@ -281,8 +281,8 @@ class DrawView(context: Context) : View(context) {
         var pos = TAB_TOP
         for (k in 0..i) {
             // üst/alt kenarda ayraç iki sayfanın arasındaki cilt boşluğuna taşmaz
-            if (side >= 2 && rightPage != null && pos + h > leftPage.width && pos < leftPage.width + SPREAD_GAP) {
-                pos = leftPage.width + SPREAD_GAP + TAB_GAP
+            if (side >= 2 && rightPage != null && pos + h > leftPage.width - 8f && pos < leftPage.width + 8f) {
+                pos = leftPage.width + 8f + TAB_GAP
             }
             if (k < i) pos += h + TAB_GAP
         }
@@ -601,6 +601,61 @@ class DrawView(context: Context) : View(context) {
         c.clipRect(-offX, 0f, spreadW() - offX, page.height)
     }
 
+    /** Cilt görünümü: 0 yalnız gölge, 1 düz dikiş, 2 tel spiral. */
+    var binding = 1
+        set(v) {
+            field = v
+            rebuildBase()
+        }
+
+    private val bindPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    /** İki sayfanın birleştiği yerde cilt çizer; yazı üzerinden kesilmeden geçer. */
+    private fun drawBinding(c: Canvas) {
+        val r = rightPage ?: return
+        val x = leftPage.width
+        val h = min(leftPage.height, r.height)
+        c.save()
+        c.translate(ox, oy)
+        c.scale(sc, sc)
+        c.clipRect(0f, 0f, x + r.width, h)
+        // iç gölge
+        val gw = 30f
+        bindPaint.style = Paint.Style.FILL
+        bindPaint.shader = LinearGradient(x - gw, 0f, x, 0f, Color.argb(0, 60, 40, 40), Color.argb(46, 60, 40, 40), Shader.TileMode.CLAMP)
+        c.drawRect(x - gw, 0f, x, h, bindPaint)
+        bindPaint.shader = LinearGradient(x, 0f, x + gw, 0f, Color.argb(46, 60, 40, 40), Color.argb(0, 60, 40, 40), Shader.TileMode.CLAMP)
+        c.drawRect(x, 0f, x + gw, h, bindPaint)
+        bindPaint.shader = null
+        if (binding == 1) {
+            bindPaint.style = Paint.Style.STROKE
+            bindPaint.strokeWidth = 2.4f
+            bindPaint.setColor(Color.argb(150, 120, 110, 120))
+            bindPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
+            c.drawLine(x, 14f, x, h - 14f, bindPaint)
+            bindPaint.pathEffect = null
+        } else if (binding == 2) {
+            var y = 44f
+            while (y < h - 20f) {
+                bindPaint.style = Paint.Style.FILL
+                bindPaint.setColor(Color.argb(150, 90, 80, 90))
+                c.drawCircle(x - 20f, y, 5f, bindPaint)
+                c.drawCircle(x + 20f, y, 5f, bindPaint)
+                bindPaint.style = Paint.Style.STROKE
+                bindPaint.strokeWidth = 5f
+                bindPaint.strokeCap = Paint.Cap.ROUND
+                bindPaint.setColor(Color.argb(235, 150, 150, 160))
+                c.drawLine(x - 24f, y - 3f, x + 24f, y + 3f, bindPaint)
+                bindPaint.strokeWidth = 2f
+                bindPaint.setColor(Color.argb(200, 235, 235, 242))
+                c.drawLine(x - 22f, y - 4f, x + 22f, y + 2f, bindPaint)
+                y += 58f
+            }
+        }
+        bindPaint.strokeCap = Paint.Cap.BUTT
+        c.restore()
+    }
+
     /** Arka planı, kağıdı ve tüm biten çizgileri bitmap'e baştan çizer. */
     private fun rebuildBase() {
         val c = baseCanvas ?: return
@@ -633,6 +688,7 @@ class DrawView(context: Context) : View(context) {
             renderer.drawItems(c, pg, false)
             c.restore()
         }
+        if (rightPage != null) drawBinding(c)
         // Çizgiler tüm yüzeye çizilir: bir sayfadan taşan yazı öbür sayfada devam eder
         for ((k, pg) in list.withIndex()) {
             val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
@@ -2325,7 +2381,7 @@ class DrawView(context: Context) : View(context) {
         const val LASER_MS = 900L
         /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
         const val UNIT = 2.2f
-        const val SPREAD_GAP = 28f
+        const val SPREAD_GAP = 0f
         const val HOLD_MS = 320L
         const val TAB_OUT = 50f
         const val TAB_IN = 6f

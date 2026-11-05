@@ -1093,6 +1093,13 @@ class MainActivity : Activity() {
     private fun contextMonth(): Int {
         fun keyOf(p: PageData): Int =
             if (p.dateKey > 0) p.dateKey / 100 else if (p.calMonth in 1..12 && p.calYear > 0) p.calYear * 100 + p.calMonth else 0
+        fun calOf(p: PageData): Int = if (p.calMonth in 1..12 && p.calYear > 0) p.calYear * 100 + p.calMonth else 0
+        // Görünen sayfalar arasında takvim (ay) sayfası varsa onun ayı esas alınır
+        val seen = ArrayList<PageData>()
+        seen.add(nb.pages[nb.current])
+        if (spread && nb.current + 1 < nb.pages.size) seen.add(nb.pages[nb.current + 1])
+        for (p in seen) { val k = calOf(p); if (k != 0) return k }
+        for (p in seen) { val k = keyOf(p); if (k != 0) return k }
         var i = nb.current
         while (i >= 0) { val k = keyOf(nb.pages[i]); if (k != 0) return k; i-- }
         i = nb.current + 1
@@ -1238,6 +1245,7 @@ class MainActivity : Activity() {
             "Hatırlatıcılarım (defter dışı notlar)",
             "Ayraçları toplu düzenle…",
             "Kenar notu ekle (sayfaların yanında küçük hatırlatma)",
+            "Cilt görünümü: " + arrayOf("yalnız gölge", "düz dikiş", "tel spiral")[draw.binding.coerceIn(0, 2)] + " (değiştirmek için dokunun)",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
@@ -1269,8 +1277,12 @@ class MainActivity : Activity() {
                 13 -> showTableDialog()
                 14 -> showStickyDialog()
                 16 -> showTabManager()
-                17 -> MarginNotes.edit(this, itemId.ifEmpty { "ana" }, null, 1) { refreshMargins() }
                 18 -> {
+                    draw.binding = (draw.binding + 1) % 3
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putInt("cilt_$itemId", draw.binding).apply()
+                }
+                17 -> MarginNotes.edit(this, itemId.ifEmpty { "ana" }, null, 1) { refreshMargins() }
+                19 -> {
                     val sp = getSharedPreferences("ayar", MODE_PRIVATE)
                     sp.edit().putBoolean("ayraç_süz_$itemId", !sp.getBoolean("ayraç_süz_$itemId", true)).apply()
                     rebuildTabs()
@@ -1817,6 +1829,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
+        draw.binding = prefs.getInt("cilt_$itemId", 1)
         draw.scribbleErase = prefs.getBoolean("karala", true)
         draw.onChanged = {
             markWritten()
