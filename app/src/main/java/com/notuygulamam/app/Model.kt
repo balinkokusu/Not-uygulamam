@@ -73,6 +73,7 @@ sealed class HistoryAction {
         val removedS: List<Pair<Int, Stroke>>, val removedI: List<Pair<Int, PageItem>>,
         val addedS: List<Stroke>, val addedI: List<PageItem>
     ) : HistoryAction()
+    class Scale(val strokes: List<Stroke>, val items: List<PageItem>, val fx: Float, val fy: Float, val ax: Float, val ay: Float) : HistoryAction()
     class Add(val stroke: Stroke) : HistoryAction()
     class Erase(val removed: List<Pair<Int, Stroke>>) : HistoryAction()
 }
@@ -117,17 +118,47 @@ class PageData(
 }
 
 /** Sayfanın kenarındaki renkli ayraç; dokununca hedef sayfaya gider. */
-class Tab(var label: String, var color: Int, var target: PageData, var auto: Boolean = false)
+class Tab(var label: String, var color: Int, var target: PageData, var auto: Boolean = false, var side: Int = 0) {
+    companion object {
+        /** Kenar başına en fazla ayraç: sol, sağ, üst, alt. */
+        val CAP = intArrayOf(14, 14, 10, 10)
+        val SIDE_NAMES = arrayOf("Sol", "Sağ", "Üst", "Alt")
+    }
+}
 
 class Notebook {
     val pages = ArrayList<PageData>()
     val tabs = ArrayList<Tab>()
     var current = 0
+
+    fun sideCount(side: Int) = tabs.count { it.side == side }
+
+    /** Tercih edilen kenarda yer varsa onu, yoksa sırayla sol, sağ, alt, üst kenarlardan yeri olanı verir; hepsi doluysa -1. */
+    fun freeSide(pref: Int = 0): Int {
+        if (sideCount(pref) < Tab.CAP[pref]) return pref
+        for (s in intArrayOf(0, 1, 3, 2)) if (sideCount(s) < Tab.CAP[s]) return s
+        return -1
+    }
+
+    /** Eski defterlerde tek kenara yığılmış ayraçları kenar sınırlarına göre dağıtır. */
+    fun fitTabSides() {
+        val cnt = IntArray(4)
+        for (t in tabs) {
+            var s = t.side.coerceIn(0, 3)
+            if (cnt[s] >= Tab.CAP[s]) {
+                var alt = -1
+                for (c in intArrayOf(0, 1, 3, 2)) if (cnt[c] < Tab.CAP[c]) { alt = c; break }
+                if (alt >= 0) s = alt
+            }
+            t.side = s
+            cnt[s]++
+        }
+    }
 }
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 7
+    private const val VERSION = 8
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -187,6 +218,7 @@ object Storage {
                 o.writeInt(t.color)
                 o.writeInt(nb.pages.indexOf(t.target))
                 o.writeBoolean(t.auto)
+                o.writeInt(t.side)
             }
         }
         if (!tmp.renameTo(file)) {
@@ -266,8 +298,10 @@ object Storage {
                         val color = i.readInt()
                         val idx = i.readInt()
                         val auto = if (ver >= 6) i.readBoolean() else false
-                        if (idx in 0 until nb.pages.size) nb.tabs.add(Tab(label, color, nb.pages[idx], auto))
+                        val side = if (ver >= 8) i.readInt() else 0
+                        if (idx in 0 until nb.pages.size) nb.tabs.add(Tab(label, color, nb.pages[idx], auto, side))
                     }
+                    nb.fitTabSides()
                 }
                 nb.current = nb.current.coerceIn(0, nb.pages.size - 1)
                 nb

@@ -306,7 +306,9 @@ class MainActivity : Activity() {
         val mo = pg.dateKey / 100 % 100
         val day = pg.dateKey % 100
         if (mo !in 1..12) return
-        nb.tabs.add(Tab("$day ${Planner.SHORT[mo - 1]}", tabPalette[(mo - 1) % tabPalette.size], first, true))
+        val side = nb.freeSide(0)
+        if (side < 0) return
+        nb.tabs.add(Tab("$day ${Planner.SHORT[mo - 1]}", tabPalette[(mo - 1) % tabPalette.size], first, true, side))
     }
 
     /** Kuru bir sayfaya ilk kez yazılınca sayfaya o günün tarihini verir ve gün ayracını oluşturur. */
@@ -1156,6 +1158,22 @@ class MainActivity : Activity() {
         spin.setSelection(startIdx.coerceIn(0, nb.pages.size - 1))
         box.addView(spin)
 
+        val sideLabel = TextView(this)
+        sideLabel.text = "Hangi kenarda dursun?"
+        sideLabel.setPadding(0, dp(12f), 0, dp(2f))
+        box.addView(sideLabel)
+        val sideGroup = android.widget.RadioGroup(this)
+        sideGroup.orientation = LinearLayout.HORIZONTAL
+        for (s in 0 until 4) {
+            val rb = android.widget.RadioButton(this)
+            rb.id = 300 + s
+            rb.text = Tab.SIDE_NAMES[s] + " " + nb.sideCount(s) + "/" + Tab.CAP[s]
+            sideGroup.addView(rb)
+        }
+        val startSide = existing?.side ?: nb.freeSide(0).let { if (it < 0) 0 else it }
+        sideGroup.check(300 + startSide)
+        box.addView(sideGroup)
+
         val scroll = ScrollView(this)
         scroll.addView(box)
         val b = AlertDialog.Builder(this)
@@ -1164,12 +1182,19 @@ class MainActivity : Activity() {
             .setPositiveButton(if (existing == null) "Ekle" else "Kaydet") { _, _ ->
                 val label = nameEdit.text.toString().trim().ifEmpty { (nb.tabs.size + 1).toString() }
                 val target = nb.pages[spin.selectedItemPosition.coerceIn(0, nb.pages.size - 1)]
+                val side = (sideGroup.checkedRadioButtonId - 300).coerceIn(0, 3)
+                val taken = nb.sideCount(side) - (if (existing != null && existing.side == side) 1 else 0)
+                if (taken >= Tab.CAP[side]) {
+                    Toast.makeText(this, Tab.SIDE_NAMES[side] + " kenar dolu (en çok " + Tab.CAP[side] + " ayraç). Başka bir kenar seçin ya da eski ayraçlardan birini silin.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
                 if (existing == null) {
-                    nb.tabs.add(Tab(label, chosen, target))
+                    nb.tabs.add(Tab(label, chosen, target, false, side))
                 } else {
                     existing.label = label
                     existing.color = chosen
                     existing.target = target
+                    existing.side = side
                 }
                 refresh()
                 scheduleSave()
@@ -1231,6 +1256,42 @@ class MainActivity : Activity() {
             true
         }
         m.show()
+    }
+
+    private fun moveSelectionTo(target: PageData, label: String) {
+        if (draw.lassoMoveTo(target)) {
+            Toast.makeText(this, "Seçim $label taşındı (bu sayfanın geri alma geçmişi sıfırlandı)", Toast.LENGTH_SHORT).show()
+            scheduleSave()
+        }
+    }
+
+    private fun showLassoModeMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        pm.menu.add(0, 1, 1, (if (!draw.lassoCut) "● " else "○ ") + "Bütün nesneler: bölgeye değen çizgi ve nesne tümüyle seçilir")
+        pm.menu.add(0, 2, 2, (if (draw.lassoCut) "● " else "○ ") + "Kesip al: çizgiler bölge sınırından kesilir, yalnız içerideki parça seçilir")
+        pm.setOnMenuItemClickListener { mi ->
+            draw.lassoCut = mi.itemId == 2
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("lasso_kes", draw.lassoCut).apply()
+            Toast.makeText(this, if (draw.lassoCut) "Kesip al kipi" else "Bütün nesneler kipi", Toast.LENGTH_SHORT).show()
+            true
+        }
+        pm.show()
+    }
+
+    private fun showLaserColorMenu(anchor: View) {
+        val names = arrayOf("Kırmızı", "Mavi", "Yeşil", "Sarı", "Mor", "Turuncu")
+        val cols = intArrayOf(
+            Color.rgb(230, 30, 40), Color.rgb(40, 100, 240), Color.rgb(40, 170, 70),
+            Color.rgb(250, 200, 20), Color.rgb(150, 60, 200), Color.rgb(255, 130, 20)
+        )
+        val pm = android.widget.PopupMenu(this, anchor)
+        for (i in names.indices) pm.menu.add(0, i, i, (if (draw.laserColor == cols[i]) "● " else "○ ") + names[i])
+        pm.setOnMenuItemClickListener { mi ->
+            draw.laserColor = cols[mi.itemId]
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putInt("lazer_renk", cols[mi.itemId]).apply()
+            true
+        }
+        pm.show()
     }
 
     private fun showTableDialog() {
@@ -1591,18 +1652,37 @@ class MainActivity : Activity() {
         }
         draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
         draw.onSelection = { refreshItemBar() }
-        draw.onLassoMenu = { x, y ->
+        draw.lassoCut = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("lasso_kes", false)
+        draw.laserColor = getSharedPreferences("ayar", MODE_PRIVATE).getInt("lazer_renk", draw.laserColor)
+        draw.onLassoMenu = { _, _ ->
             val pm = android.widget.PopupMenu(this, draw)
-            pm.menu.add(0, 1, 1, "Sil")
-            pm.menu.add(0, 2, 2, "Çoğalt")
-            pm.menu.add(0, 3, 3, "Çizgi rengini kalem rengi yap")
-            pm.menu.add(0, 4, 4, "Seçimi bırak")
+            if (draw.hasLasso()) {
+                pm.menu.add(0, 1, 1, "Sil")
+                pm.menu.add(0, 2, 2, "Çoğalt (aynı sayfada)")
+                pm.menu.add(0, 3, 3, "Kes (panoya al)")
+                pm.menu.add(0, 4, 4, "Kopyala (panoya al)")
+                val other = draw.otherSpreadPage()
+                if (other != null) pm.menu.add(0, 5, 5, "Yan sayfaya taşı")
+                if (nb.current > 0) pm.menu.add(0, 6, 6, "Önceki sayfaya taşı")
+                if (nb.current + 1 < nb.pages.size) pm.menu.add(0, 7, 7, "Sonraki sayfaya taşı")
+                pm.menu.add(0, 8, 8, "Çizgi rengini kalem rengi yap")
+                pm.menu.add(0, 9, 9, "Seçimi bırak")
+            }
+            if (draw.hasClip()) pm.menu.add(0, 10, 10, "Yapıştır (bu sayfaya)")
+            if (pm.menu.size() == 0) pm.menu.add(0, 11, 11, "Seçim kipini değiştir")
             pm.setOnMenuItemClickListener { mi ->
                 when (mi.itemId) {
                     1 -> draw.lassoDelete()
                     2 -> draw.lassoDuplicate()
-                    3 -> if (!draw.lassoRecolor(draw.penColor)) Toast.makeText(this, "Seçimde çizgi yok", Toast.LENGTH_SHORT).show()
-                    4 -> draw.clearLasso()
+                    3 -> { draw.lassoCopy(true); Toast.makeText(this, "Panoya alındı; başka sayfada boş bir yere dokunup Yapıştır deyin", Toast.LENGTH_LONG).show() }
+                    4 -> { draw.lassoCopy(false); Toast.makeText(this, "Kopyalandı; başka sayfada boş bir yere dokunup Yapıştır deyin", Toast.LENGTH_LONG).show() }
+                    5 -> draw.otherSpreadPage()?.let { moveSelectionTo(it, "yan sayfaya") }
+                    6 -> moveSelectionTo(nb.pages[nb.current - 1], "önceki sayfaya")
+                    7 -> moveSelectionTo(nb.pages[nb.current + 1], "sonraki sayfaya")
+                    8 -> if (!draw.lassoRecolor(draw.penColor)) Toast.makeText(this, "Seçimde çizgi yok", Toast.LENGTH_SHORT).show()
+                    9 -> draw.clearLasso()
+                    10 -> draw.pasteClip()
+                    11 -> showLassoModeMenu(toolButtons[Tool.LASSO]!!)
                 }
                 true
             }
@@ -1673,7 +1753,11 @@ class MainActivity : Activity() {
         )
         for ((t, ic, lb) in toolIcons) {
             val b = iconBtn(ic, lb) {
-                if (draw.tool == t && (t == Tool.PEN || t == Tool.HIGHLIGHTER || t == Tool.ERASER)) {
+                if (draw.tool == t && t == Tool.LASSO) {
+                    showLassoModeMenu(toolButtons[t]!!)
+                } else if (draw.tool == t && t == Tool.LASER) {
+                    showLaserColorMenu(toolButtons[t]!!)
+                } else if (draw.tool == t && (t == Tool.PEN || t == Tool.HIGHLIGHTER || t == Tool.ERASER)) {
                     val ab = toolButtons[t]
                     if (ab != null) toggleSettings(ab)
                 } else {
@@ -1682,7 +1766,10 @@ class MainActivity : Activity() {
                     refresh()
                     draw.clearLasso()
                     if (t == Tool.LASSO) {
-                        Toast.makeText(this, "Seçmek istediğiniz şeyin çevresini çizin; sonra sürükleyerek taşıyın, dokunarak menüyü açın", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Seçilecek yerin çevresini çizin; sürükleyerek taşıyın, sağ alt köşeden boyutlandırın, dokunarak menüyü açın. Kipi değiştirmek için düğmeye bir kez daha dokunun.", Toast.LENGTH_LONG).show()
+                    }
+                    if (t == Tool.LASER) {
+                        Toast.makeText(this, "Lazer rengini değiştirmek için düğmeye bir kez daha dokunun", Toast.LENGTH_SHORT).show()
                     }
                     if (t == Tool.TEXT) {
                         Toast.makeText(this, "Yazı yazmak için sayfada bir yere dokunun (kalemle ya da parmakla)", Toast.LENGTH_LONG).show()

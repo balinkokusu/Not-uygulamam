@@ -242,14 +242,22 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
-    private fun tabGutter(): Float = if (tabs.isEmpty()) 0f else TAB_GUTTER
+    private val tabSides = Array(4) { ArrayList<Tab>() }
 
-    /** Ayraçlar sırasıyla ve hangisinin açık olduğuyla verilir; ilk ayraç gelince ya da son ayraç gidince sayfa yeniden yerleşir. */
+    private fun gl() = if (tabSides[0].isEmpty()) 0f else TAB_GUTTER
+    private fun gr() = if (tabSides[1].isEmpty()) 0f else TAB_GUTTER
+    private fun gt() = if (tabSides[2].isEmpty()) 0f else TAB_GUTTER
+    private fun gb() = if (tabSides[3].isEmpty()) 0f else TAB_GUTTER
+    private fun gutterKey() = gl() + 2 * gr() + 3 * gt() + 5 * gb()
+
+    /** Ayraçlar sırasıyla ve hangisinin açık olduğuyla verilir; kenar boşlukları değişirse sayfa yeniden yerleşir. */
     fun setTabs(list: List<Tab>, active: Tab?) {
-        val hadGutter = tabGutter()
+        val had = gutterKey()
         tabs = list
         tabActive = active
-        if (hadGutter != tabGutter()) {
+        for (s in tabSides) s.clear()
+        for (t in list) tabSides[t.side.coerceIn(0, 3)].add(t)
+        if (had != gutterKey()) {
             computeTransform()
             requestBg()
             rebuildBase()
@@ -258,26 +266,42 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
-    private fun tabHeight(): Float {
-        val n = max(1, tabs.size)
-        return min(TAB_H_MAX, max(TAB_H_MIN, (leftPage.height - 2f * TAB_TOP - (n - 1) * TAB_GAP) / n))
+    private fun tabLen(side: Int): Float = if (side < 2) leftPage.height else worldW()
+
+    private fun tabHeight(side: Int): Float {
+        val n = max(1, tabSides[side].size)
+        return min(TAB_H_MAX, max(TAB_H_MIN, (tabLen(side) - 2f * TAB_TOP - (n - 1) * TAB_GAP) / n))
     }
 
-    private fun tabTop(i: Int): Float = TAB_TOP + i * (tabHeight() + TAB_GAP)
+    /** Ayracın dünya koordinatındaki dikdörtgeni; açık olan dışarı doğru daha çok uzar. */
+    private fun tabBox(t: Tab, out: RectF) {
+        val side = t.side.coerceIn(0, 3)
+        val i = tabSides[side].indexOf(t)
+        val h = tabHeight(side)
+        val pos = TAB_TOP + i * (h + TAB_GAP)
+        val ext = if (t === tabActive) TAB_GUTTER else TAB_OUT
+        when (side) {
+            0 -> out.set(-ext, pos, TAB_IN, pos + h)
+            1 -> out.set(worldW() - TAB_IN, pos, worldW() + ext, pos + h)
+            2 -> out.set(pos, -ext, pos + h, TAB_IN)
+            else -> out.set(pos, worldH() - TAB_IN, pos + h, worldH() + ext)
+        }
+    }
+
+    private val hitRect = RectF()
 
     private fun tabAt(px: Float, py: Float): Tab? {
-        if (px > TAB_IN || px < -TAB_GUTTER) return null
-        val h = tabHeight()
-        for (i in tabs.indices) {
-            val top = tabTop(i)
-            if (py >= top - TAB_GAP / 2f && py <= top + h + TAB_GAP / 2f) return tabs[i]
+        for (t in tabs) {
+            tabBox(t, hitRect)
+            hitRect.inset(-TAB_GAP / 2f, -TAB_GAP / 2f)
+            if (hitRect.contains(px, py)) return t
         }
         return null
     }
 
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val tabPath = Path()
-    private val tabRadii = floatArrayOf(22f, 22f, 4f, 4f, 4f, 4f, 22f, 22f)
+    private val tabRadii = floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
 
     private fun lighten(color: Int, f: Float): Int {
         val r = Color.red(color)
@@ -286,60 +310,80 @@ class DrawView(context: Context) : View(context) {
         return Color.rgb((r + (255 - r) * f).toInt(), (g + (255 - g) * f).toInt(), (b + (255 - b) * f).toInt())
     }
 
+    private fun setRadii(side: Int) {
+        val big = 22f
+        val sm = 4f
+        // sırayla: sol-üst, sağ-üst, sağ-alt, sol-alt
+        val corner = when (side) {
+            0 -> booleanArrayOf(true, false, false, true)
+            1 -> booleanArrayOf(false, true, true, false)
+            2 -> booleanArrayOf(true, true, false, false)
+            else -> booleanArrayOf(false, false, true, true)
+        }
+        for (k in 0 until 4) {
+            val r = if (corner[k]) big else sm
+            tabRadii[2 * k] = r
+            tabRadii[2 * k + 1] = r
+        }
+    }
+
     private fun drawTabs(c: Canvas) {
         if (tabs.isEmpty()) return
         c.save()
         c.translate(ox, oy)
         c.scale(sc, sc)
-        val h = tabHeight()
-        for (i in tabs.indices) {
-            val t = tabs[i]
+        for (t in tabs) {
+            val side = t.side.coerceIn(0, 3)
             val on = t === tabActive
-            val top = tabTop(i)
-            val left = if (on) -TAB_GUTTER else -TAB_OUT
-            // Yumuşak gölge
+            tabBox(t, tabRect)
+            val r = RectF(tabRect)
+            setRadii(side)
             tabPaint.shader = null
             tabPaint.style = Paint.Style.FILL
             tabPaint.setColor(Color.argb(if (on) 70 else 42, 0, 0, 0))
-            tabRect.set(left - 2f, top + 4f, TAB_IN - 2f, top + h + 4f)
+            val sh = RectF(r)
+            sh.offset(if (side == 1) 2f else -2f, 4f)
             tabPath.reset()
-            tabPath.addRoundRect(tabRect, tabRadii, Path.Direction.CW)
+            tabPath.addRoundRect(sh, tabRadii, Path.Direction.CW)
             c.drawPath(tabPath, tabPaint)
-            // Üstü açık, altı koyu pastel geçiş
-            tabRect.set(left, top, TAB_IN, top + h)
             tabPaint.setColor(Color.BLACK)
             tabPaint.shader = LinearGradient(
-                0f, top, 0f, top + h, lighten(t.color, 0.5f), t.color, Shader.TileMode.CLAMP
+                0f, r.top, 0f, r.bottom, lighten(t.color, 0.5f), t.color, Shader.TileMode.CLAMP
             )
             tabPath.reset()
-            tabPath.addRoundRect(tabRect, tabRadii, Path.Direction.CW)
+            tabPath.addRoundRect(r, tabRadii, Path.Direction.CW)
             c.drawPath(tabPath, tabPaint)
             tabPaint.shader = null
 
             tabText.setColor(if (on) Color.rgb(35, 35, 50) else Color.argb(215, 70, 70, 85))
             tabText.typeface = Typeface.create(if (on) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
             tabText.letterSpacing = 0.05f
-            val cx = (left + TAB_IN) / 2f - 3f
-            val cy = top + h / 2f
+            val cx = r.centerX()
+            val cy = r.centerY()
             var label = t.label
-            if (label.length <= 2) {
-                tabText.textSize = 34f
+            val horizontal = side >= 2
+            val avail = (if (horizontal) r.width() else r.height()) - 26f
+            if (label.length <= 2 || horizontal) {
+                var size = if (label.length <= 2) 34f else 26f
+                tabText.textSize = size
+                while (tabText.measureText(label) > avail && size > 14f) {
+                    size -= 2f
+                    tabText.textSize = size
+                }
+                while (tabText.measureText(label) > avail && label.length > 2) label = label.substring(0, label.length - 1)
                 val fm = tabText.fontMetrics
                 c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
             } else {
                 var size = 28f
-                val avail = h - 26f
                 tabText.textSize = size
                 while (tabText.measureText(label) > avail && size > 16f) {
                     size -= 2f
                     tabText.textSize = size
                 }
-                while (tabText.measureText(label) > avail && label.length > 2) {
-                    label = label.substring(0, label.length - 1)
-                }
+                while (tabText.measureText(label) > avail && label.length > 2) label = label.substring(0, label.length - 1)
                 val fm = tabText.fontMetrics
                 c.save()
-                c.rotate(90f, cx, cy)
+                c.rotate(if (side == 1) -90f else 90f, cx, cy)
                 c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
                 c.restore()
             }
@@ -347,7 +391,6 @@ class DrawView(context: Context) : View(context) {
         c.restore()
     }
 
-    /** Ayraç üstüne dokunma: kısa dokunuş sayfaya götürür, uzun basış düzenleme penceresini açar. Ayraca denk gelmezse false döner. */
     private fun tabTouch(e: MotionEvent): Boolean {
         if (tabs.isEmpty()) return false
         if (e.pointerCount > 1) {
@@ -359,7 +402,7 @@ class DrawView(context: Context) : View(context) {
         }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val t = tabAt(worldX(e.x), pageY(e.y)) ?: return false
+                val t = tabAt(worldX(e.x) , pageY(e.y)) ?: return false
                 tabDown = t
                 tabDownX = e.x
                 tabDownY = e.y
@@ -469,22 +512,23 @@ class DrawView(context: Context) : View(context) {
     private fun computeTransform() {
         if (width <= 0 || height <= 0) return
         val m = 16f * density
-        val g = tabGutter()
-        fitSc = max(0.01f, min((width - 2 * m) / (worldW() + g), (height - 2 * m) / worldH()))
+        val tw = worldW() + gl() + gr()
+        val th = worldH() + gt() + gb()
+        fitSc = max(0.01f, min((width - 2 * m) / tw, (height - 2 * m) / th))
         sc = fitSc
-        ox = (width - (worldW() + g) * sc) / 2f + g * sc
-        oy = (height - worldH() * sc) / 2f
+        ox = (width - tw * sc) / 2f + gl() * sc
+        oy = (height - th * sc) / 2f + gt() * sc
     }
 
     /** Yakınlaştırılmış sayfanın ekran dışına kaçmasını engeller. */
     private fun clampTransform() {
-        val g = tabGutter()
-        val pw = (worldW() + g) * sc
-        val ph = worldH() * sc
+        val pw = (worldW() + gl() + gr()) * sc
+        val ph = (worldH() + gt() + gb()) * sc
         val m = 16f * density
-        ox = if (pw + 2 * m <= width) (width - pw) / 2f + g * sc
-        else ox.coerceIn(width - worldW() * sc - m, m + g * sc)
-        oy = if (ph + 2 * m <= height) (height - ph) / 2f else oy.coerceIn(height - ph - m, m)
+        ox = if (pw + 2 * m <= width) (width - pw) / 2f + gl() * sc
+        else ox.coerceIn(width - (worldW() + gr()) * sc - m, m + gl() * sc)
+        oy = if (ph + 2 * m <= height) (height - ph) / 2f + gt() * sc
+        else oy.coerceIn(height - (worldH() + gb()) * sc - m, m + gt() * sc)
     }
 
     private fun zoomAt(factor: Float, fx: Float, fy: Float) {
@@ -1338,6 +1382,7 @@ class DrawView(context: Context) : View(context) {
                     ) {
                         return true
                     }
+                    if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
                         var needsBake = s.highlighter || straightLive || s.kind == 3
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
@@ -1359,7 +1404,10 @@ class DrawView(context: Context) : View(context) {
     }
 
     /** İleri geri sık yön değiştiren, kısa ve sık bir çizgi mi (karalama)? Ana ve dik eksen ayrı ayrı denenir. */
+    private var scribbleInfo = ""
+
     private fun isScribble(s: Stroke): Boolean {
+        scribbleInfo = "karalama: çizgi çok kısa ya da düz"
         val n = s.xs.size
         if (n < 12) return false
         var mx = 0f
@@ -1392,7 +1440,7 @@ class DrawView(context: Context) : View(context) {
         }
         val extA = hiA - loA
         val extB = hiB - loB
-        if (max(extA, extB) < 50f || len < 3f * max(extA, extB)) return false
+        if (max(extA, extB) < 50f || len < 2.5f * max(extA, extB)) return false
         var px = s.xs[0]
         var py = s.ys[0]
         var ldx = 0f
@@ -1426,8 +1474,9 @@ class DrawView(context: Context) : View(context) {
             px = s.xs[i]
             py = s.ys[i]
         }
-        if (total < 4) return false
-        return (edgeA >= 4 && edgeA >= 0.7f * total && altA >= 3) || (edgeB >= 4 && edgeB >= 0.7f * total && altB >= 3)
+        scribbleInfo = "karalama: dönüş=$total, kenar=$edgeA/$edgeB, değişim=$altA/$altB"
+        if (total < 3) return false
+        return (edgeA >= 3 && edgeA >= 0.6f * total && altA >= 2) || (edgeB >= 3 && edgeB >= 0.6f * total && altB >= 2)
     }
 
     /** Karalamanın yolunun hemen çevresindeki çizgileri ve yazıları siler; silinecek bir şey yoksa false döner. */
@@ -1564,6 +1613,7 @@ class DrawView(context: Context) : View(context) {
         when (a) {
             is HistoryAction.Add -> strokes.remove(a.stroke)
             is HistoryAction.Move -> { shift(a.strokes, a.items, -a.dx, -a.dy); clearLasso() }
+            is HistoryAction.Scale -> { scaleSel(a.strokes, a.items, 1f / a.fx, 1f / a.fy, a.ax, a.ay); clearLasso() }
             is HistoryAction.Group -> {
                 strokes.removeAll(a.addedS.toSet()); page.items.removeAll(a.addedI.toSet())
                 for ((idx, s) in a.removedS.asReversed()) strokes.add(min(idx, strokes.size), s)
@@ -1593,6 +1643,7 @@ class DrawView(context: Context) : View(context) {
         when (a) {
             is HistoryAction.Add -> strokes.add(a.stroke)
             is HistoryAction.Move -> { shift(a.strokes, a.items, a.dx, a.dy); clearLasso() }
+            is HistoryAction.Scale -> { scaleSel(a.strokes, a.items, a.fx, a.fy, a.ax, a.ay); clearLasso() }
             is HistoryAction.Group -> {
                 for ((_, s) in a.removedS) strokes.remove(s)
                 for ((_, it) in a.removedI) page.items.remove(it)
@@ -1671,6 +1722,8 @@ class DrawView(context: Context) : View(context) {
     private val lassoXs = ArrayList<Float>()
     private val lassoYs = ArrayList<Float>()
     private var lassoDrawing = false
+    private var clipS: List<Stroke> = emptyList()
+    private var clipI: List<PageItem> = emptyList()
     private val lassoStrokes = ArrayList<Stroke>()
     private val lassoItems = ArrayList<PageItem>()
     private val lassoBox = RectF()
@@ -1727,24 +1780,158 @@ class DrawView(context: Context) : View(context) {
         lassoBox.set(x0 - 12f, y0 - 12f, x1 + 12f, y1 + 12f)
     }
 
+    /** false: bölgeye değen her çizgi/nesne bütün olarak seçilir. true: çizgiler bölge sınırından kesilir, yalnız içerideki parça seçilir. */
+    var lassoCut = false
+
+    private fun itemTouchesPoly(it: PageItem): Boolean {
+        renderer.measureItem(it)
+        if (inPoly(it.x, it.y)) return true
+        val hw = it.w / 2f
+        val hh = it.h / 2f
+        return inPoly(it.x - hw, it.y - hh) || inPoly(it.x + hw, it.y - hh) ||
+            inPoly(it.x - hw, it.y + hh) || inPoly(it.x + hw, it.y + hh)
+    }
+
     private fun selectInLasso() {
         lassoStrokes.clear(); lassoItems.clear()
         if (lassoXs.size < 3) return
-        for (s in strokes) {
-            var n = 0
-            for (i in s.xs.indices) if (inPoly(s.xs[i], s.ys[i])) n++
-            if (n * 10 >= s.xs.size * 5) lassoStrokes.add(s)
+        if (!lassoCut) {
+            for (s in strokes) {
+                for (i in s.xs.indices) if (inPoly(s.xs[i], s.ys[i])) { lassoStrokes.add(s); break }
+            }
+            for (it in page.items) if (itemTouchesPoly(it)) lassoItems.add(it)
+        } else {
+            val removed = ArrayList<Pair<Int, Stroke>>()
+            val added = ArrayList<Stroke>()
+            for (idx in strokes.indices.reversed()) {
+                val s = strokes[idx]
+                val n = s.xs.size
+                val ins = BooleanArray(n) { inPoly(s.xs[it], s.ys[it]) }
+                val cnt = ins.count { it }
+                if (cnt == 0) continue
+                if (cnt == n) { lassoStrokes.add(s); continue }
+                // Kesip böl: ardışık aynı durumdaki noktalar bir parça olur; parçalar birbirine bir nokta paylaşarak bağlanır.
+                var start = 0
+                val pieces = ArrayList<Stroke>()
+                val pieceIn = ArrayList<Boolean>()
+                for (i in 1..n) {
+                    if (i == n || ins[i] != ins[start]) {
+                        val p = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind)
+                        val from = if (start > 0) start - 1 else start
+                        for (k in from until i) p.add(s.xs[k], s.ys[k], s.ps[k])
+                        if (p.xs.size == 1) p.add(p.xs[0], p.ys[0], p.ps[0])
+                        pieces.add(p); pieceIn.add(ins[start])
+                        start = i
+                    }
+                }
+                removed.add(Pair(idx, s))
+                for ((k, p) in pieces.withIndex()) {
+                    added.add(p)
+                    if (pieceIn[k]) lassoStrokes.add(p)
+                }
+            }
+            if (removed.isNotEmpty()) {
+                for ((_, s) in removed) strokes.remove(s)
+                strokes.addAll(added)
+                undoStack.add(HistoryAction.Group(removed, emptyList(), added, emptyList()))
+                redoStack.clear()
+                rebuildBase()
+                onChanged?.invoke()
+            }
+            for (it in page.items) if (inPoly(it.x, it.y)) lassoItems.add(it)
         }
-        for (it in page.items) if (inPoly(it.x, it.y)) lassoItems.add(it)
         if (hasLasso()) computeLassoBox()
     }
+
+    private var lassoScaling = false
+    private var lassoSX = 1f
+    private var lassoSY = 1f
+    private var lassoAX = 0f
+    private var lassoAY = 0f
+
+    private fun scaleSel(ss: List<Stroke>, its: List<PageItem>, fx: Float, fy: Float, ax: Float, ay: Float) {
+        for (s in ss) for (i in s.xs.indices) {
+            s.xs[i] = ax + (s.xs[i] - ax) * fx
+            s.ys[i] = ay + (s.ys[i] - ay) * fy
+        }
+        for (it in its) {
+            it.x = ax + (it.x - ax) * fx
+            it.y = ay + (it.y - ay) * fy
+            if (it.type == PageItem.TEXT) {
+                it.size = (it.size * (fx + fy) / 2f).coerceIn(8f, 400f)
+            } else {
+                it.w = (it.w * fx).coerceAtLeast(20f)
+                it.h = (it.h * fy).coerceAtLeast(20f)
+            }
+        }
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    private fun nearHandle(gx: Float, gy: Float): Boolean {
+        val r = 34f * density / sc
+        return hypot(gx - lassoBox.right, gy - lassoBox.bottom) < r
+    }
+
+    // ---- Pano: kopyala/kes/yapıştır ve sayfalar arası taşıma ----
+    fun lassoCopy(cut: Boolean) {
+        if (!hasLasso()) return
+        clipS = lassoStrokes.map { s ->
+            val n = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind)
+            for (i in s.xs.indices) n.add(s.xs[i], s.ys[i], s.ps[i]); n
+        }
+        clipI = lassoItems.map { it.copy() }
+        if (cut) lassoDelete()
+    }
+
+    fun hasClip() = clipS.isNotEmpty() || clipI.isNotEmpty()
+
+    fun pasteClip() {
+        if (!hasClip()) return
+        val ns = clipS.map { s ->
+            val n = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind)
+            for (i in s.xs.indices) n.add(s.xs[i], s.ys[i], s.ps[i]); n
+        }
+        val ni = clipI.map { it.copy() }
+        strokes.addAll(ns); page.items.addAll(ni)
+        undoStack.add(HistoryAction.Group(emptyList(), emptyList(), ns, ni)); redoStack.clear()
+        clearLasso()
+        lassoStrokes.addAll(ns); lassoItems.addAll(ni)
+        if (hasLasso()) computeLassoBox()
+        rebuildBase(); onChanged?.invoke()
+    }
+
+    /** Seçimi bu sayfadan çıkarıp başka bir sayfaya koyar. Kaynak ve hedef sayfanın geri alma geçmişi tutarlı kalsın diye temizlenir. */
+    fun lassoMoveTo(target: PageData): Boolean {
+        if (!hasLasso() || target === page) return false
+        val ss = ArrayList(lassoStrokes)
+        val its = ArrayList(lassoItems)
+        strokes.removeAll(ss.toSet()); page.items.removeAll(its.toSet())
+        target.strokes.addAll(ss); target.items.addAll(its)
+        for (it in its) {
+            it.x = it.x.coerceIn(0f, target.width)
+            it.y = it.y.coerceIn(0f, target.height)
+        }
+        undoStack.clear(); redoStack.clear()
+        target.undo.clear(); target.redo.clear()
+        clearLasso()
+        rebuildBase()
+        onChanged?.invoke()
+        return true
+    }
+
+    fun otherSpreadPage(): PageData? = if (rightPage == null) null else if (page === leftPage) rightPage else leftPage
 
     private fun handleLassoTouch(e: MotionEvent): Boolean {
         val gx = pageX(e.x); val gy = pageY(e.y)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lassoDownT = e.eventTime; lassoMoved = false
-                if (hasLasso() && lassoBox.contains(gx, gy)) {
+                if (hasLasso() && nearHandle(gx, gy)) {
+                    lassoScaling = true
+                    lassoSX = 1f; lassoSY = 1f
+                    lassoAX = lassoBox.left; lassoAY = lassoBox.top
+                } else if (hasLasso() && lassoBox.contains(gx, gy)) {
                     lassoMoving = true; lassoLastX = gx; lassoLastY = gy; lassoDX = 0f; lassoDY = 0f
                 } else {
                     clearLasso()
@@ -1753,7 +1940,14 @@ class DrawView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (lassoMoving) {
+                if (lassoScaling) {
+                    val oldW = lassoBox.width(); val oldH = lassoBox.height()
+                    val newW = max(40f, gx - lassoBox.left); val newH = max(40f, gy - lassoBox.top)
+                    val fx = newW / oldW; val fy = newH / oldH
+                    scaleSel(lassoStrokes, lassoItems, fx, fy, lassoAX, lassoAY)
+                    lassoSX *= fx; lassoSY *= fy
+                    lassoBox.set(lassoBox.left, lassoBox.top, lassoBox.left + newW, lassoBox.top + newH)
+                } else if (lassoMoving) {
                     val dx = gx - lassoLastX; val dy = gy - lassoLastY
                     if (hypot(dx, dy) > 0.5f) lassoMoved = true
                     lassoLastX = gx; lassoLastY = gy; lassoDX += dx; lassoDY += dy
@@ -1766,7 +1960,13 @@ class DrawView(context: Context) : View(context) {
                 invalidate()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (lassoMoving) {
+                if (lassoScaling) {
+                    lassoScaling = false
+                    if (lassoSX != 1f || lassoSY != 1f) {
+                        undoStack.add(HistoryAction.Scale(ArrayList(lassoStrokes), ArrayList(lassoItems), lassoSX, lassoSY, lassoAX, lassoAY))
+                        redoStack.clear()
+                    }
+                } else if (lassoMoving) {
                     lassoMoving = false
                     if (lassoMoved && (lassoDX != 0f || lassoDY != 0f)) {
                         undoStack.add(HistoryAction.Move(ArrayList(lassoStrokes), ArrayList(lassoItems), lassoDX, lassoDY))
@@ -1776,8 +1976,10 @@ class DrawView(context: Context) : View(context) {
                     }
                 } else if (lassoDrawing) {
                     lassoDrawing = false
+                    val tiny = lassoXs.size < 6
                     selectInLasso()
                     lassoXs.clear(); lassoYs.clear()
+                    if (tiny && !hasLasso() && e.actionMasked == MotionEvent.ACTION_UP) onLassoMenu?.invoke(e.x, e.y)
                 }
                 invalidate()
             }
@@ -1800,6 +2002,8 @@ class DrawView(context: Context) : View(context) {
             fillPaint.setColor(Color.argb(28, 166, 98, 106))
             c.drawRect(lassoBox, fillPaint)
             c.drawRect(lassoBox, lassoPaint)
+            fillPaint.setColor(Look.accent)
+            c.drawCircle(lassoBox.right, lassoBox.bottom, 14f / sc * density * 0.7f + 6f, fillPaint)
         }
         c.restore()
     }
@@ -1809,7 +2013,7 @@ class DrawView(context: Context) : View(context) {
         val rs = ArrayList<Pair<Int, Stroke>>(); val ri = ArrayList<Pair<Int, PageItem>>()
         for (s in lassoStrokes) rs.add(Pair(strokes.indexOf(s), s))
         for (it in lassoItems) ri.add(Pair(page.items.indexOf(it), it))
-        rs.sortBy { it.first }; ri.sortBy { it.first }
+        rs.sortByDescending { it.first }; ri.sortByDescending { it.first }
         strokes.removeAll(lassoStrokes.toSet()); page.items.removeAll(lassoItems.toSet())
         undoStack.add(HistoryAction.Group(rs, ri, emptyList(), emptyList())); redoStack.clear()
         clearLasso(); rebuildBase(); onChanged?.invoke()
@@ -1842,7 +2046,7 @@ class DrawView(context: Context) : View(context) {
             for (i in s.xs.indices) n.add(s.xs[i], s.ys[i], s.ps[i])
             rs.add(Pair(strokes.indexOf(s), s)); rep.add(n)
         }
-        rs.sortBy { it.first }
+        rs.sortByDescending { it.first }
         for ((i, s) in rs.withIndex()) strokes[strokes.indexOf(s.second)] = rep[old.indexOf(s.second)]
         undoStack.add(HistoryAction.Group(rs, emptyList(), rep, emptyList())); redoStack.clear()
         lassoStrokes.clear(); lassoStrokes.addAll(rep)
@@ -1866,7 +2070,9 @@ class DrawView(context: Context) : View(context) {
         rulerOn = !rulerOn
         if (rulerOn) {
             val c = viewCenterOnPage()
-            rx1 = c[0] - 400f; rx2 = c[0] + 400f; ry1 = c[1]; ry2 = c[1]
+            val len = min(640f, page.width - 140f)
+            rx1 = (c[0] - len / 2f).coerceIn(40f, max(40f, page.width - 40f - len)); rx2 = rx1 + len
+            ry1 = c[1]; ry2 = c[1]
         }
         invalidate()
         return rulerOn
