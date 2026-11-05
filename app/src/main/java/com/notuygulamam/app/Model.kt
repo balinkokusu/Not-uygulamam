@@ -166,13 +166,13 @@ class Notebook {
         }
     }
 
-    /** Otomatik düzen: gün ayraçları sağa, ay ve yıl ayraçları üste, kullanıcının kendi ayraçları solda kalır. */
+    /** Otomatik düzen: gün, ay ve yıl ayraçları sağa, kullanıcının kendi ayraçları solda kalır. */
     fun relayoutTabs() {
         val cnt = IntArray(4)
         for (t in tabs) {
             if (t.auto) { t.side = 1; continue }
             val cal = Planner.SHORT.contains(t.label) || Regex("\\d{4}").matches(t.label)
-            val s = place(cnt, if (cal) 2 else (if (t.side >= 3) 0 else t.side))
+            val s = place(cnt, if (cal) 1 else (if (t.side >= 3) 0 else t.side))
             t.side = s
             cnt[s]++
         }

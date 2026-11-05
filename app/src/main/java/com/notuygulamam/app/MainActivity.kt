@@ -1237,6 +1237,7 @@ class MainActivity : Activity() {
             "Yapışkan not ekle",
             "Hatırlatıcılarım (defter dışı notlar)",
             "Ayraçları toplu düzenle…",
+            "Kenar notu ekle (sayfaların yanında küçük hatırlatma)",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
@@ -1268,7 +1269,8 @@ class MainActivity : Activity() {
                 13 -> showTableDialog()
                 14 -> showStickyDialog()
                 16 -> showTabManager()
-                17 -> {
+                17 -> MarginNotes.edit(this, itemId.ifEmpty { "ana" }, null, 1) { refreshMargins() }
+                18 -> {
                     val sp = getSharedPreferences("ayar", MODE_PRIVATE)
                     sp.edit().putBoolean("ayraç_süz_$itemId", !sp.getBoolean("ayraç_süz_$itemId", true)).apply()
                     rebuildTabs()
@@ -1427,7 +1429,7 @@ class MainActivity : Activity() {
             .setNeutralButton("Otomatik düzen") { _, _ ->
                 nb.relayoutTabs()
                 refresh(); scheduleSave()
-                Toast.makeText(this, "Gün ayraçları sağa, ay ve yıl ayraçları üste dizildi", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Gün, ay ve yıl ayraçları sağa, kendi ayraçlarınız sola dizildi", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Kapat", null)
         dlg.show()
@@ -1594,6 +1596,16 @@ class MainActivity : Activity() {
             .setView(sv)
             .setNegativeButton("Vazgeç", null)
             .show()
+    }
+
+    private lateinit var marginL: MarginColumn
+    private lateinit var marginR: MarginColumn
+
+    /** Kenar notlarını yeniler; not olan yanda sayfa için yer ayrılır. */
+    private fun refreshMargins() {
+        val l = marginL.refresh()
+        val r = marginR.refresh()
+        draw.setReserve(if (l > 0) dp(MARGIN_DP).toFloat() else 0f, if (r > 0) dp(MARGIN_DP).toFloat() else 0f)
     }
 
     private fun refreshItemBar() {
@@ -1772,6 +1784,14 @@ class MainActivity : Activity() {
         } else {
             nb = Notebook()
             nb.pages.add(PageData())
+        }
+
+        run {
+            val sp = getSharedPreferences("ayar", MODE_PRIVATE)
+            if (!sp.getBoolean("ayrac_sag_$itemId", false)) {
+                nb.relayoutTabs()
+                sp.edit().putBoolean("ayrac_sag_$itemId", true).apply()
+            }
         }
 
         draw = DrawView(this)
@@ -2094,8 +2114,13 @@ class MainActivity : Activity() {
         ibLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         ibLp.topMargin = dp(8f)
         frame.addView(itemBar, ibLp)
+        marginL = MarginColumn(this, itemId.ifEmpty { "ana" }, 0) { refreshMargins() }
+        marginR = MarginColumn(this, itemId.ifEmpty { "ana" }, 1) { refreshMargins() }
+        frame.addView(marginL, android.widget.FrameLayout.LayoutParams(dp(MARGIN_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START))
+        frame.addView(marginR, android.widget.FrameLayout.LayoutParams(dp(MARGIN_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.END))
         root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+        refreshMargins()
 
         showCurrent()
         refresh()
@@ -2103,6 +2128,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val MARGIN_DP = 88f
         private const val REQ_PDF = 101
         private const val REQ_EXPORT = 102
         private const val REQ_BACKUP = 103

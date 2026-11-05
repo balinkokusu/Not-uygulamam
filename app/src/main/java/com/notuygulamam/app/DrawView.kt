@@ -363,7 +363,16 @@ class DrawView(context: Context) : View(context) {
             var label = t.label
             val horizontal = side >= 2
             val avail = (if (horizontal) r.width() else r.height()) - 26f
-            if (label.length <= 2 || horizontal) {
+            if (!horizontal && r.height() < 62f) {
+                var size = min(26f, r.height() * 0.62f)
+                tabText.textSize = size
+                while (tabText.measureText(label) > r.width() - 14f && size > 10f) {
+                    size -= 1f
+                    tabText.textSize = size
+                }
+                val fm = tabText.fontMetrics
+                c.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, tabText)
+            } else if (label.length <= 2 || horizontal) {
                 var size = if (label.length <= 2) 34f else 26f
                 tabText.textSize = size
                 while (tabText.measureText(label) > avail && size > 14f) {
@@ -508,15 +517,29 @@ class DrawView(context: Context) : View(context) {
         redoStack = target.redo
     }
 
+    /** Kenar notları için ekranın solunda/sağında ayrılan piksel genişliği. */
+    private var reserveL = 0f
+    private var reserveR = 0f
+
+    fun setReserve(l: Float, r: Float) {
+        if (l == reserveL && r == reserveR) return
+        reserveL = l
+        reserveR = r
+        computeTransform()
+        requestBg()
+        rebuildBase()
+    }
+
     /** Sayfayı ekrana sığdırır ve yakınlaştırmayı sıfırlar. */
     private fun computeTransform() {
         if (width <= 0 || height <= 0) return
         val m = 16f * density
         val tw = worldW() + gl() + gr()
         val th = worldH() + gt() + gb()
-        fitSc = max(0.01f, min((width - 2 * m) / tw, (height - 2 * m) / th))
+        val vw = width - reserveL - reserveR
+        fitSc = max(0.01f, min((vw - 2 * m) / tw, (height - 2 * m) / th))
         sc = fitSc
-        ox = (width - tw * sc) / 2f + gl() * sc
+        ox = reserveL + (vw - tw * sc) / 2f + gl() * sc
         oy = (height - th * sc) / 2f + gt() * sc
     }
 
@@ -525,7 +548,7 @@ class DrawView(context: Context) : View(context) {
         val pw = (worldW() + gl() + gr()) * sc
         val ph = (worldH() + gt() + gb()) * sc
         val m = 16f * density
-        ox = if (pw + 2 * m <= width) (width - pw) / 2f + gl() * sc
+        ox = if (pw + 2 * m <= width - reserveL - reserveR) reserveL + (width - reserveL - reserveR - pw) / 2f + gl() * sc
         else ox.coerceIn(width - (worldW() + gr()) * sc - m, m + gl() * sc)
         oy = if (ph + 2 * m <= height) (height - ph) / 2f + gt() * sc
         else oy.coerceIn(height - (worldH() + gb()) * sc - m, m + gt() * sc)
@@ -552,11 +575,18 @@ class DrawView(context: Context) : View(context) {
         rebuildBase()
     }
 
+    /** Çift sayfa görünümünde iki sayfanın toplam genişliği; tek sayfada sayfa genişliği. */
+    private fun spreadW(): Float {
+        val r = rightPage
+        return if (r == null) page.width else leftPage.width + SPREAD_GAP + r.width
+    }
+
+    /** Çizgi sayfa sınırında kesilmez; çift sayfada iki sayfa tek yüzey gibi devam eder. */
     private fun beginPage(c: Canvas) {
         c.save()
         c.translate(ox + offX * sc, oy)
         c.scale(sc, sc)
-        c.clipRect(0f, 0f, page.width, page.height)
+        c.clipRect(-offX, 0f, spreadW() - offX, page.height)
     }
 
     /** Arka planı, kağıdı ve tüm biten çizgileri bitmap'e baştan çizer. */
@@ -564,6 +594,7 @@ class DrawView(context: Context) : View(context) {
         val c = baseCanvas ?: return
         c.drawColor(Look.canvas)
         val list = listOfNotNull(leftPage, rightPage)
+        val total = spreadW()
         for ((k, pg) in list.withIndex()) {
             val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
             // Sayfanın altına yumuşak gölge
@@ -588,7 +619,24 @@ class DrawView(context: Context) : View(context) {
             }
             renderer.drawPaper(c, pg)
             renderer.drawItems(c, pg, false)
+            c.restore()
+        }
+        // Çizgiler tüm yüzeye çizilir: bir sayfadan taşan yazı öbür sayfada devam eder
+        for ((k, pg) in list.withIndex()) {
+            val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
+            c.save()
+            c.translate(ox + off * sc, oy)
+            c.scale(sc, sc)
+            c.clipRect(-off, 0f, total - off, pg.height)
             for (s in pg.strokes) drawStroke(c, s)
+            c.restore()
+        }
+        for ((k, pg) in list.withIndex()) {
+            val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
+            c.save()
+            c.translate(ox + off * sc, oy)
+            c.scale(sc, sc)
+            c.clipRect(0f, 0f, pg.width, pg.height)
             renderer.drawItems(c, pg, true)
             c.restore()
         }
@@ -692,8 +740,7 @@ class DrawView(context: Context) : View(context) {
             it.x += it.w / 2f
             it.y += it.h / 2f
         }
-        it.x = it.x.coerceIn(0f, page.width)
-        it.y = it.y.coerceIn(0f, page.height)
+        keepInPage(it)
         page.items.add(it)
         undoStack.add(HistoryAction.ItemAdd(it))
         redoStack.clear()
@@ -702,23 +749,43 @@ class DrawView(context: Context) : View(context) {
         onChanged?.invoke()
     }
 
-    private fun reorder(newIndex: (Int, Int) -> Int) {
+    /** Nesneyi tamamen sayfa sınırları içinde tutar; diğer sayfanın altında kalmasın. */
+    private fun keepInPage(it: PageItem) {
+        val r = Math.toRadians(it.rot.toDouble())
+        val cs = Math.abs(Math.cos(r)).toFloat()
+        val sn = Math.abs(Math.sin(r)).toFloat()
+        val hw = (it.w * cs + it.h * sn) / 2f
+        val hh = (it.w * sn + it.h * cs) / 2f
+        it.x = if (hw * 2f >= page.width) page.width / 2f else it.x.coerceIn(hw, page.width - hw)
+        it.y = if (hh * 2f >= page.height) page.height / 2f else it.y.coerceIn(hh, page.height - hh)
+    }
+
+    private fun layerInfo(it: PageItem) {
+        onInfo?.invoke("Nesne sırası: " + (page.items.indexOf(it) + 1) + " / " + page.items.size + (if (it.above) " (çizginin üstünde)" else " (çizginin altında)"))
+    }
+
+    /** Sıra değişir; en uçta ise çizgilerin üstüne/altına geçer. */
+    private fun reorder(toFront: Boolean, step: Boolean) {
         val it = selectedItem ?: return
         val i = page.items.indexOf(it)
         if (i < 0) return
-        val j = newIndex(i, page.items.size).coerceIn(0, page.items.size - 1)
-        if (j == i) return
-        page.items.removeAt(i)
-        page.items.add(j, it)
+        val n = page.items.size
+        val j = if (step) (if (toFront) i + 1 else i - 1) else (if (toFront) n - 1 else 0)
+        if (j in 0 until n && j != i) {
+            page.items.removeAt(i)
+            page.items.add(j, it)
+        }
+        // en uçta ya da en öne/en arkaya basıldığında çizgilerin de önüne/arkasına geçer
+        if (!step || j !in 0 until n) it.above = toFront
         rebuildBase()
         onChanged?.invoke()
-        onInfo?.invoke("Nesne sırası: " + (j + 1) + " / " + page.items.size + (if (it.above) " (çizginin üstünde)" else " (çizginin altında)"))
+        layerInfo(it)
     }
 
-    fun itemForward() = reorder { i, _ -> i + 1 }
-    fun itemBackward() = reorder { i, _ -> i - 1 }
-    fun itemToFront() = reorder { _, n -> n - 1 }
-    fun itemToBack() = reorder { _, _ -> 0 }
+    fun itemForward() = reorder(true, true)
+    fun itemBackward() = reorder(false, true)
+    fun itemToFront() = reorder(true, false)
+    fun itemToBack() = reorder(false, false)
 
     /** Nesneyi çizgilerin üstüne ya da altına alır. */
     fun toggleAbove() {
@@ -726,6 +793,7 @@ class DrawView(context: Context) : View(context) {
         it.above = !it.above
         rebuildBase()
         onChanged?.invoke()
+        layerInfo(it)
     }
 
     fun duplicateSelected() {
@@ -830,6 +898,7 @@ class DrawView(context: Context) : View(context) {
                     if (dragMoved) {
                         it.x = itemX0 + gx - dragSx
                         it.y = itemY0 + gy - dragSy
+                        keepInPage(it)
                         rebuildBase()
                     }
                 } else if (dragMode == 2 && it != null) {
@@ -851,6 +920,7 @@ class DrawView(context: Context) : View(context) {
                         it.w = max(30f, w0 * ratio)
                         it.h = it.w * aspect
                     }
+                    keepInPage(it)
                     rebuildBase()
                 } else if (createPending && hypot(e.x - dragSx, e.y - dragSy) > 12f * density) {
                     createPending = false
@@ -2236,6 +2306,6 @@ class DrawView(context: Context) : View(context) {
         const val TAB_TOP = 60f
         const val TAB_GAP = 6f
         const val TAB_H_MAX = 150f
-        const val TAB_H_MIN = 44f
+        const val TAB_H_MIN = 26f
     }
 }
