@@ -278,7 +278,14 @@ class DrawView(context: Context) : View(context) {
         val side = t.side.coerceIn(0, 3)
         val i = tabSides[side].indexOf(t)
         val h = tabHeight(side)
-        val pos = TAB_TOP + i * (h + TAB_GAP)
+        var pos = TAB_TOP
+        for (k in 0..i) {
+            // üst/alt kenarda ayraç iki sayfanın arasındaki cilt boşluğuna taşmaz
+            if (side >= 2 && rightPage != null && pos + h > leftPage.width && pos < leftPage.width + SPREAD_GAP) {
+                pos = leftPage.width + SPREAD_GAP + TAB_GAP
+            }
+            if (k < i) pos += h + TAB_GAP
+        }
         val ext = if (t === tabActive) TAB_GUTTER else TAB_OUT
         when (side) {
             0 -> out.set(-ext, pos, TAB_IN, pos + h)
@@ -508,7 +515,12 @@ class DrawView(context: Context) : View(context) {
         val r = rightPage ?: return
         val wx = (screenX - ox) / sc
         val useRight = wx > leftPage.width + SPREAD_GAP / 2f
-        val target = if (useRight) r else leftPage
+        switchTo(if (useRight) r else leftPage)
+    }
+
+    private fun switchTo(target: PageData) {
+        val r = rightPage ?: return
+        val useRight = target === r
         if (target === page) return
         page = target
         offX = if (useRight) leftPage.width + SPREAD_GAP else 0f
@@ -735,6 +747,8 @@ class DrawView(context: Context) : View(context) {
     // ---- Nesneler ----
 
     fun addItem(it: PageItem, topLeft: Boolean = false) {
+        // yeni eklenen görsel ve çıkartma çizgilerin önüne gelir; isteyen arkaya gönderebilir
+        if (it.type == PageItem.IMAGE || it.type == PageItem.STICKER) it.above = true
         renderer.measureItem(it)
         if (topLeft) {
             it.x += it.w / 2f
@@ -1669,7 +1683,19 @@ class DrawView(context: Context) : View(context) {
         return hypot(px - (ax + t * dx), py - (ay + t * dy))
     }
 
+    /** Çift sayfada en son yapılan işlem hangi sayfadaysa geri alma ona uygulanır. */
+    private fun pickLatest(redoSide: Boolean) {
+        val r = rightPage ?: return
+        val a = if (redoSide) leftPage.redo else leftPage.undo
+        val b = if (redoSide) r.redo else r.undo
+        val sa = a.lastOrNull()?.seq ?: -1L
+        val sb = b.lastOrNull()?.seq ?: -1L
+        if (sa < 0 && sb < 0) return
+        switchTo(if (sb > sa) r else leftPage)
+    }
+
     fun undo() {
+        pickLatest(false)
         if (undoStack.isEmpty()) return
         val a = undoStack.removeAt(undoStack.size - 1)
         when (a) {
@@ -1700,6 +1726,7 @@ class DrawView(context: Context) : View(context) {
     }
 
     fun redo() {
+        pickLatest(true)
         if (redoStack.isEmpty()) return
         val a = redoStack.removeAt(redoStack.size - 1)
         when (a) {

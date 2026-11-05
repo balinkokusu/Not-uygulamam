@@ -67,7 +67,21 @@ class PageItem(var type: Int, var x: Float, var y: Float) {
     }
 }
 
+/** Eklenen her işleme artan bir sıra numarası verir; çift sayfada geri almanın sayfalar arası sırasını belirler. */
+class HistoryList : ArrayList<HistoryAction>() {
+    override fun add(element: HistoryAction): Boolean {
+        element.seq = ++counter
+        return super.add(element)
+    }
+
+    companion object {
+        private var counter = 0L
+    }
+}
+
 sealed class HistoryAction {
+    var seq = 0L
+
     class ItemAdd(val item: PageItem) : HistoryAction()
     class ItemRemove(val item: PageItem, val index: Int) : HistoryAction()
     class ItemsErase(val removed: List<Pair<Int, PageItem>>) : HistoryAction()
@@ -117,8 +131,8 @@ class PageData(
         return p
     }
 
-    val undo = ArrayList<HistoryAction>()
-    val redo = ArrayList<HistoryAction>()
+    val undo = HistoryList()
+    val redo = HistoryList()
 }
 
 /** Sayfanın kenarındaki renkli ayraç; dokununca hedef sayfaya gider. */
