@@ -40,13 +40,16 @@ class PageItem(var type: Int, var x: Float, var y: Float) {
     var size = 44f
     var kind = 0
 
+    /** Tablo nesnesinde bir satırın en az yüksekliği. */
+    var rowH = 64f
+
     /** true ise nesne çizgilerin üstünde, false ise altında çizilir. */
     var above = false
 
     fun copy(): PageItem {
         val c = PageItem(type, x, y)
         c.w = w; c.h = h; c.rot = rot; c.color = color; c.text = text
-        c.size = size; c.kind = kind; c.above = above; c.data = data
+        c.size = size; c.kind = kind; c.above = above; c.data = data; c.rowH = rowH
         return c
     }
 
@@ -60,6 +63,7 @@ class PageItem(var type: Int, var x: Float, var y: Float) {
         const val TEXT = 0
         const val STICKER = 1
         const val IMAGE = 2
+        const val TABLE = 3
     }
 }
 
@@ -121,8 +125,9 @@ class PageData(
 class Tab(var label: String, var color: Int, var target: PageData, var auto: Boolean = false, var side: Int = 0) {
     companion object {
         /** Kenar başına en fazla ayraç: sol, sağ, üst, alt. */
-        val CAP = intArrayOf(14, 14, 10, 10)
+        val CAP = intArrayOf(30, 30, 14, 0)
         val SIDE_NAMES = arrayOf("Sol", "Sağ", "Üst", "Alt")
+        const val SIDES = 3
     }
 }
 
@@ -133,23 +138,38 @@ class Notebook {
 
     fun sideCount(side: Int) = tabs.count { it.side == side }
 
-    /** Tercih edilen kenarda yer varsa onu, yoksa sırayla sol, sağ, alt, üst kenarlardan yeri olanı verir; hepsi doluysa -1. */
+    /** Tercih edilen kenarda yer varsa onu, yoksa sırayla sol, sağ, üst kenarlardan yeri olanı verir; hepsi doluysa -1. */
     fun freeSide(pref: Int = 0): Int {
-        if (sideCount(pref) < Tab.CAP[pref]) return pref
-        for (s in intArrayOf(0, 1, 3, 2)) if (sideCount(s) < Tab.CAP[s]) return s
+        val p = pref.coerceIn(0, 2)
+        if (sideCount(p) < Tab.CAP[p]) return p
+        for (s in intArrayOf(0, 1, 2)) if (sideCount(s) < Tab.CAP[s]) return s
         return -1
     }
 
-    /** Eski defterlerde tek kenara yığılmış ayraçları kenar sınırlarına göre dağıtır. */
+    private fun place(cnt: IntArray, pref: Int): Int {
+        var s = pref.coerceIn(0, 2)
+        if (cnt[s] >= Tab.CAP[s]) {
+            for (c in intArrayOf(0, 1, 2)) if (cnt[c] < Tab.CAP[c]) { s = c; break }
+        }
+        return s
+    }
+
+    /** Kenar sınırlarını uygular; kaldırılan alt kenardaki ayraçlar sola taşınır. */
     fun fitTabSides() {
         val cnt = IntArray(4)
         for (t in tabs) {
-            var s = t.side.coerceIn(0, 3)
-            if (cnt[s] >= Tab.CAP[s]) {
-                var alt = -1
-                for (c in intArrayOf(0, 1, 3, 2)) if (cnt[c] < Tab.CAP[c]) { alt = c; break }
-                if (alt >= 0) s = alt
-            }
+            val s = place(cnt, if (t.side >= 3) 0 else t.side)
+            t.side = s
+            cnt[s]++
+        }
+    }
+
+    /** Eski defterler için bir kerelik düzen: tarihler ve takvim ayraçları sağa, kullanıcının kendi ayraçları sola. */
+    fun relayoutTabs() {
+        val cnt = IntArray(4)
+        for (t in tabs) {
+            val datey = t.auto || Planner.SHORT.contains(t.label) || Regex("\\d{4}").matches(t.label)
+            val s = place(cnt, if (datey) 1 else 0)
             t.side = s
             cnt[s]++
         }
@@ -158,7 +178,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 8
+    private const val VERSION = 9
 
     fun save(nb: Notebook, file: File) {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -206,6 +226,7 @@ object Storage {
                     o.writeFloat(it.size)
                     o.writeInt(it.kind)
                     o.writeBoolean(it.above)
+                    if (it.type == PageItem.TABLE) o.writeFloat(it.rowH)
                     val dt = it.data
                     o.writeInt(dt?.size ?: -1)
                     if (dt != null) o.write(dt)
@@ -279,6 +300,7 @@ object Storage {
                             it.size = i.readFloat()
                             it.kind = i.readInt()
                             if (ver >= 7) it.above = i.readBoolean()
+                            if (ver >= 9 && it.type == PageItem.TABLE) it.rowH = i.readFloat()
                             val len = i.readInt()
                             if (len >= 0) {
                                 val b = ByteArray(len)
@@ -301,7 +323,7 @@ object Storage {
                         val side = if (ver >= 8) i.readInt() else 0
                         if (idx in 0 until nb.pages.size) nb.tabs.add(Tab(label, color, nb.pages[idx], auto, side))
                     }
-                    nb.fitTabSides()
+                    if (ver < 9) nb.relayoutTabs() else nb.fitTabSides()
                 }
                 nb.current = nb.current.coerceIn(0, nb.pages.size - 1)
                 nb

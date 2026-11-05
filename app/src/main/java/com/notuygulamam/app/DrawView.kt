@@ -793,6 +793,7 @@ class DrawView(context: Context) : View(context) {
                         ang0 = Math.toDegrees(Math.atan2((gy - sel.y).toDouble(), (gx - sel.x).toDouble())).toFloat()
                         w0 = sel.w
                         size0 = sel.size
+                        rowH0 = sel.rowH
                         rot0 = sel.rot
                         return true
                     }
@@ -835,11 +836,16 @@ class DrawView(context: Context) : View(context) {
                     val dist = max(1f, hypot(gx - it.x, gy - it.y))
                     val ratio = (dist / dist0).coerceIn(0.2f, 8f)
                     val ang = Math.toDegrees(Math.atan2((gy - it.y).toDouble(), (gx - it.x).toDouble())).toFloat()
-                    it.rot = rot0 + (ang - ang0)
+                    it.rot = if (it.type == PageItem.TABLE) 0f else rot0 + (ang - ang0)
                     val aspect = if (it.w > 0f) it.h / it.w else 1f
                     if (it.type == PageItem.TEXT) {
                         it.w = max(60f, w0 * ratio)
                         it.size = (size0 * ratio).coerceIn(10f, 400f)
+                    } else if (it.type == PageItem.TABLE) {
+                        it.w = max(160f, w0 * ratio)
+                        it.size = (size0 * ratio).coerceIn(10f, 120f)
+                        it.rowH = max(30f, rowH0 * ratio)
+                        renderer.measureItem(it)
                     } else {
                         it.w = max(30f, w0 * ratio)
                         it.h = it.w * aspect
@@ -856,6 +862,10 @@ class DrawView(context: Context) : View(context) {
                         onChanged?.invoke()
                     } else if (dragMode == 1 && !dragMoved && tapOnSelected && it != null && it.type == PageItem.TEXT) {
                         onTextTap?.invoke(it, it.x, it.y)
+                    } else if (dragMode == 1 && !dragMoved && tapOnSelected && it != null && it.type == PageItem.TABLE) {
+                        renderer.measureItem(it)
+                        val cell = renderer.tableCellAt(it, pageX(e.x) - (it.x - it.w / 2f), pageY(e.y) - (it.y - it.h / 2f))
+                        if (cell != null) onTableTap?.invoke(it, cell.first, cell.second)
                     } else if (createPending) {
                         onTextTap?.invoke(null, createX, createY)
                     }
@@ -1406,77 +1416,58 @@ class DrawView(context: Context) : View(context) {
     /** İleri geri sık yön değiştiren, kısa ve sık bir çizgi mi (karalama)? Ana ve dik eksen ayrı ayrı denenir. */
     private var scribbleInfo = ""
 
+    /** Bir eksendeki gidiş-dönüşleri sayar: (dönüş sayısı, toplam katedilen yol). Küçük titremeler eşikle elenir. */
+    private fun zigzag(a: FloatArray, ext: Float): Pair<Int, Float> {
+        val h = max(14f, 0.18f * ext)
+        var dir = 0
+        var lo = a[0]
+        var hi = a[0]
+        var ex = a[0]
+        var piv = a[0]
+        var turns = 0
+        var travel = 0f
+        for (v in a) {
+            when (dir) {
+                0 -> {
+                    lo = min(lo, v); hi = max(hi, v)
+                    if (v - lo > h) { dir = 1; piv = lo; ex = v }
+                    else if (hi - v > h) { dir = -1; piv = hi; ex = v }
+                }
+                1 -> if (v > ex) ex = v else if (ex - v > h) { turns++; travel += ex - piv; piv = ex; dir = -1; ex = v }
+                else -> if (v < ex) ex = v else if (v - ex > h) { turns++; travel += piv - ex; piv = ex; dir = 1; ex = v }
+            }
+        }
+        if (dir != 0) travel += abs(ex - piv)
+        return Pair(turns, travel)
+    }
+
     private fun isScribble(s: Stroke): Boolean {
-        scribbleInfo = "karalama: çizgi çok kısa ya da düz"
         val n = s.xs.size
+        scribbleInfo = "karalama: çizgi çok kısa"
         if (n < 12) return false
         var mx = 0f
         var my = 0f
         for (i in 0 until n) { mx += s.xs[i]; my += s.ys[i] }
-        mx /= n
-        my /= n
-        var sxx = 0f
-        var syy = 0f
-        var sxy = 0f
-        var len = 0f
+        mx /= n; my /= n
+        var sxx = 0f; var syy = 0f; var sxy = 0f
         for (i in 0 until n) {
-            val dx = s.xs[i] - mx
-            val dy = s.ys[i] - my
+            val dx = s.xs[i] - mx; val dy = s.ys[i] - my
             sxx += dx * dx; syy += dy * dy; sxy += dx * dy
-            if (i > 0) len += hypot(s.xs[i] - s.xs[i - 1], s.ys[i] - s.ys[i - 1])
         }
         val th = 0.5 * Math.atan2((2f * sxy).toDouble(), (sxx - syy).toDouble())
         val ux = Math.cos(th).toFloat()
         val uy = Math.sin(th).toFloat()
-        var loA = Float.MAX_VALUE
-        var hiA = -Float.MAX_VALUE
-        var loB = Float.MAX_VALUE
-        var hiB = -Float.MAX_VALUE
-        for (i in 0 until n) {
-            val a = (s.xs[i] - mx) * ux + (s.ys[i] - my) * uy
-            val b = -(s.xs[i] - mx) * uy + (s.ys[i] - my) * ux
-            loA = min(loA, a); hiA = max(hiA, a)
-            loB = min(loB, b); hiB = max(hiB, b)
-        }
-        val extA = hiA - loA
-        val extB = hiB - loB
-        if (max(extA, extB) < 50f || len < 2.5f * max(extA, extB)) return false
-        var px = s.xs[0]
-        var py = s.ys[0]
-        var ldx = 0f
-        var ldy = 0f
-        var total = 0
-        var edgeA = 0
-        var edgeB = 0
-        var altA = 0
-        var altB = 0
-        var sideA = 0
-        var sideB = 0
-        for (i in 1 until n) {
-            val dx = s.xs[i] - px
-            val dy = s.ys[i] - py
-            val m = hypot(dx, dy)
-            if (m < 9f) continue
-            if (ldx != 0f || ldy != 0f) {
-                val dot = dx * ldx + dy * ldy
-                if (dot / (m * hypot(ldx, ldy)) < -0.15f) {
-                    total++
-                    val a = (px - mx) * ux + (py - my) * uy
-                    val b = -(px - mx) * uy + (py - my) * ux
-                    val sa = if (extA >= 40f) (if (a - loA < 0.25f * extA) -1 else if (hiA - a < 0.25f * extA) 1 else 0) else 0
-                    val sb = if (extB >= 40f) (if (b - loB < 0.25f * extB) -1 else if (hiB - b < 0.25f * extB) 1 else 0) else 0
-                    if (sa != 0) { edgeA++; if (sa != sideA) altA++; sideA = sa }
-                    if (sb != 0) { edgeB++; if (sb != sideB) altB++; sideB = sb }
-                }
-            }
-            ldx = dx
-            ldy = dy
-            px = s.xs[i]
-            py = s.ys[i]
-        }
-        scribbleInfo = "karalama: dönüş=$total, kenar=$edgeA/$edgeB, değişim=$altA/$altB"
-        if (total < 3) return false
-        return (edgeA >= 3 && edgeA >= 0.6f * total && altA >= 2) || (edgeB >= 3 && edgeB >= 0.6f * total && altB >= 2)
+        val pa = FloatArray(n) { (s.xs[it] - mx) * ux + (s.ys[it] - my) * uy }
+        val pb = FloatArray(n) { -(s.xs[it] - mx) * uy + (s.ys[it] - my) * ux }
+        val extA = pa.max() - pa.min()
+        val extB = pb.max() - pb.min()
+        if (max(extA, extB) < 50f) return false
+        val za = zigzag(pa, extA)
+        val zb = zigzag(pb, extB)
+        scribbleInfo = "karalama: eksen1 dönüş=${za.first} yol=${(za.second / max(1f, extA)).toInt()}x, eksen2 dönüş=${zb.first} yol=${(zb.second / max(1f, extB)).toInt()}x"
+        val okA = extA >= 40f && za.first >= 3 && za.second >= 3.2f * extA
+        val okB = extB >= 40f && zb.first >= 3 && zb.second >= 3.2f * extB
+        return okA || okB
     }
 
     /** Karalamanın yolunun hemen çevresindeki çizgileri ve yazıları siler; silinecek bir şey yoksa false döner. */
@@ -1517,7 +1508,7 @@ class DrawView(context: Context) : View(context) {
                 if (t.xs.isEmpty()) continue
                 var inside = 0
                 for (k in t.xs.indices) if (marked(t.xs[k], t.ys[k])) inside++
-                if (inside >= 0.7f * t.xs.size) victims.add(Pair(i, t))
+                if (inside >= 0.5f * t.xs.size) victims.add(Pair(i, t))
             }
         }
         val itemVictims = ArrayList<Pair<Int, PageItem>>()
@@ -1735,6 +1726,7 @@ class DrawView(context: Context) : View(context) {
     private var lassoDownT = 0L
     private var lassoMoved = false
     var onLassoMenu: ((Float, Float) -> Unit)? = null
+    private val lassoHalo = Paint(Paint.ANTI_ALIAS_FLAG)
     private val lassoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = 2f
         pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
@@ -1923,6 +1915,12 @@ class DrawView(context: Context) : View(context) {
     fun otherSpreadPage(): PageData? = if (rightPage == null) null else if (page === leftPage) rightPage else leftPage
 
     private fun handleLassoTouch(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN && !(hasLasso() && lassoBox.contains(pageX(e.x), pageY(e.y))) &&
+            !(hasLasso() && nearHandle(pageX(e.x), pageY(e.y)))
+        ) {
+            // Açık iki sayfadan hangisine dokunulduysa onu etkin yap (kalemle önceden dokunmaya gerek kalmasın).
+            if (rightPage != null) { clearLasso(); activateAt(e.x) }
+        }
         val gx = pageX(e.x); val gy = pageY(e.y)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -1999,9 +1997,31 @@ class DrawView(context: Context) : View(context) {
             c.drawPath(path, lassoPaint)
         }
         if (hasLasso()) {
-            fillPaint.setColor(Color.argb(28, 166, 98, 106))
-            c.drawRect(lassoBox, fillPaint)
+            // Seçilen çizgiler gül tonlu bir hâleyle işaretlenir; seçilmeyenler olduğu gibi kalır.
+            lassoHalo.style = Paint.Style.STROKE
+            lassoHalo.strokeCap = Paint.Cap.ROUND
+            lassoHalo.strokeJoin = Paint.Join.ROUND
+            lassoHalo.setColor(Color.argb(110, 166, 98, 106))
+            for (s in lassoStrokes) {
+                if (s.xs.size < 1) continue
+                lassoHalo.strokeWidth = s.width * 1.15f + 12f / sc
+                path.reset()
+                path.moveTo(s.xs[0], s.ys[0])
+                if (s.xs.size == 1) path.lineTo(s.xs[0] + 0.1f, s.ys[0])
+                for (i in 1 until s.xs.size) path.lineTo(s.xs[i], s.ys[i])
+                c.drawPath(path, lassoHalo)
+            }
+            for (it in lassoItems) {
+                c.save()
+                c.translate(it.x, it.y); c.rotate(it.rot)
+                lassoPaint.strokeWidth = 3f / sc
+                c.drawRect(-it.w / 2f - 6f, -it.h / 2f - 6f, it.w / 2f + 6f, it.h / 2f + 6f, lassoPaint)
+                c.restore()
+            }
+            lassoPaint.strokeWidth = 1.5f / sc
+            lassoPaint.alpha = 140
             c.drawRect(lassoBox, lassoPaint)
+            lassoPaint.alpha = 255
             fillPaint.setColor(Look.accent)
             c.drawCircle(lassoBox.right, lassoBox.bottom, 14f / sc * density * 0.7f + 6f, fillPaint)
         }
@@ -2168,26 +2188,22 @@ class DrawView(context: Context) : View(context) {
         c.restore()
     }
 
-    /** Satır x sütun tablo çizgilerini kalem çizgisi olarak ekler (tek geri alma adımı). */
-    fun addTable(rows: Int, cols: Int) {
+    /** Word benzeri gerçek bir tablo nesnesi ekler; hücreler dokunularak düzenlenir, yazıya göre uzar. */
+    fun addTable(rows: Int, cols: Int): PageItem {
         val c = viewCenterOnPage()
-        val w = min(page.width - 160f, 900f)
-        val h = min(page.height - 200f, rows * 90f)
-        val x0 = (c[0] - w / 2f).coerceIn(40f, page.width - w - 40f)
-        val y0 = (c[1] - h / 2f).coerceIn(40f, page.height - h - 40f)
-        val added = ArrayList<Stroke>()
-        fun ln(ax: Float, ay: Float, bx: Float, by: Float) {
-            val s = Stroke(penColor, 3f * UNIT, false, 0f, 1)
-            s.add(ax, ay, 0.5f); s.add((ax + bx) / 2f, (ay + by) / 2f, 0.5f); s.add(bx, by, 0.5f)
-            added.add(s)
-        }
-        for (r in 0..rows) ln(x0, y0 + h * r / rows, x0 + w, y0 + h * r / rows)
-        for (k in 0..cols) ln(x0 + w * k / cols, y0, x0 + w * k / cols, y0 + h)
-        strokes.addAll(added)
-        undoStack.add(HistoryAction.Group(emptyList(), emptyList(), added, emptyList()))
-        redoStack.clear()
-        rebuildBase(); onChanged?.invoke()
+        val it = PageItem(PageItem.TABLE, c[0], c[1])
+        it.w = min(page.width - 160f, 900f)
+        it.size = 30f
+        it.rowH = 70f
+        it.color = Color.rgb(70, 70, 80)
+        it.kind = rows or (cols shl 8) or (1 shl 16)
+        it.text = "\u001f".repeat(rows * cols - 1)
+        addItem(it)
+        return it
     }
+
+    var onTableTap: ((PageItem, Int, Int) -> Unit)? = null
+    private var rowH0 = 64f
 
     companion object {
         const val LASER_MS = 900L

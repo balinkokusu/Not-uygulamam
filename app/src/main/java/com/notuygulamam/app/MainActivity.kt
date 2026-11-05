@@ -306,7 +306,7 @@ class MainActivity : Activity() {
         val mo = pg.dateKey / 100 % 100
         val day = pg.dateKey % 100
         if (mo !in 1..12) return
-        val side = nb.freeSide(0)
+        val side = nb.freeSide(1)
         if (side < 0) return
         nb.tabs.add(Tab("$day ${Planner.SHORT[mo - 1]}", tabPalette[(mo - 1) % tabPalette.size], first, true, side))
     }
@@ -1159,12 +1159,12 @@ class MainActivity : Activity() {
         box.addView(spin)
 
         val sideLabel = TextView(this)
-        sideLabel.text = "Hangi kenarda dursun?"
+        sideLabel.text = "Hangi kenarda dursun? (Sol: kendi ayraçlarınız, Sağ: tarihler, Üst: ayrı notlar)"
         sideLabel.setPadding(0, dp(12f), 0, dp(2f))
         box.addView(sideLabel)
         val sideGroup = android.widget.RadioGroup(this)
         sideGroup.orientation = LinearLayout.HORIZONTAL
-        for (s in 0 until 4) {
+        for (s in 0 until Tab.SIDES) {
             val rb = android.widget.RadioButton(this)
             rb.id = 300 + s
             rb.text = Tab.SIDE_NAMES[s] + " " + nb.sideCount(s) + "/" + Tab.CAP[s]
@@ -1182,7 +1182,7 @@ class MainActivity : Activity() {
             .setPositiveButton(if (existing == null) "Ekle" else "Kaydet") { _, _ ->
                 val label = nameEdit.text.toString().trim().ifEmpty { (nb.tabs.size + 1).toString() }
                 val target = nb.pages[spin.selectedItemPosition.coerceIn(0, nb.pages.size - 1)]
-                val side = (sideGroup.checkedRadioButtonId - 300).coerceIn(0, 3)
+                val side = (sideGroup.checkedRadioButtonId - 300).coerceIn(0, 2)
                 val taken = nb.sideCount(side) - (if (existing != null && existing.side == side) 1 else 0)
                 if (taken >= Tab.CAP[side]) {
                     Toast.makeText(this, Tab.SIDE_NAMES[side] + " kenar dolu (en çok " + Tab.CAP[side] + " ayraç). Başka bir kenar seçin ya da eski ayraçlardan birini silin.", Toast.LENGTH_LONG).show()
@@ -1294,6 +1294,69 @@ class MainActivity : Activity() {
         pm.show()
     }
 
+    private fun cellsOf(it: PageItem): MutableList<String> {
+        val rows = it.kind and 255
+        val cols = (it.kind shr 8) and 255
+        val parts = it.text.split('\u001f')
+        return MutableList(rows * cols) { i -> parts.getOrElse(i) { "" } }
+    }
+
+    private fun showCellDialog(item: PageItem, r: Int, c: Int) {
+        val cols = (item.kind shr 8) and 255
+        val cells = cellsOf(item)
+        val et = EditText(this)
+        et.setText(cells[r * cols + c])
+        et.setSelection(et.text.length)
+        et.minLines = 2
+        val box = LinearLayout(this)
+        box.setPadding(dp(20f), dp(8f), dp(20f), 0)
+        box.addView(et, LinearLayout.LayoutParams(-1, -2))
+        AlertDialog.Builder(this).setTitle("Hücre (" + (r + 1) + ". satır, " + (c + 1) + ". sütun)").setView(box)
+            .setPositiveButton("Tamam") { _, _ ->
+                cells[r * cols + c] = et.text.toString().replace('\u001f', ' ')
+                item.text = cells.joinToString("\u001f")
+                draw.itemEdited()
+            }
+            .setNeutralButton("Tablo ayarları") { _, _ -> showTableSettings(item) }
+            .setNegativeButton("Vazgeç", null).show()
+    }
+
+    private fun showTableSettings(item: PageItem) {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(20f), dp(8f), dp(20f), dp(8f))
+        fun picker(label: String, max: Int, v: Int): android.widget.NumberPicker {
+            val t = TextView(this); t.text = label; box.addView(t)
+            val np = android.widget.NumberPicker(this)
+            np.minValue = 1; np.maxValue = max; np.value = v
+            box.addView(np)
+            return np
+        }
+        val oldRows = item.kind and 255
+        val oldCols = (item.kind shr 8) and 255
+        val rows = picker("Satır sayısı", 40, oldRows)
+        val cols = picker("Sütun sayısı", 12, oldCols)
+        val head = CheckBox(this)
+        head.text = "İlk satır başlık (renkli)"
+        head.isChecked = (item.kind shr 16) and 1 != 0
+        box.addView(head)
+        AlertDialog.Builder(this).setTitle("Tablo ayarları").setView(box)
+            .setPositiveButton("Uygula") { _, _ ->
+                val old = cellsOf(item)
+                val nr = rows.value
+                val nc = cols.value
+                val out = MutableList(nr * nc) { i ->
+                    val rr = i / nc
+                    val cc = i % nc
+                    if (rr < oldRows && cc < oldCols) old[rr * oldCols + cc] else ""
+                }
+                item.text = out.joinToString("\u001f")
+                item.kind = nr or (nc shl 8) or ((if (head.isChecked) 1 else 0) shl 16)
+                draw.itemEdited()
+            }
+            .setNegativeButton("Vazgeç", null).show()
+    }
+
     private fun showTableDialog() {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.VERTICAL
@@ -1308,7 +1371,12 @@ class MainActivity : Activity() {
         val rows = spin("Satır sayısı", 20, 4)
         val cols = spin("Sütun sayısı", 10, 3)
         AlertDialog.Builder(this).setTitle("Tablo ekle").setView(box)
-            .setPositiveButton("Ekle") { _, _ -> draw.addTable(rows.value, cols.value) }
+            .setPositiveButton("Ekle") { _, _ ->
+                draw.addTable(rows.value, cols.value)
+                draw.tool = Tool.OBJECT
+                refresh()
+                Toast.makeText(this, "Hücreyi düzenlemek için tabloya bir kez dokunup seçin, sonra hücreye dokunun. Sağ alt köşeden büyütülür.", Toast.LENGTH_LONG).show()
+            }
             .setNegativeButton("Vazgeç", null).show()
     }
 
@@ -1652,6 +1720,7 @@ class MainActivity : Activity() {
         }
         draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
         draw.onSelection = { refreshItemBar() }
+        draw.onTableTap = { item, r, c -> showCellDialog(item, r, c) }
         draw.lassoCut = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("lasso_kes", false)
         draw.laserColor = getSharedPreferences("ayar", MODE_PRIVATE).getInt("lazer_renk", draw.laserColor)
         draw.onLassoMenu = { _, _ ->

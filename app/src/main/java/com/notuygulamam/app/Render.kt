@@ -786,9 +786,84 @@ class PageRenderer {
         measureItem(it)
     }
 
-    /** Metin kutusunun yüksekliğini günceller. */
+    // ---- Tablo nesnesi: Word'deki gibi satır/sütunlu, hücreleri yazıya göre uzayan tablo ----
+    class TableLay(val rows: Int, val cols: Int, val cw: Float, val rowsH: FloatArray, val cells: Array<android.text.StaticLayout>)
+
+    private val tblText = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
+
+    fun tableLayout(it: PageItem): TableLay {
+        val rows = max(1, it.kind and 255)
+        val cols = max(1, (it.kind shr 8) and 255)
+        val parts = it.text.split('\u001f')
+        val cw = it.w / cols
+        tblText.setColor(Color.rgb(40, 40, 52))
+        tblText.textSize = it.size
+        tblText.typeface = Typeface.DEFAULT
+        val wInt = max(20, (cw - 16f).toInt())
+        val cells = Array(rows * cols) { idx ->
+            val t = parts.getOrElse(idx) { "" }.ifEmpty { " " }
+            android.text.StaticLayout.Builder.obtain(t, 0, t.length, tblText, wInt).build()
+        }
+        val rh = FloatArray(rows) { r ->
+            var mh = it.rowH
+            for (c in 0 until cols) mh = max(mh, cells[r * cols + c].height + 16f)
+            mh
+        }
+        return TableLay(rows, cols, cw, rh, cells)
+    }
+
+    /** Tablonun sol-üst köşesine göre (lx, ly) noktasının hücresini (satır, sütun) verir; dışındaysa null. */
+    fun tableCellAt(it: PageItem, lx: Float, ly: Float): Pair<Int, Int>? {
+        val t = tableLayout(it)
+        if (lx < 0f || ly < 0f || lx > it.w) return null
+        var y = 0f
+        for (r in 0 until t.rows) {
+            y += t.rowsH[r]
+            if (ly <= y) return Pair(r, (lx / t.cw).toInt().coerceIn(0, t.cols - 1))
+        }
+        return null
+    }
+
+    private fun drawTable(c: Canvas, it: PageItem) {
+        val t = tableLayout(it)
+        val total = t.rowsH.sum()
+        it.h = total
+        c.save()
+        c.translate(-it.w / 2f, -total / 2f)
+        fillPaint.setColor(Color.argb(235, 255, 255, 255))
+        c.drawRect(0f, 0f, it.w, total, fillPaint)
+        if ((it.kind shr 16) and 1 != 0) {
+            fillPaint.setColor(Color.argb(255, 236, 228, 226))
+            c.drawRect(0f, 0f, it.w, t.rowsH[0], fillPaint)
+        }
+        boxPaint.setColor(it.color)
+        val old = boxPaint.strokeWidth
+        boxPaint.strokeWidth = 2.6f
+        var y = 0f
+        for (r in 0..t.rows) {
+            c.drawLine(0f, y, it.w, y, boxPaint)
+            if (r < t.rows) y += t.rowsH[r]
+        }
+        for (k in 0..t.cols) c.drawLine(k * t.cw, 0f, k * t.cw, total, boxPaint)
+        boxPaint.strokeWidth = old
+        boxPaint.setColor(Color.rgb(170, 176, 190))
+        y = 0f
+        for (r in 0 until t.rows) {
+            for (k in 0 until t.cols) {
+                c.save()
+                c.translate(k * t.cw + 8f, y + 8f)
+                t.cells[r * t.cols + k].draw(c)
+                c.restore()
+            }
+            y += t.rowsH[r]
+        }
+        c.restore()
+    }
+
+    /** Metin kutusunun ve tablonun yüksekliğini günceller. */
     fun measureItem(it: PageItem) {
         if (it.type == PageItem.TEXT) it.h = layoutOf(it).height.toFloat() + 12f
+        else if (it.type == PageItem.TABLE) it.h = tableLayout(it).rowsH.sum()
     }
 
     /** above=false: çizgilerin altındaki nesneler, above=true: üstündekiler. */
@@ -808,6 +883,7 @@ class PageRenderer {
                 lay.draw(c)
             }
             PageItem.STICKER -> Stickers.draw(c, it.kind, it.w, it.h)
+            PageItem.TABLE -> drawTable(c, it)
             else -> {
                 var b = it.bmp
                 if (b == null) {
