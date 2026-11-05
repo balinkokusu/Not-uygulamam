@@ -23,14 +23,14 @@ object Planner {
         val yearPage = PageData(paper = Paper.YEAR)
         yearPage.calYear = year
         nb.pages.add(yearPage)
-        nb.tabs.add(Tab(year.toString(), Color.rgb(205, 205, 215), yearPage))
+        nb.tabs.add(Tab(year.toString(), Color.rgb(205, 205, 215), yearPage, false, 2))
         for (m in 1..12) {
             val cal = PageData(paper = Paper.MONTHLY)
             cal.calYear = year
             cal.calMonth = m
             nb.pages.add(cal)
             nb.pages.add(PageData(paper = Paper.TODO))
-            nb.tabs.add(Tab(SHORT[m - 1], colors[m - 1], cal))
+            nb.tabs.add(Tab(SHORT[m - 1], colors[m - 1], cal, false, 2))
         }
         return nb
     }

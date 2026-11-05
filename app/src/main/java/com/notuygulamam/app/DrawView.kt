@@ -712,6 +712,7 @@ class DrawView(context: Context) : View(context) {
         page.items.add(j, it)
         rebuildBase()
         onChanged?.invoke()
+        onInfo?.invoke("Nesne sırası: " + (j + 1) + " / " + page.items.size + (if (it.above) " (çizginin üstünde)" else " (çizginin altında)"))
     }
 
     fun itemForward() = reorder { i, _ -> i + 1 }

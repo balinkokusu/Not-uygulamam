@@ -259,13 +259,18 @@ class LibraryActivity : Activity() {
         }
 
         root.addView(header)
+        board = ReminderBoard(this)
+        root.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         refresh()
     }
 
+    private lateinit var board: ReminderBoard
+
     override fun onResume() {
         super.onResume()
+        if (::board.isInitialized) board.refresh()
         store.load()
         refresh()
     }

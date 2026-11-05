@@ -306,9 +306,7 @@ class MainActivity : Activity() {
         val mo = pg.dateKey / 100 % 100
         val day = pg.dateKey % 100
         if (mo !in 1..12) return
-        val side = nb.freeSide(1)
-        if (side < 0) return
-        nb.tabs.add(Tab("$day ${Planner.SHORT[mo - 1]}", tabPalette[(mo - 1) % tabPalette.size], first, true, side))
+        nb.tabs.add(Tab("$day ${Planner.SHORT[mo - 1]}", tabPalette[(mo - 1) % tabPalette.size], first, true, 1))
     }
 
     /** Kuru bir sayfaya ilk kez yazılınca sayfaya o günün tarihini verir ve gün ayracını oluşturur. */
@@ -1091,8 +1089,22 @@ class MainActivity : Activity() {
         Toast.makeText(this, "${sizes.size} sayfa eklendi", Toast.LENGTH_SHORT).show()
     }
 
+    /** Açık sayfanın ayı (yyyymm): sayfanın tarihinden, yoksa takvim sayfasından, yoksa geriye doğru en yakın tarihli sayfadan bulunur. */
+    private fun contextMonth(): Int {
+        fun keyOf(p: PageData): Int =
+            if (p.dateKey > 0) p.dateKey / 100 else if (p.calMonth in 1..12 && p.calYear > 0) p.calYear * 100 + p.calMonth else 0
+        var i = nb.current
+        while (i >= 0) { val k = keyOf(nb.pages[i]); if (k != 0) return k; i-- }
+        i = nb.current + 1
+        while (i < nb.pages.size) { val k = keyOf(nb.pages[i]); if (k != 0) return k; i++ }
+        return todayKey() / 100
+    }
+
     private fun rebuildTabs() {
-        val sorted = nb.tabs.sortedBy { nb.pages.indexOf(it.target) }
+        val filter = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)
+        val ctx = contextMonth()
+        val sorted = nb.tabs.filter { !(filter && it.auto && it.target.dateKey / 100 != ctx) }
+            .sortedBy { nb.pages.indexOf(it.target) }
         var active: Tab? = null
         for (t in sorted) if (nb.pages.indexOf(t.target) <= nb.current) active = t
         draw.setTabs(sorted, active)
@@ -1222,7 +1234,10 @@ class MainActivity : Activity() {
             "Planlayıcıyı bu deftere ekle (yıllık takvim, 12 ay, ayraçlar)",
             "Cetvel: " + (if (draw.rulerOn) "açık (kapatmak için dokunun)" else "kapalı (açmak için dokunun)"),
             "Tablo ekle (satır ve sütun sayısı seçerek)",
-            "Yapışkan not ekle"
+            "Yapışkan not ekle",
+            "Hatırlatıcılarım (defter dışı notlar)",
+            "Ayraçları toplu düzenle…",
+            "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
         m.setOnMenuItemClickListener { mi ->
@@ -1252,6 +1267,17 @@ class MainActivity : Activity() {
                 }
                 13 -> showTableDialog()
                 14 -> showStickyDialog()
+                16 -> showTabManager()
+                17 -> {
+                    val sp = getSharedPreferences("ayar", MODE_PRIVATE)
+                    sp.edit().putBoolean("ayraç_süz_$itemId", !sp.getBoolean("ayraç_süz_$itemId", true)).apply()
+                    rebuildTabs()
+                }
+                15 -> {
+                    val bd = ReminderBoard(this)
+                    AlertDialog.Builder(this).setTitle("Hatırlatıcılarım").setView(bd)
+                        .setPositiveButton("Kapat", null).show()
+                }
             }
             true
         }
@@ -1357,6 +1383,56 @@ class MainActivity : Activity() {
             .setNegativeButton("Vazgeç", null).show()
     }
 
+    private fun showTabManager() {
+        if (nb.tabs.isEmpty()) {
+            Toast.makeText(this, "Henüz ayraç yok", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val list = nb.tabs.sortedBy { nb.pages.indexOf(it.target) }
+        val labels = list.map { it.label + "   ·   " + Tab.SIDE_NAMES[it.side.coerceIn(0, 2)] + (if (it.auto) " (gün)" else "") + "   ·   sayfa " + (nb.pages.indexOf(it.target) + 1) }.toTypedArray()
+        val checked = BooleanArray(list.size)
+        val dlg = AlertDialog.Builder(this).setTitle("Ayraçları toplu düzenle")
+            .setMultiChoiceItems(labels, checked) { _, i, c -> checked[i] = c }
+            .setPositiveButton("Seçilenlere işlem…") { _, _ ->
+                val sel = list.filterIndexed { i, _ -> checked[i] }
+                if (sel.isEmpty()) {
+                    Toast.makeText(this, "Önce ayraç seçin", Toast.LENGTH_SHORT).show()
+                } else {
+                    val acts = arrayOf("Sola al", "Sağa al", "Üste al", "Rengini değiştir", "Sil")
+                    AlertDialog.Builder(this).setTitle(sel.size.toString() + " ayraç").setItems(acts) { _, w ->
+                        when (w) {
+                            0, 1, 2 -> {
+                                var skipped = 0
+                                for (t in sel) {
+                                    if (t.auto && w != 1) { skipped++; continue }
+                                    if (!t.auto && nb.sideCount(w) >= Tab.CAP[w] && t.side != w) { skipped++; continue }
+                                    t.side = w
+                                }
+                                if (skipped > 0) Toast.makeText(this, skipped.toString() + " ayraç taşınamadı (kenar dolu ya da gün ayracı)", Toast.LENGTH_LONG).show()
+                            }
+                            3 -> {
+                                val cs = tabPalette
+                                AlertDialog.Builder(this).setTitle("Renk").setItems(cs.indices.map { "Renk " + (it + 1) }.toTypedArray()) { _, k ->
+                                    for (t in sel) t.color = cs[k]
+                                    refresh(); scheduleSave()
+                                }.show()
+                                return@setItems
+                            }
+                            else -> nb.tabs.removeAll(sel.toSet())
+                        }
+                        refresh(); scheduleSave()
+                    }.show()
+                }
+            }
+            .setNeutralButton("Otomatik düzen") { _, _ ->
+                nb.relayoutTabs()
+                refresh(); scheduleSave()
+                Toast.makeText(this, "Gün ayraçları sağa, ay ve yıl ayraçları üste dizildi", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Kapat", null)
+        dlg.show()
+    }
+
     private fun showTableDialog() {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.VERTICAL
@@ -1400,9 +1476,21 @@ class MainActivity : Activity() {
         }
         grp.check(100)
         box.addView(grp)
+        val outside = CheckBox(this)
+        outside.text = "Defterin dışında hatırlatıcı olarak sakla (kitaplıkta görünür)"
+        box.addView(outside)
         AlertDialog.Builder(this).setTitle("Yapışkan not").setView(box)
             .setPositiveButton("Ekle") { _, _ ->
                 val col = colors[(grp.checkedRadioButtonId - 100).coerceIn(0, 3)]
+                if (outside.isChecked) {
+                    if (et.text.isBlank()) {
+                        Toast.makeText(this, "Hatırlatıcı için bir metin yazın", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Reminders.add(this, et.text.toString().trim(), col)
+                        Toast.makeText(this, "Hatırlatıcı kitaplık ekranına eklendi", Toast.LENGTH_SHORT).show()
+                    }
+                    return@setPositiveButton
+                }
                 val bmp = makeStickyBitmap(et.text.toString(), col)
                 val bos = java.io.ByteArrayOutputStream()
                 bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
@@ -2003,8 +2091,8 @@ class MainActivity : Activity() {
         val frame = android.widget.FrameLayout(this)
         frame.addView(draw, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         val ibLp = android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT)
-        ibLp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        ibLp.bottomMargin = dp(16f)
+        ibLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        ibLp.topMargin = dp(8f)
         frame.addView(itemBar, ibLp)
         root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)

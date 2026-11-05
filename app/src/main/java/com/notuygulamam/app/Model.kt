@@ -125,7 +125,7 @@ class PageData(
 class Tab(var label: String, var color: Int, var target: PageData, var auto: Boolean = false, var side: Int = 0) {
     companion object {
         /** Kenar başına en fazla ayraç: sol, sağ, üst, alt. */
-        val CAP = intArrayOf(30, 30, 14, 0)
+        val CAP = intArrayOf(30, 30, 16, 0)
         val SIDE_NAMES = arrayOf("Sol", "Sağ", "Üst", "Alt")
         const val SIDES = 3
     }
@@ -136,7 +136,8 @@ class Notebook {
     val tabs = ArrayList<Tab>()
     var current = 0
 
-    fun sideCount(side: Int) = tabs.count { it.side == side }
+    /** Kenardaki elle eklenmiş ayraç sayısı; otomatik gün ayraçları sınıra sayılmaz (aya göre süzülür). */
+    fun sideCount(side: Int) = tabs.count { it.side == side && !it.auto }
 
     /** Tercih edilen kenarda yer varsa onu, yoksa sırayla sol, sağ, üst kenarlardan yeri olanı verir; hepsi doluysa -1. */
     fun freeSide(pref: Int = 0): Int {
@@ -154,22 +155,24 @@ class Notebook {
         return s
     }
 
-    /** Kenar sınırlarını uygular; kaldırılan alt kenardaki ayraçlar sola taşınır. */
+    /** Kenar sınırlarını uygular; kaldırılan alt kenardaki ayraçlar sola taşınır. Gün ayraçları hep sağdadır. */
     fun fitTabSides() {
         val cnt = IntArray(4)
         for (t in tabs) {
+            if (t.auto) { t.side = 1; continue }
             val s = place(cnt, if (t.side >= 3) 0 else t.side)
             t.side = s
             cnt[s]++
         }
     }
 
-    /** Eski defterler için bir kerelik düzen: tarihler ve takvim ayraçları sağa, kullanıcının kendi ayraçları sola. */
+    /** Otomatik düzen: gün ayraçları sağa, ay ve yıl ayraçları üste, kullanıcının kendi ayraçları solda kalır. */
     fun relayoutTabs() {
         val cnt = IntArray(4)
         for (t in tabs) {
-            val datey = t.auto || Planner.SHORT.contains(t.label) || Regex("\\d{4}").matches(t.label)
-            val s = place(cnt, if (datey) 1 else 0)
+            if (t.auto) { t.side = 1; continue }
+            val cal = Planner.SHORT.contains(t.label) || Regex("\\d{4}").matches(t.label)
+            val s = place(cnt, if (cal) 2 else (if (t.side >= 3) 0 else t.side))
             t.side = s
             cnt[s]++
         }
