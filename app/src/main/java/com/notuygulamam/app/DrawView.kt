@@ -1726,6 +1726,7 @@ class DrawView(context: Context) : View(context) {
     private var lassoDownT = 0L
     private var lassoMoved = false
     var onLassoMenu: ((Float, Float) -> Unit)? = null
+    var onLassoCrossed: (() -> Unit)? = null
     private val lassoHalo = Paint(Paint.ANTI_ALIAS_FLAG)
     private val lassoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = 2f
@@ -1894,11 +1895,15 @@ class DrawView(context: Context) : View(context) {
     }
 
     /** Seçimi bu sayfadan çıkarıp başka bir sayfaya koyar. Kaynak ve hedef sayfanın geri alma geçmişi tutarlı kalsın diye temizlenir. */
-    fun lassoMoveTo(target: PageData): Boolean {
+    fun lassoMoveTo(target: PageData, dx: Float = 0f): Boolean {
         if (!hasLasso() || target === page) return false
         val ss = ArrayList(lassoStrokes)
         val its = ArrayList(lassoItems)
         strokes.removeAll(ss.toSet()); page.items.removeAll(its.toSet())
+        if (dx != 0f) {
+            for (s in ss) for (i in s.xs.indices) s.xs[i] = s.xs[i] + dx
+            for (it in its) it.x += dx
+        }
         target.strokes.addAll(ss); target.items.addAll(its)
         for (it in its) {
             it.x = it.x.coerceIn(0f, target.width)
@@ -1969,6 +1974,16 @@ class DrawView(context: Context) : View(context) {
                     if (lassoMoved && (lassoDX != 0f || lassoDY != 0f)) {
                         undoStack.add(HistoryAction.Move(ArrayList(lassoStrokes), ArrayList(lassoItems), lassoDX, lassoDY))
                         redoStack.clear()
+                        // Seçimin merkezi öbür açık sayfanın üstüne bırakıldıysa seçim o sayfaya geçer.
+                        val other = otherSpreadPage()
+                        if (other != null && e.actionMasked == MotionEvent.ACTION_UP) {
+                            val offO = if (other === leftPage) 0f else leftPage.width + SPREAD_GAP
+                            val cxWorld = offX + lassoBox.centerX()
+                            if (cxWorld >= offO && cxWorld <= offO + other.width) {
+                                val had = lassoMoveTo(other, offX - offO)
+                                if (had) onLassoCrossed?.invoke()
+                            }
+                        }
                     } else if (e.actionMasked == MotionEvent.ACTION_UP) {
                         onLassoMenu?.invoke(e.x, e.y)
                     }
@@ -1987,7 +2002,10 @@ class DrawView(context: Context) : View(context) {
 
     private fun drawLasso(c: Canvas) {
         if (tool != Tool.LASSO) return
-        beginPage(c)
+        // Sayfa dışına sürüklerken seçim görünür kalsın diye kırpmasız çizilir.
+        c.save()
+        c.translate(ox + offX * sc, oy)
+        c.scale(sc, sc)
         lassoPaint.strokeWidth = 2f / sc
         lassoPaint.setColor(Look.accent)
         if (lassoDrawing && lassoXs.size > 1) {

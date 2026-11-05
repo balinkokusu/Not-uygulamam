@@ -180,7 +180,21 @@ object Storage {
     private const val MAGIC = 0x4E4F5431
     private const val VERSION = 9
 
+    /** Günde bir kez, kayıttan önce mevcut dosyanın kopyasını alır; son 4 günün kopyaları saklanır. */
+    private fun dailyBackup(file: File) {
+        try {
+            if (!file.exists() || file.length() == 0L) return
+            val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+            val dst = File(file.parentFile, file.name + ".gun" + day)
+            if (!dst.exists()) file.copyTo(dst)
+            val all = file.parentFile?.listFiles { f -> f.name.startsWith(file.name + ".gun") }?.sortedBy { it.name } ?: return
+            for (old in all.dropLast(4)) old.delete()
+        } catch (e: Exception) {
+        }
+    }
+
     fun save(nb: Notebook, file: File) {
+        dailyBackup(file)
         val tmp = File(file.parentFile, file.name + ".tmp")
         DataOutputStream(BufferedOutputStream(FileOutputStream(tmp))).use { o ->
             o.writeInt(MAGIC)
@@ -248,13 +262,32 @@ object Storage {
         }
     }
 
+    /** Okunamayan bir defter dosyası asla sessizce üzerine yazılmasın diye yan tarafa kopyalanır. */
+    private fun quarantine(file: File) {
+        try {
+            if (file.exists() && file.length() > 0L) {
+                var k = 1
+                var dst = File(file.parentFile, file.name + ".bozuk" + k)
+                while (dst.exists()) { k++; dst = File(file.parentFile, file.name + ".bozuk" + k) }
+                file.copyTo(dst)
+            }
+        } catch (e: Exception) {
+        }
+    }
+
     fun load(file: File): Notebook? {
+        val r = loadInner(file)
+        if (r == null) quarantine(file)
+        return r
+    }
+
+    private fun loadInner(file: File): Notebook? {
         if (!file.exists()) return null
         return try {
             DataInputStream(BufferedInputStream(FileInputStream(file))).use { i ->
                 if (i.readInt() != MAGIC) return null
                 val ver = i.readInt()
-                if (ver < 1 || ver > 7) return null
+                if (ver < 1 || ver > VERSION) return null
                 val nb = Notebook()
                 val count = i.readInt()
                 nb.current = i.readInt()

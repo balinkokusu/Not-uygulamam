@@ -1720,6 +1720,10 @@ class MainActivity : Activity() {
         }
         draw.onTextTap = { item, x, y -> showTextDialog(item, x, y) }
         draw.onSelection = { refreshItemBar() }
+        draw.onLassoCrossed = {
+            Toast.makeText(this, "Seçim öbür sayfaya taşındı", Toast.LENGTH_SHORT).show()
+            scheduleSave()
+        }
         draw.onTableTap = { item, r, c -> showCellDialog(item, r, c) }
         draw.lassoCut = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("lasso_kes", false)
         draw.laserColor = getSharedPreferences("ayar", MODE_PRIVATE).getInt("lazer_renk", draw.laserColor)
