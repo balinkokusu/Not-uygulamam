@@ -394,6 +394,11 @@ class MainActivity : Activity() {
                     val t = all[i]
                     for (pg in targets) {
                         if (pg.pdfName != null) continue
+                        // önceki şablon başlıkları (aynı renk, boyut ve konum) silinir; böylece üst üste yazılmaz
+                        pg.items.removeAll { x ->
+                            x.type == PageItem.TEXT && x.size == 30f && x.color == Color.rgb(120, 108, 110) &&
+                                x.y < 80f && Math.abs((x.x - x.w / 2f) - 70f) < 2f
+                        }
                         if (t.header.isNotEmpty() || t.withDate) {
                             val title = StringBuilder(t.header)
                             if (t.withDate) {
