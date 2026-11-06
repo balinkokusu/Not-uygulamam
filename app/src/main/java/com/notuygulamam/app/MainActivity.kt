@@ -2006,17 +2006,34 @@ class MainActivity : Activity() {
     }
 
     private fun showPaperDialog() {
+        val r = draw.spreadRight()
+        if (r == null) { showPaperGrid(listOf(draw.page), "Kağıt stili (bu sayfa)"); return }
+        val l = draw.spreadLeft()
+        AlertDialog.Builder(this)
+            .setTitle("Hangi sayfanın kâğıt stili değişsin?")
+            .setItems(arrayOf("Sol sayfa", "Sağ sayfa", "İki sayfa birden")) { _, which ->
+                when (which) {
+                    0 -> showPaperGrid(listOf(l), "Kağıt stili (sol sayfa)")
+                    1 -> showPaperGrid(listOf(r), "Kağıt stili (sağ sayfa)")
+                    else -> showPaperGrid(listOf(l, r), "Kağıt stili (iki sayfa)")
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun showPaperGrid(targets: List<PageData>, title: String) {
         var dlg: AlertDialog? = null
         val entries = Paper.values().map { Pair(it.label, it) }
-        val grid = PaperGrid(this, entries, draw.paper.ordinal, draw.page.paperColor) { which ->
-            draw.paper = Paper.values()[which]
+        val grid = PaperGrid(this, entries, targets[0].paper.ordinal, targets[0].paperColor) { which ->
+            draw.setPaperFor(targets, Paper.values()[which])
             refresh()
             dlg?.dismiss()
         }
         val sv = android.widget.ScrollView(this)
         sv.addView(grid)
         dlg = AlertDialog.Builder(this)
-            .setTitle("Kağıt stili (bu sayfa)")
+            .setTitle(title)
             .setView(sv)
             .setNegativeButton("Kapat", null)
             .show()

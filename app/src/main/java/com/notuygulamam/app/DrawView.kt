@@ -135,6 +135,16 @@ class DrawView(context: Context) : View(context) {
             onChanged?.invoke()
         }
 
+    fun spreadLeft(): PageData = leftPage
+    fun spreadRight(): PageData? = rightPage
+
+    /** Çift sayfa görünümünde belirli sayfaların kâğıt stilini değiştirir. */
+    fun setPaperFor(pages: List<PageData>, value: Paper) {
+        for (pg in pages) pg.paper = value
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
     private var current: Stroke? = null
     private var gestureErasing = false
     private var strokeActive = false
