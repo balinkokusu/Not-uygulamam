@@ -141,6 +141,8 @@ class DrawView(context: Context) : View(context) {
     private var strokeFromStylus = false
     private var straightLive = false
     private val gestureRemoved = ArrayList<Pair<Int, Stroke>>()
+    private val gestureAdded = ArrayList<Stroke>()
+    private var lastTapAdded: List<Stroke>? = null
     private val gestureRemovedItems = ArrayList<Pair<Int, PageItem>>()
 
     /** Silgi hangi katmanları siler. */
@@ -1350,10 +1352,11 @@ class DrawView(context: Context) : View(context) {
             }
             gestureRemovedItems.clear()
             if (gestureErasing && gestureRemoved.isNotEmpty()) {
-                undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
+                commitStrokeErase()
                 redoStack.clear()
             }
             gestureRemoved.clear()
+            gestureAdded.clear()
             strokeActive = false
             rebuildBase()
         }
@@ -1507,6 +1510,7 @@ class DrawView(context: Context) : View(context) {
                     type == MotionEvent.TOOL_TYPE_ERASER ||
                     (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
                 gestureRemoved.clear()
+                gestureAdded.clear()
                 gestureRemovedItems.clear()
                 val gx = pageX(e.x)
                 val gy = pageY(e.y)
@@ -1595,6 +1599,9 @@ class DrawView(context: Context) : View(context) {
                         strokes.remove(ps)
                         undoStack.removeAll { it is HistoryAction.Add && it.stroke === ps }
                     }
+                    lastTapAdded?.let { strokes.removeAll(it.toSet()) }
+                    strokes.removeAll(gestureAdded.toSet())
+                    gestureAdded.clear()
                     val pe = lastTapErase
                     if (pe != null) for ((idx, st) in pe.asReversed()) strokes.add(min(idx, strokes.size), st)
                     for ((idx, st) in gestureRemoved.asReversed()) strokes.add(min(idx, strokes.size), st)
@@ -1619,17 +1626,19 @@ class DrawView(context: Context) : View(context) {
                     lastTapY = e.y
                     lastTapStroke = current
                     lastTapErase = if (gestureRemoved.isEmpty()) null else ArrayList(gestureRemoved)
+                    lastTapAdded = ArrayList(gestureAdded)
                 } else {
                     lastTapTime = 0L
                 }
                 if (gestureErasing) {
                     if (gestureRemoved.isNotEmpty() || gestureRemovedItems.isNotEmpty()) {
-                        if (gestureRemoved.isNotEmpty()) undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
+                        commitStrokeErase()
                         if (gestureRemovedItems.isNotEmpty()) undoStack.add(HistoryAction.ItemsErase(ArrayList(gestureRemovedItems)))
                         redoStack.clear()
                         onChanged?.invoke()
                     }
                     gestureRemoved.clear()
+                    gestureAdded.clear()
                     gestureRemovedItems.clear()
                 } else {
                     val s = current
@@ -1795,10 +1804,19 @@ class DrawView(context: Context) : View(context) {
             var i = strokes.size - 1
             while (i >= 0) {
                 val s = strokes[i]
-                if (hits(s, x, y, r + s.width / 2f)) {
-                    gestureRemoved.add(Pair(i, s))
-                    strokes.removeAt(i)
-                    removedAny = true
+                val rr = r + s.width / 2f
+                if (hits(s, x, y, rr)) {
+                    val pieces = cutStroke(s, x, y, rr)
+                    if (pieces != null) {
+                        strokes.removeAt(i)
+                        // bu hareketin kendi parçasıysa özgün çizgi sayılmaz
+                        if (!gestureAdded.remove(s)) gestureRemoved.add(Pair(i, s))
+                        for (pc in pieces) {
+                            strokes.add(pc)
+                            gestureAdded.add(pc)
+                        }
+                        removedAny = true
+                    }
                 }
                 i--
             }
@@ -1820,6 +1838,52 @@ class DrawView(context: Context) : View(context) {
             k--
         }
         return removedAny
+    }
+
+    /** Gerçek silgi gibi yalnız silginin değdiği kısmı keser; geriye kalan parçaları döndürür. Hiçbir nokta silinmiyorsa null. */
+    private fun cutStroke(s: Stroke, x: Float, y: Float, r: Float): List<Stroke>? {
+        val xs = ArrayList<Float>()
+        val ys = ArrayList<Float>()
+        val ps = ArrayList<Float>()
+        val step = max(r * 0.5f, 2f)
+        for (k in s.xs.indices) {
+            if (k > 0) {
+                val ax = s.xs[k - 1]; val ay = s.ys[k - 1]; val ap = s.ps[k - 1]
+                val d = hypot(s.xs[k] - ax, s.ys[k] - ay)
+                if (d > step) {
+                    val m = Math.ceil((d / step).toDouble()).toInt()
+                    for (j in 1 until m) {
+                        val t = j.toFloat() / m
+                        xs.add(ax + (s.xs[k] - ax) * t)
+                        ys.add(ay + (s.ys[k] - ay) * t)
+                        ps.add(ap + (s.ps[k] - ap) * t)
+                    }
+                }
+            }
+            xs.add(s.xs[k]); ys.add(s.ys[k]); ps.add(s.ps[k])
+        }
+        val keep = BooleanArray(xs.size) { hypot(xs[it] - x, ys[it] - y) > r }
+        if (keep.all { it }) return null
+        val out = ArrayList<Stroke>()
+        var cur: Stroke? = null
+        for (k in xs.indices) {
+            if (keep[k]) {
+                if (cur == null) cur = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind)
+                cur.add(xs[k], ys[k], ps[k])
+            } else {
+                if (cur != null && cur.xs.size >= 2) out.add(cur)
+                cur = null
+            }
+        }
+        if (cur != null && cur.xs.size >= 2) out.add(cur)
+        return out
+    }
+
+    /** Silme hareketini geri alma listesine yazar; çizgiler kesildiyse kalan parçalarla birlikte tek işlem olur. */
+    private fun commitStrokeErase() {
+        if (gestureRemoved.isEmpty()) return
+        if (gestureAdded.isEmpty()) undoStack.add(HistoryAction.Erase(ArrayList(gestureRemoved)))
+        else undoStack.add(HistoryAction.Group(ArrayList(gestureRemoved), emptyList(), ArrayList(gestureAdded), emptyList()))
     }
 
     private fun itemNear(it: PageItem, x: Float, y: Float, r: Float): Boolean {
