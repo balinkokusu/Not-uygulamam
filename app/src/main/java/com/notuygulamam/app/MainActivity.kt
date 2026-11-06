@@ -1244,7 +1244,7 @@ class MainActivity : Activity() {
             "Yapışkan not ekle",
             "Hatırlatıcılarım (defter dışı notlar)",
             "Ayraçları toplu düzenle…",
-            "Kenar notu ekle (boş yapışkan not, üstüne kalemle yazılır)",
+            "Ekran kenarına yapışkan not koy (sürüklenir, her sayfada sabit)",
             "Cilt görünümü: " + arrayOf("yalnız gölge", "düz dikiş", "tel spiral")[draw.binding.coerceIn(0, 2)] + " (değiştirmek için dokunun)",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
@@ -1491,26 +1491,28 @@ class MainActivity : Activity() {
         grp.check(100)
         box.addView(grp)
         val outside = CheckBox(this)
-        outside.text = "Defterin dışında hatırlatıcı olarak sakla (kitaplıkta görünür)"
+        outside.text = "Sayfaya değil, ekranın kenarına koy (tüm sayfalarda sabit; sürükleyip istediğiniz yere taşıyın)"
         box.addView(outside)
         AlertDialog.Builder(this).setTitle("Yapışkan not").setView(box)
             .setPositiveButton("Ekle") { _, _ ->
                 val col = colors[(grp.checkedRadioButtonId - 100).coerceIn(0, 3)]
                 if (outside.isChecked) {
-                    if (et.text.isBlank()) {
-                        Toast.makeText(this, "Hatırlatıcı için bir metin yazın", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Reminders.add(this, et.text.toString().trim(), col)
-                        Toast.makeText(this, "Hatırlatıcı kitaplık ekranına eklendi", Toast.LENGTH_SHORT).show()
-                    }
+                    val nbId = itemId.ifEmpty { "ana" }
+                    val l = MarginNotes.load(this, nbId)
+                    l.add(MarginNotes.Note(System.currentTimeMillis(), et.text.toString().trim(), col, 1))
+                    MarginNotes.save(this, nbId, l)
+                    refreshMargins()
                     return@setPositiveButton
                 }
-                val bmp = makeStickyBitmap(et.text.toString(), col)
+                val bmp = makeStickyBitmap(et.text.toString(), col, emptyList())
                 val bos = java.io.ByteArrayOutputStream()
                 bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
                 val c = draw.viewCenterOnPage()
                 val it = PageItem(PageItem.IMAGE, c[0], c[1])
                 it.w = 460f; it.h = 460f
+                it.kind = DrawView.STICKY_KIND
+                it.text = et.text.toString().trim()
+                it.color = col
                 it.data = bos.toByteArray(); it.bmp = bmp; it.above = false
                 draw.tool = Tool.OBJECT
                 draw.addItem(it)
@@ -1519,7 +1521,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Vazgeç", null).show()
     }
 
-    private fun makeStickyBitmap(text: String, color: Int): android.graphics.Bitmap {
+    private fun makeStickyBitmap(text: String, color: Int, ink: List<MarginNotes.Ink>): android.graphics.Bitmap {
         val s = 460
         val bmp = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
         val c = android.graphics.Canvas(bmp)
@@ -1538,6 +1540,20 @@ class MainActivity : Activity() {
             tp.typeface = Fonts.get(2, 0)
             val lay = android.text.StaticLayout.Builder.obtain(text, 0, text.length, tp, s - 80).build()
             c.save(); c.translate(40f, 40f); lay.draw(c); c.restore()
+        }
+        val ip = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        ip.style = android.graphics.Paint.Style.STROKE
+        ip.strokeCap = android.graphics.Paint.Cap.ROUND
+        ip.strokeJoin = android.graphics.Paint.Join.ROUND
+        ip.strokeWidth = 6f
+        for (st in ink) {
+            if (st.pts.size < 4) continue
+            ip.color = st.color
+            val path = android.graphics.Path()
+            path.moveTo(st.pts[0] * s, st.pts[1] * s)
+            var i = 2
+            while (i + 1 < st.pts.size) { path.lineTo(st.pts[i] * s, st.pts[i + 1] * s); i += 2 }
+            c.drawPath(path, ip)
         }
         return bmp
     }
@@ -1610,14 +1626,51 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private lateinit var marginL: MarginColumn
-    private lateinit var marginR: MarginColumn
+    private lateinit var desk: DeskLayer
 
-    /** Kenar notlarını yeniler; not olan yanda sayfa için yer ayrılır. */
+    /** Kenar notlarını yeniler. */
     private fun refreshMargins() {
-        val l = marginL.refresh()
-        val r = marginR.refresh()
-        draw.setReserve(if (l > 0) dp(MARGIN_DP).toFloat() else 0f, if (r > 0) dp(MARGIN_DP).toFloat() else 0f)
+        desk.refresh()
+        desk.requestLayout()
+    }
+
+    /** Yapışkan not sayfa dışına bırakılınca küçülüp masaya (ekrana) yerleşir. */
+    private fun stickyToDesk(item: PageItem, sx: Float, sy: Float) {
+        val nbId = itemId.ifEmpty { "ana" }
+        val l = MarginNotes.load(this, nbId)
+        val n = MarginNotes.Note(System.currentTimeMillis(), item.text, item.color, 1)
+        val fw = desk.width.coerceAtLeast(1)
+        val fh = desk.height.coerceAtLeast(1)
+        n.fx = ((sx - desk.cardPx / 2f) / fw).coerceIn(0f, 1f - desk.cardPx.toFloat() / fw)
+        n.fy = ((sy - desk.cardPx / 2f) / fh).coerceIn(0f, 1f - desk.cardPx.toFloat() / fh)
+        l.add(n)
+        MarginNotes.save(this, nbId, l)
+        refreshMargins()
+        refresh()
+        scheduleSave()
+        Toast.makeText(this, "Not ekranın kenarına alındı; tüm sayfalarda sabit kalır. Sayfaya geri sürükleyebilirsiniz.", Toast.LENGTH_LONG).show()
+    }
+
+    /** Masadaki not sayfanın üzerine bırakılınca sayfaya yapışır. */
+    private fun dropNoteOnPage(note: MarginNotes.Note, cx: Float, cy: Float) {
+        val nbId = itemId.ifEmpty { "ana" }
+        val bmp = makeStickyBitmap(note.text, note.color, note.ink)
+        val bos = java.io.ByteArrayOutputStream()
+        bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+        val it = PageItem(PageItem.IMAGE, 0f, 0f)
+        it.w = 460f; it.h = 460f
+        it.kind = DrawView.STICKY_KIND
+        it.text = note.text
+        it.color = note.color
+        it.data = bos.toByteArray(); it.bmp = bmp
+        val l = MarginNotes.load(this, nbId)
+        l.removeAll { x -> x.id == note.id }
+        MarginNotes.save(this, nbId, l)
+        draw.tool = Tool.OBJECT
+        draw.addItemAtScreen(it, cx, cy)
+        desk.post { refreshMargins() }
+        refresh()
+        scheduleSave()
     }
 
     private fun refreshItemBar() {
@@ -2127,10 +2180,14 @@ class MainActivity : Activity() {
         ibLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         ibLp.topMargin = dp(8f)
         frame.addView(itemBar, ibLp)
-        marginL = MarginColumn(this, itemId.ifEmpty { "ana" }, 0, { draw.penColor }) { refreshMargins() }
-        marginR = MarginColumn(this, itemId.ifEmpty { "ana" }, 1, { draw.penColor }) { refreshMargins() }
-        frame.addView(marginL, android.widget.FrameLayout.LayoutParams(dp(MARGIN_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START))
-        frame.addView(marginR, android.widget.FrameLayout.LayoutParams(dp(MARGIN_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.END))
+        desk = DeskLayer(this, itemId.ifEmpty { "ana" }, { draw.penColor }, { refreshMargins() }) { note, cx, cy ->
+            if (draw.screenInsideSpread(cx, cy)) {
+                dropNoteOnPage(note, cx, cy)
+                true
+            } else false
+        }
+        frame.addView(desk, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        draw.onStickyToDesk = { item, sx, sy -> stickyToDesk(item, sx, sy) }
         root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         refreshMargins()

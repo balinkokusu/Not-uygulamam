@@ -28,7 +28,7 @@ import org.json.JSONObject
 object MarginNotes {
     class Ink(val color: Int, val pts: ArrayList<Float> = ArrayList())
 
-    class Note(val id: Long, var text: String, var color: Int, var side: Int, var ink: ArrayList<Ink> = ArrayList())
+    class Note(val id: Long, var text: String, var color: Int, var side: Int, var ink: ArrayList<Ink> = ArrayList(), var fx: Float = -1f, var fy: Float = -1f)
 
     private fun key(nb: String) = "n_$nb"
 
@@ -40,6 +40,8 @@ object MarginNotes {
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
                 val n = Note(o.getLong("id"), o.getString("text"), o.getInt("color"), o.optInt("side", 0))
+                n.fx = o.optDouble("fx", -1.0).toFloat()
+                n.fy = o.optDouble("fy", -1.0).toFloat()
                 val ia = o.optJSONArray("ink")
                 if (ia != null) for (k in 0 until ia.length()) {
                     val io = ia.getJSONObject(k)
@@ -64,7 +66,7 @@ object MarginNotes {
                 for (v in st.pts) pa.put(Math.round(v * 1000f) / 1000.0)
                 ia.put(JSONObject().put("c", st.color).put("p", pa))
             }
-            a.put(JSONObject().put("id", n.id).put("text", n.text).put("color", n.color).put("side", n.side).put("ink", ia))
+            a.put(JSONObject().put("id", n.id).put("text", n.text).put("color", n.color).put("side", n.side).put("fx", n.fx.toDouble()).put("fy", n.fy.toDouble()).put("ink", ia))
         }
         ctx.getSharedPreferences("kenar", Context.MODE_PRIVATE).edit().putString(key(nb), a.toString()).apply()
     }
@@ -139,7 +141,8 @@ class NoteCard(
     private val nb: String,
     private val note: MarginNotes.Note,
     private val penColor: () -> Int,
-    private val onEdit: () -> Unit
+    private val onEdit: () -> Unit,
+    private val onDropped: (MarginNotes.Note, Float, Float) -> Unit
 ) : View(ctx) {
     private val d = ctx.resources.displayMetrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -160,13 +163,17 @@ class NoteCard(
     private var downY = 0f
     private var moved = false
     private var downTime = 0L
+    private var startX = 0f
+    private var startY = 0f
+    private var rawDX = 0f
+    private var rawDY = 0f
 
     init {
         val g = GradientDrawable()
         g.setColor(note.color)
         g.cornerRadius = 3 * d
         background = g
-        elevation = 4 * d
+        elevation = 5 * d
         rotation = 0f
         isClickable = true
     }
@@ -222,6 +229,8 @@ class NoteCard(
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 downX = e.x; downY = e.y; moved = false; downTime = e.eventTime
+                startX = x; startY = y; rawDX = e.rawX; rawDY = e.rawY
+                if (!pen) bringToFront()
                 if (pen) {
                     val st = MarginNotes.Ink(penColor())
                     st.pts.add((e.x / width).coerceIn(0f, 1f)); st.pts.add((e.y / height).coerceIn(0f, 1f))
@@ -230,7 +239,11 @@ class NoteCard(
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (hypot(e.x - downX, e.y - downY) > 8 * d) moved = true
+                if (!pen && (moved || hypot(e.rawX - rawDX, e.rawY - rawDY) > 10 * d)) {
+                    moved = true
+                    x = startX + (e.rawX - rawDX)
+                    y = startY + (e.rawY - rawDY)
+                }
                 val st = cur
                 if (pen && st != null) {
                     for (i in 0 until e.historySize) {
@@ -247,8 +260,8 @@ class NoteCard(
                     cur = null
                     persist()
                     invalidate()
-                } else if (e.actionMasked == MotionEvent.ACTION_UP && !moved) {
-                    onEdit()
+                } else if (e.actionMasked == MotionEvent.ACTION_UP) {
+                    if (!moved) onEdit() else onDropped(note, x + width / 2f, y + height / 2f)
                 }
             }
         }
@@ -256,43 +269,60 @@ class NoteCard(
     }
 }
 
-/** Sayfaların bir yanındaki dikey kart sütunu. */
-class MarginColumn(
+/** Ekranda serbestçe duran, tüm sayfalarda sabit kalan kenar notları (masa). */
+class DeskLayer(
     private val ctx: Context,
     private val nb: String,
-    private val side: Int,
     private val penColor: () -> Int,
-    private val onChange: () -> Unit
-) : ScrollView(ctx) {
-    private val col = LinearLayout(ctx)
+    private val onChange: () -> Unit,
+    private val dropped: (MarginNotes.Note, Float, Float) -> Boolean
+) : android.widget.FrameLayout(ctx) {
     private val d = ctx.resources.displayMetrics.density
+    val cardPx = (96 * d).toInt()
+    private val cards = ArrayList<Pair<NoteCard, MarginNotes.Note>>()
 
-    init {
-        isVerticalScrollBarEnabled = false
-        col.orientation = LinearLayout.VERTICAL
-        col.setPadding((6 * d).toInt(), (10 * d).toInt(), (6 * d).toInt(), (10 * d).toInt())
-        addView(col)
+    fun refresh() {
+        removeAllViews()
+        cards.clear()
+        val all = MarginNotes.load(ctx, nb)
+        var changed = false
+        var li = 0
+        var ri = 0
+        for (n in all) {
+            if (n.fx < 0f || n.fy < 0f) {
+                // ilk yerleşim: seçilen yanın kenarı
+                if (n.side == 1) { n.fx = 0.9f; n.fy = 0.05f + 0.22f * ri; ri++ } else { n.fx = 0.005f; n.fy = 0.05f + 0.22f * li; li++ }
+                changed = true
+            }
+        }
+        if (changed) MarginNotes.save(ctx, nb, all)
+        for (n in all) {
+            val card = NoteCard(ctx, nb, n, penColor, { MarginNotes.edit(ctx, nb, n, n.side) { onChange() } }) { note, cx, cy ->
+                if (!dropped(note, cx, cy)) {
+                    val l = MarginNotes.load(ctx, nb)
+                    val m = l.firstOrNull { it.id == note.id }
+                    if (m != null && width > 0 && height > 0) {
+                        m.fx = ((cx - cardPx / 2f) / width).coerceIn(0f, 1f - cardPx.toFloat() / width)
+                        m.fy = ((cy - cardPx / 2f) / height).coerceIn(0f, 1f - cardPx.toFloat() / height)
+                        MarginNotes.save(ctx, nb, l)
+                    }
+                    requestLayout()
+                }
+            }
+            addView(card, LayoutParams(cardPx, cardPx))
+            cards.add(Pair(card, n))
+        }
     }
 
-    fun refresh(): Int {
-        col.removeAllViews()
-        val mine = MarginNotes.load(ctx, nb).filter { it.side == side }
-        for (n in mine) {
-            val card = NoteCard(ctx, nb, n, penColor) { MarginNotes.edit(ctx, nb, n, side) { onChange() } }
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, (4 * d).toInt(), 0, (10 * d).toInt())
-            col.addView(card, lp)
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        super.onLayout(changed, l, t, r, b)
+        val w = r - l
+        val h = b - t
+        val stored = MarginNotes.load(ctx, nb)
+        for ((card, n) in cards) {
+            val m = stored.firstOrNull { it.id == n.id } ?: n
+            card.x = (m.fx * w).coerceIn(0f, (w - cardPx).toFloat().coerceAtLeast(0f))
+            card.y = (m.fy * h).coerceIn(0f, (h - cardPx).toFloat().coerceAtLeast(0f))
         }
-        if (mine.isNotEmpty()) {
-            val add = TextView(ctx)
-            add.text = "＋"
-            add.textSize = 22f
-            add.gravity = Gravity.CENTER
-            add.setTextColor(Look.accent)
-            add.setOnClickListener { MarginNotes.edit(ctx, nb, null, side) { onChange() } }
-            col.addView(add, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (40 * d).toInt()))
-        }
-        visibility = if (mine.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
-        return mine.size
     }
 }

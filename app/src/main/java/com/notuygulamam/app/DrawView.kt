@@ -629,11 +629,12 @@ class DrawView(context: Context) : View(context) {
         c.scale(sc, sc)
         c.clipRect(0f, 0f, x + r.width, h)
         // iç gölge
-        val gw = 38f
+        val gw = if (binding == 0) 14f else 38f
+        val ga = if (binding == 0) 34 else 70
         bindPaint.style = Paint.Style.FILL
-        bindPaint.shader = LinearGradient(x - gw, 0f, x, 0f, Color.argb(0, 60, 40, 40), Color.argb(70, 60, 40, 40), Shader.TileMode.CLAMP)
+        bindPaint.shader = LinearGradient(x - gw, 0f, x, 0f, Color.argb(0, 60, 40, 40), Color.argb(ga, 60, 40, 40), Shader.TileMode.CLAMP)
         c.drawRect(x - gw, 0f, x, h, bindPaint)
-        bindPaint.shader = LinearGradient(x, 0f, x + gw, 0f, Color.argb(70, 60, 40, 40), Color.argb(0, 60, 40, 40), Shader.TileMode.CLAMP)
+        bindPaint.shader = LinearGradient(x, 0f, x + gw, 0f, Color.argb(ga, 60, 40, 40), Color.argb(0, 60, 40, 40), Shader.TileMode.CLAMP)
         c.drawRect(x, 0f, x + gw, h, bindPaint)
         bindPaint.shader = null
         if (binding == 1) {
@@ -799,6 +800,7 @@ class DrawView(context: Context) : View(context) {
         c.translate(ox + offX * sc, oy)
         c.scale(sc, sc)
         val px = 1f / sc
+        if (dragMode == 1 && dragMoved && dragItem === it) renderer.drawItem(c, it)
         c.save()
         c.translate(it.x, it.y)
         c.rotate(it.rot)
@@ -832,7 +834,8 @@ class DrawView(context: Context) : View(context) {
 
     fun addItem(it: PageItem, topLeft: Boolean = false) {
         // yeni eklenen görsel ve çıkartma çizgilerin önüne gelir; isteyen arkaya gönderebilir
-        if (it.type == PageItem.IMAGE || it.type == PageItem.STICKER) it.above = true
+        if (it.kind == STICKY_KIND && it.type == PageItem.IMAGE) it.above = false
+        else if (it.type == PageItem.IMAGE || it.type == PageItem.STICKER) it.above = true
         renderer.measureItem(it)
         if (topLeft) {
             it.x += it.w / 2f
@@ -856,6 +859,68 @@ class DrawView(context: Context) : View(context) {
         val hh = (it.w * sn + it.h * cs) / 2f
         it.x = if (hw * 2f >= page.width) page.width / 2f else it.x.coerceIn(hw, page.width - hw)
         it.y = if (hh * 2f >= page.height) page.height / 2f else it.y.coerceIn(hh, page.height - hh)
+    }
+
+    /** Yapışkan notlar masaya (ekranın kenarına) alınırken çağrılır: nesne, ekran koordinatındaki merkeziyle. */
+    var onStickyToDesk: ((PageItem, Float, Float) -> Unit)? = null
+
+    /** Sürüklemeyi bitirir: sayfa dışına bırakılan yapışkan not masaya geçer, öbür sayfaya bırakılan nesne o sayfaya taşınır. */
+    private fun finishItemDrag(it: PageItem) {
+        val outside = it.x < -offX || it.x > spreadW() - offX || it.y < 0f || it.y > page.height
+        if (outside) {
+            val cb = onStickyToDesk
+            if (it.kind == STICKY_KIND && it.type == PageItem.IMAGE && cb != null) {
+                val sx = ox + (it.x + offX) * sc
+                val sy = oy + it.y * sc
+                val idx = page.items.indexOf(it)
+                if (idx >= 0) {
+                    page.items.removeAt(idx)
+                    undoStack.add(HistoryAction.ItemRemove(it, idx))
+                    redoStack.clear()
+                }
+                setSel(null)
+                rebuildBase()
+                cb(it, sx, sy)
+                return
+            }
+            keepInPage(it)
+            rebuildBase()
+            return
+        }
+        val other = otherSpreadPage()
+        if (other != null && (it.x < 0f || it.x > page.width)) {
+            val idx = page.items.indexOf(it)
+            val src = page
+            val newX = if (src === leftPage) it.x - leftPage.width - SPREAD_GAP else it.x + leftPage.width + SPREAD_GAP
+            if (idx >= 0) {
+                src.items.removeAt(idx)
+                src.undo.add(HistoryAction.ItemRemove(it, idx))
+                src.redo.clear()
+            }
+            it.x = newX
+            other.items.add(it)
+            other.undo.add(HistoryAction.ItemAdd(it))
+            other.redo.clear()
+            switchTo(other)
+            setSel(it)
+        }
+        keepInPage(it)
+        rebuildBase()
+    }
+
+    /** Ekran noktası iki sayfanın üzerinde mi? */
+    fun screenInsideSpread(sx: Float, sy: Float): Boolean {
+        val wx = (sx - ox) / sc
+        val wy = (sy - oy) / sc
+        return wx >= 0f && wx <= worldW() && wy >= 0f && wy <= worldH()
+    }
+
+    /** Nesneyi ekrandaki bir noktaya, o noktadaki sayfaya ekler. */
+    fun addItemAtScreen(it: PageItem, sx: Float, sy: Float) {
+        activateAt(sx)
+        it.x = pageX(sx)
+        it.y = pageY(sy)
+        addItem(it)
     }
 
     private fun layerInfo(it: PageItem) {
@@ -996,8 +1061,8 @@ class DrawView(context: Context) : View(context) {
                     if (dragMoved) {
                         it.x = itemX0 + gx - dragSx
                         it.y = itemY0 + gy - dragSy
-                        keepInPage(it)
                         rebuildBase()
+                        invalidate()
                     }
                 } else if (dragMode == 2 && it != null) {
                     dragMoved = true
@@ -1027,7 +1092,10 @@ class DrawView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val it = dragItem
                 if (e.actionMasked == MotionEvent.ACTION_UP) {
-                    if (dragMode != 0 && dragMoved) {
+                    if (dragMode == 1 && dragMoved && it != null) {
+                        finishItemDrag(it)
+                        onChanged?.invoke()
+                    } else if (dragMode != 0 && dragMoved) {
                         onChanged?.invoke()
                     } else if (dragMode == 1 && !dragMoved && tapOnSelected && it != null && it.type == PageItem.TEXT) {
                         onTextTap?.invoke(it, it.x, it.y)
@@ -2419,6 +2487,7 @@ class DrawView(context: Context) : View(context) {
         const val UNIT = 2.2f
         const val SPREAD_GAP = 0f
         const val SPIRAL_HALF = 30f
+        const val STICKY_KIND = 77
         const val HOLD_MS = 320L
         const val TAB_OUT = 50f
         const val TAB_IN = 6f
