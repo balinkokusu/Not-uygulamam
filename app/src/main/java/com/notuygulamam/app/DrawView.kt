@@ -773,6 +773,7 @@ class DrawView(context: Context) : View(context) {
         if (picking) drawPickerLoupe(c)
         drawSelection(c)
         drawLasso(c)
+        drawCutLasso(c)
         drawRuler(c)
         drawLaser(c)
     }
@@ -1447,7 +1448,96 @@ class DrawView(context: Context) : View(context) {
         return true
     }
 
+    // ---- Kement ile görsel kesme ----
+    private var cutTarget: PageItem? = null
+    private val cutPts = ArrayList<Float>()
+    var onImageCut: ((PageItem, FloatArray) -> Unit)? = null
+
+    fun startImageCut(item: PageItem) {
+        cutTarget = item
+        cutPts.clear()
+        invalidate()
+        onInfo?.invoke("Kement: kesmek istediğiniz bölgeyi kalemle ya da parmakla çevreleyin")
+    }
+
+    fun cancelImageCut() {
+        cutTarget = null
+        cutPts.clear()
+        invalidate()
+    }
+
+    private fun handleCutTouch(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                activateAt(e.x)
+                cutPts.clear()
+                cutPts.add(pageX(e.x)); cutPts.add(pageY(e.y))
+            }
+            MotionEvent.ACTION_MOVE -> {
+                for (h in 0 until e.historySize) { cutPts.add(pageX(e.getHistoricalX(h))); cutPts.add(pageY(e.getHistoricalY(h))) }
+                cutPts.add(pageX(e.x)); cutPts.add(pageY(e.y))
+            }
+            MotionEvent.ACTION_UP -> {
+                val t = cutTarget
+                val pts = cutPts.toFloatArray()
+                cutTarget = null
+                cutPts.clear()
+                if (t != null && pts.size >= 8) onImageCut?.invoke(t, pts)
+            }
+            MotionEvent.ACTION_CANCEL -> { cutTarget = null; cutPts.clear() }
+        }
+        invalidate()
+        return true
+    }
+
+    private val cutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val cutPath = Path()
+
+    private fun drawCutLasso(c: Canvas) {
+        if (cutTarget == null || cutPts.size < 4) return
+        c.save()
+        c.translate(ox + offX * sc, oy)
+        c.scale(sc, sc)
+        cutPath.reset()
+        cutPath.moveTo(cutPts[0], cutPts[1])
+        var i = 2
+        while (i + 1 < cutPts.size) { cutPath.lineTo(cutPts[i], cutPts[i + 1]); i += 2 }
+        cutPaint.color = Look.accent
+        cutPaint.strokeWidth = 2.4f * density / sc
+        cutPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(10f * density / sc, 7f * density / sc), 0f)
+        c.drawPath(cutPath, cutPaint)
+        cutPaint.pathEffect = null
+        c.restore()
+    }
+
+    /** Tek bir görseli, bir dizi parçayla değiştirir; geri alınınca asıl görsel geri gelir. */
+    fun replaceItem(old: PageItem, added: List<PageItem>) {
+        val idx = page.items.indexOf(old)
+        if (idx < 0) return
+        page.items.removeAt(idx)
+        for (a in added) {
+            a.above = true
+            page.items.add(a)
+        }
+        undoStack.add(HistoryAction.Group(emptyList(), listOf(Pair(idx, old)), emptyList(), ArrayList(added)))
+        redoStack.clear()
+        setSel(added.lastOrNull())
+        rebuildBase()
+        onChanged?.invoke()
+    }
+
+    /** Görsel öğesindeki sayfa noktasını (x, y), bitmap piksel koordinatına çevirir. */
+    fun itemToBitmapPoint(it: PageItem, x: Float, y: Float, bw: Int, bh: Int): FloatArray {
+        val a = rad(-it.rot)
+        val dx = x - it.x
+        val dy = y - it.y
+        val lx = dx * Math.cos(a).toFloat() - dy * Math.sin(a).toFloat() + it.w / 2f
+        val ly = dx * Math.sin(a).toFloat() + dy * Math.cos(a).toFloat() + it.h / 2f
+        return floatArrayOf(lx * bw / it.w, ly * bh / it.h)
+    }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (cutTarget != null) return handleCutTouch(e)
         if (tabTouch(e)) return true
         if (handleMultiTouch(e)) return true
 

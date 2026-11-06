@@ -142,7 +142,10 @@ class NoteCard(
     private val note: MarginNotes.Note,
     private val penColor: () -> Int,
     private val onEdit: () -> Unit,
-    private val onDropped: (MarginNotes.Note, Float, Float) -> Unit
+    private val onDropped: (MarginNotes.Note, Float, Float) -> Unit,
+    private val erasing: () -> Boolean,
+    private val eraserDp: () -> Float,
+    private val onDelete: (MarginNotes.Note) -> Unit
 ) : View(ctx) {
     private val d = ctx.resources.displayMetrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -165,6 +168,8 @@ class NoteCard(
     private var downTime = 0L
     private var startX = 0f
     private var startY = 0f
+    private var deletePending = false
+    private var erasingNow = false
     private var rawDX = 0f
     private var rawDY = 0f
 
@@ -203,6 +208,54 @@ class NoteCard(
         }
         for (st in note.ink) drawInk(c, st, w, h)
         cur?.let { drawInk(c, it, w, h) }
+        // silme düğmesi
+        fill.style = Paint.Style.FILL
+        fill.color = Color.argb(150, 255, 255, 255)
+        c.drawCircle(w - 13 * d, 13 * d, 10 * d, fill)
+        inkPaint.color = Color.argb(200, 120, 60, 60)
+        val sw = inkPaint.strokeWidth
+        inkPaint.strokeWidth = 1.6f * d
+        c.drawLine(w - 17 * d, 9 * d, w - 9 * d, 17 * d, inkPaint)
+        c.drawLine(w - 17 * d, 17 * d, w - 9 * d, 9 * d, inkPaint)
+        inkPaint.strokeWidth = sw
+    }
+
+    /** Silgi: noktanın yakınındaki kalem izlerinden yalnız değen kısmı keser. */
+    private fun eraseInkAt(px: Float, py: Float): Boolean {
+        val rx = eraserDp() * d / width
+        val ry = eraserDp() * d / height
+        var any = false
+        val out = ArrayList<MarginNotes.Ink>()
+        for (st in note.ink) {
+            var touched = false
+            val pts = st.pts
+            var k = 0
+            while (k + 1 < pts.size) {
+                val dx = (pts[k] - px) / rx
+                val dy = (pts[k + 1] - py) / ry
+                if (dx * dx + dy * dy <= 1f) { touched = true; break }
+                k += 2
+            }
+            if (!touched) { out.add(st); continue }
+            any = true
+            var curSt: MarginNotes.Ink? = null
+            k = 0
+            while (k + 1 < pts.size) {
+                val dx = (pts[k] - px) / rx
+                val dy = (pts[k + 1] - py) / ry
+                if (dx * dx + dy * dy > 1f) {
+                    if (curSt == null) curSt = MarginNotes.Ink(st.color)
+                    curSt.pts.add(pts[k]); curSt.pts.add(pts[k + 1])
+                } else {
+                    if (curSt != null && curSt.pts.size >= 4) out.add(curSt)
+                    curSt = null
+                }
+                k += 2
+            }
+            if (curSt != null && curSt.pts.size >= 4) out.add(curSt)
+        }
+        if (any) { note.ink.clear(); note.ink.addAll(out) }
+        return any
     }
 
     private fun drawInk(c: Canvas, st: MarginNotes.Ink, w: Float, h: Float) {
@@ -224,14 +277,20 @@ class NoteCard(
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        val pen = e.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
+        val pen = e.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS || e.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 downX = e.x; downY = e.y; moved = false; downTime = e.eventTime
                 startX = x; startY = y; rawDX = e.rawX; rawDY = e.rawY
                 if (!pen) bringToFront()
-                if (pen) {
+                val nearDel = e.x > width - 26 * d && e.y < 26 * d
+                deletePending = nearDel && !pen
+                val eraser = pen && (erasing() || e.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER || (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0)
+                erasingNow = eraser
+                if (eraser) {
+                    if (eraseInkAt(e.x / width, e.y / height)) invalidate()
+                } else if (pen) {
                     val st = MarginNotes.Ink(penColor())
                     st.pts.add((e.x / width).coerceIn(0f, 1f)); st.pts.add((e.y / height).coerceIn(0f, 1f))
                     cur = st
@@ -245,7 +304,12 @@ class NoteCard(
                     y = startY + (e.rawY - rawDY)
                 }
                 val st = cur
-                if (pen && st != null) {
+                if (erasingNow) {
+                    var ch = false
+                    for (i in 0 until e.historySize) if (eraseInkAt(e.getHistoricalX(i) / width, e.getHistoricalY(i) / height)) ch = true
+                    if (eraseInkAt(e.x / width, e.y / height)) ch = true
+                    if (ch) invalidate()
+                } else if (pen && st != null) {
                     for (i in 0 until e.historySize) {
                         st.pts.add((e.getHistoricalX(i) / width).coerceIn(0f, 1f)); st.pts.add((e.getHistoricalY(i) / height).coerceIn(0f, 1f))
                     }
@@ -255,7 +319,14 @@ class NoteCard(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val st = cur
-                if (st != null) {
+                if (erasingNow) {
+                    erasingNow = false
+                    persist()
+                    invalidate()
+                } else if (deletePending && e.actionMasked == MotionEvent.ACTION_UP && !moved && e.x > width - 26 * d && e.y < 26 * d) {
+                    deletePending = false
+                    onDelete(note)
+                } else if (st != null) {
                     note.ink.add(st)
                     cur = null
                     persist()
@@ -275,6 +346,8 @@ class DeskLayer(
     private val nb: String,
     private val penColor: () -> Int,
     private val onChange: () -> Unit,
+    private val erasing: () -> Boolean,
+    private val eraserDp: () -> Float,
     private val dropped: (MarginNotes.Note, Float, Float) -> Boolean
 ) : android.widget.FrameLayout(ctx) {
     private val d = ctx.resources.displayMetrics.density
@@ -297,7 +370,7 @@ class DeskLayer(
         }
         if (changed) MarginNotes.save(ctx, nb, all)
         for (n in all) {
-            val card = NoteCard(ctx, nb, n, penColor, { MarginNotes.edit(ctx, nb, n, n.side) { onChange() } }) { note, cx, cy ->
+            val card = NoteCard(ctx, nb, n, penColor, { MarginNotes.edit(ctx, nb, n, n.side) { onChange() } }, { note, cx, cy ->
                 if (!dropped(note, cx, cy)) {
                     val l = MarginNotes.load(ctx, nb)
                     val m = l.firstOrNull { it.id == note.id }
@@ -308,6 +381,15 @@ class DeskLayer(
                     }
                     requestLayout()
                 }
+            }, erasing, eraserDp) { note ->
+                android.app.AlertDialog.Builder(ctx).setTitle("Bu not silinsin mi?")
+                    .setPositiveButton("Sil") { _, _ ->
+                        val l = MarginNotes.load(ctx, nb)
+                        l.removeAll { it.id == note.id }
+                        MarginNotes.save(ctx, nb, l)
+                        onChange()
+                    }
+                    .setNegativeButton("Vazgeç", null).show()
             }
             addView(card, LayoutParams(cardPx, cardPx))
             cards.add(Pair(card, n))

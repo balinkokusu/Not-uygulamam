@@ -67,6 +67,8 @@ class MainActivity : Activity() {
     private lateinit var kindRow: LinearLayout
     private lateinit var itemBar: LinearLayout
     private lateinit var layerBtn: TextView
+    private lateinit var splitBtn: TextView
+    private lateinit var cutBtn: TextView
     private var autoTabs = true
 
     class PageTemplate(val name: String, val paper: Paper, val header: String, val withDate: Boolean, val builtin: Boolean)
@@ -1679,6 +1681,96 @@ class MainActivity : Activity() {
         val show = sel != null && (draw.tool == Tool.TEXT || draw.tool == Tool.OBJECT)
         itemBar.visibility = if (show) View.VISIBLE else View.GONE
         if (sel != null) layerBtn.text = if (sel.above) "Çizginin üstünde" else "Çizginin altında"
+        val img = sel != null && sel.type == PageItem.IMAGE && sel.kind != DrawView.STICKY_KIND
+        splitBtn.visibility = if (img) View.VISIBLE else View.GONE
+        cutBtn.visibility = if (img) View.VISIBLE else View.GONE
+    }
+
+    private fun pngOf(b: android.graphics.Bitmap): ByteArray {
+        val bos = java.io.ByteArrayOutputStream()
+        b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+        return bos.toByteArray()
+    }
+
+    private fun bitmapOf(it: PageItem): android.graphics.Bitmap? {
+        it.bmp?.let { return it }
+        val d = it.data ?: return null
+        return android.graphics.BitmapFactory.decodeByteArray(d, 0, d.size)
+    }
+
+    /** Toplu çıkartma görselini arka plandan ayrıştırıp tek tek çıkartma yapar. */
+    private fun splitSelectedImage() {
+        val item = draw.selectedItem ?: return
+        val src = bitmapOf(item) ?: return
+        val wait = AlertDialog.Builder(this).setTitle("Çıkartmalar ayrılıyor…").setMessage("Görsel taranıyor, birkaç saniye sürebilir.").setCancelable(false).show()
+        Thread {
+            val pieces = try { ImageTools.split(src) } catch (e: Throwable) { emptyList() }
+            val made = ArrayList<PageItem>()
+            val rad = Math.toRadians(item.rot.toDouble())
+            val cs = Math.cos(rad).toFloat()
+            val sn = Math.sin(rad).toFloat()
+            for (pc in pieces) {
+                val ox = (pc.cx - 0.5f) * item.w
+                val oy = (pc.cy - 0.5f) * item.h
+                val n = PageItem(PageItem.IMAGE, item.x + ox * cs - oy * sn, item.y + ox * sn + oy * cs)
+                n.w = pc.w * item.w
+                n.h = pc.h * item.h
+                n.rot = item.rot
+                n.bmp = pc.bmp
+                n.data = pngOf(pc.bmp)
+                made.add(n)
+            }
+            runOnUiThread {
+                wait.dismiss()
+                if (made.size < 2) {
+                    Toast.makeText(this, if (made.isEmpty()) "Ayrılacak çıkartma bulunamadı" else "Görselde tek parça bulundu; ayırmaya gerek yok", Toast.LENGTH_LONG).show()
+                } else {
+                    draw.replaceItem(item, made)
+                    refresh()
+                    Toast.makeText(this, made.size.toString() + " çıkartma ayrıldı. Beğenmezseniz geri al düğmesi hepsini eski görsele döndürür.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    /** Kement ile görselin bir bölümünü kesip ayrı çıkartma yapar. */
+    private fun cutSelectedImage() {
+        val item = draw.selectedItem ?: return
+        val src = bitmapOf(item) ?: return
+        draw.onImageCut = { target, pts ->
+            val poly = FloatArray(pts.size)
+            var i = 0
+            while (i + 1 < pts.size) {
+                val q = draw.itemToBitmapPoint(target, pts[i], pts[i + 1], src.width, src.height)
+                poly[i] = q[0]; poly[i + 1] = q[1]
+                i += 2
+            }
+            val res = ImageTools.cut(src, poly)
+            if (res == null) {
+                Toast.makeText(this, "Kesilecek bölge görselin üzerinde değil ya da çok küçük", Toast.LENGTH_SHORT).show()
+            } else {
+                val rest = PageItem(PageItem.IMAGE, target.x, target.y)
+                rest.w = target.w; rest.h = target.h; rest.rot = target.rot
+                rest.bmp = res.remaining; rest.data = pngOf(res.remaining)
+                val rad = Math.toRadians(target.rot.toDouble())
+                val cs = Math.cos(rad).toFloat()
+                val sn = Math.sin(rad).toFloat()
+                val kx = target.w / src.width
+                val ky = target.h / src.height
+                val ox = ((res.box.centerX()) * kx) - target.w / 2f
+                val oy = ((res.box.centerY()) * ky) - target.h / 2f
+                val cut = PageItem(PageItem.IMAGE, target.x + ox * cs - oy * sn, target.y + ox * sn + oy * cs)
+                cut.w = res.box.width() * kx
+                cut.h = res.box.height() * ky
+                cut.rot = target.rot
+                cut.bmp = res.piece; cut.data = pngOf(res.piece)
+                rest.above = target.above
+                draw.replaceItem(target, listOf(rest, cut))
+                refresh()
+                Toast.makeText(this, "Kesilen bölge ayrı çıkartma oldu; sürükleyip taşıyabilirsiniz.", Toast.LENGTH_LONG).show()
+            }
+        }
+        draw.startImageCut(item)
     }
 
     private fun buildItemBar(): LinearLayout {
@@ -1705,6 +1797,8 @@ class MainActivity : Activity() {
         chip("Arkaya") { draw.itemBackward() }
         chip("Öne") { draw.itemForward() }
         chip("En öne") { draw.itemToFront() }
+        splitBtn = chip("Çıkartmalara ayır") { splitSelectedImage() }
+        cutBtn = chip("Kement ile kes") { cutSelectedImage() }
         layerBtn = chip("Çizginin altında") { draw.toggleAbove() }
         layerBtn.setTextColor(Look.accent)
         chip("Çoğalt") { draw.duplicateSelected() }
@@ -2180,7 +2274,7 @@ class MainActivity : Activity() {
         ibLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         ibLp.topMargin = dp(8f)
         frame.addView(itemBar, ibLp)
-        desk = DeskLayer(this, itemId.ifEmpty { "ana" }, { draw.penColor }, { refreshMargins() }) { note, cx, cy ->
+        desk = DeskLayer(this, itemId.ifEmpty { "ana" }, { draw.penColor }, { refreshMargins() }, { draw.tool == Tool.ERASER }, { draw.eraserRadiusDp }) { note, cx, cy ->
             if (draw.screenInsideSpread(cx, cy)) {
                 dropNoteOnPage(note, cx, cy)
                 true
