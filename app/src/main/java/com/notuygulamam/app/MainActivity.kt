@@ -1403,10 +1403,24 @@ class MainActivity : Activity() {
             "Cilt görünümü: " + arrayOf("yalnız gölge", "düz dikiş", "tel spiral")[draw.binding.coerceIn(0, 2)] + " (değiştirmek için dokunun)",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
-        for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
+        val groups = listOf(
+            "Sayfa" to listOf(1, 20, 7, 10, 11, 5, 6),
+            "Defter ve dosya" to listOf(0, 2, 3, 4),
+            "Ekle" to listOf(13, 14, 17, 15),
+            "Ayraçlar" to listOf(8, 16, 19),
+            "Araçlar ve görünüm" to listOf(9, 12, 18)
+        )
+        for ((gi, g) in groups.withIndex()) {
+            val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
+            for (id in g.second) {
+                val label = if (id == 20) "Açık sayfayı şablonla değiştir (sol/sağ ayrı)" else names[id]
+                sub.add(0, id, id, label)
+            }
+        }
         m.setOnMenuItemClickListener { mi ->
             when (mi.itemId) {
                 0 -> pickPdf()
+                20 -> showApplyTemplateDialog()
                 1 -> showNewPageMenu(anchor)
                 2 -> saveWithMessage()
                 3 -> startExport()
