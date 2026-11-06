@@ -869,7 +869,13 @@ class DrawView(context: Context) : View(context) {
 
     /** Sürüklemeyi bitirir: sayfa dışına bırakılan yapışkan not masaya geçer, öbür sayfaya bırakılan nesne o sayfaya taşınır. */
     private fun finishItemDrag(it: PageItem) {
-        val outside = it.x < -offX || it.x > spreadW() - offX || it.y < 0f || it.y > page.height
+        val centerOut = it.x < -offX || it.x > spreadW() - offX || it.y < 0f || it.y > page.height
+        // yapışkan notun dörtte biri sayfanın dışına taştıysa da masaya geçer
+        val over = max(
+            max(-offX - (it.x - it.w / 2f), (it.x + it.w / 2f) - (spreadW() - offX)),
+            max(-(it.y - it.h / 2f), (it.y + it.h / 2f) - page.height)
+        )
+        val outside = centerOut || (it.kind == STICKY_KIND && it.type == PageItem.IMAGE && over > 0.25f * it.w)
         if (outside) {
             val cb = onStickyToDesk
             if (it.kind == STICKY_KIND && it.type == PageItem.IMAGE && cb != null) {
