@@ -599,6 +599,15 @@ class DrawView(context: Context) : View(context) {
         c.translate(ox + offX * sc, oy)
         c.scale(sc, sc)
         c.clipRect(-offX, 0f, spreadW() - offX, page.height)
+        spiralClip(c, offX)
+    }
+
+    /** Tel spiralde kalem telin bulunduğu şeride yazamaz; çizgi telin altından geçip öbür yanda devam eder. */
+    private fun spiralClip(c: Canvas, off: Float) {
+        if (binding != 2 || rightPage == null) return
+        val x = leftPage.width - off
+        @Suppress("DEPRECATION")
+        c.clipRect(x - SPIRAL_HALF, -10f, x + SPIRAL_HALF, 100000f, android.graphics.Region.Op.DIFFERENCE)
     }
 
     /** Cilt görünümü: 0 yalnız gölge, 1 düz dikiş, 2 tel spiral. */
@@ -688,7 +697,6 @@ class DrawView(context: Context) : View(context) {
             renderer.drawItems(c, pg, false)
             c.restore()
         }
-        if (rightPage != null) drawBinding(c)
         // Çizgiler tüm yüzeye çizilir: bir sayfadan taşan yazı öbür sayfada devam eder
         for ((k, pg) in list.withIndex()) {
             val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
@@ -696,6 +704,7 @@ class DrawView(context: Context) : View(context) {
             c.translate(ox + off * sc, oy)
             c.scale(sc, sc)
             c.clipRect(-off, 0f, total - off, pg.height)
+            spiralClip(c, off)
             for (s in pg.strokes) drawStroke(c, s)
             c.restore()
         }
@@ -708,6 +717,8 @@ class DrawView(context: Context) : View(context) {
             renderer.drawItems(c, pg, true)
             c.restore()
         }
+        // cilt en üstte çizilir: gerçek bir ajandada tel ve dikiş yazının üzerindedir
+        if (rightPage != null) drawBinding(c)
         invalidate()
     }
 
@@ -1539,6 +1550,14 @@ class DrawView(context: Context) : View(context) {
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
+                        }
+                        if (rightPage != null && binding != 0) {
+                            // cilt çizginin üstünde durmalı: ciltten geçen çizgi sonunda yeniden çizilir
+                            val spine = leftPage.width
+                            var lo = Float.MAX_VALUE
+                            var hi = -Float.MAX_VALUE
+                            for (xv in s.xs) { val wx = xv + offX; if (wx < lo) lo = wx; if (wx > hi) hi = wx }
+                            if (hi >= spine - 40f && lo <= spine + 40f) needsBake = true
                         }
                         strokes.add(s)
                         undoStack.add(HistoryAction.Add(s))
@@ -2382,6 +2401,7 @@ class DrawView(context: Context) : View(context) {
         /** Kalınlık kaydırıcısındaki 1 birimin sayfa birimi karşılığı. */
         const val UNIT = 2.2f
         const val SPREAD_GAP = 0f
+        const val SPIRAL_HALF = 30f
         const val HOLD_MS = 320L
         const val TAB_OUT = 50f
         const val TAB_IN = 6f
