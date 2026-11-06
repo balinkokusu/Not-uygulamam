@@ -382,11 +382,60 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Açık ikilideki sayfalardan birine (ya da ikisine) şablon uygular: kâğıt stili değişir, başlık/tarih eklenir; sayfadaki yazı ve çizimler korunur. */
+    private fun showApplyTemplateDialog() {
+        val r = draw.spreadRight()
+        val l = draw.spreadLeft()
+        val all = builtinTemplates() + customTemplates()
+        fun pickTemplate(targets: List<PageData>) {
+            AlertDialog.Builder(this)
+                .setTitle("Hangi şablon uygulansın?")
+                .setItems(all.map { it.name + "  ·  " + it.paper.label }.toTypedArray()) { _, i ->
+                    val t = all[i]
+                    for (pg in targets) {
+                        if (pg.pdfName != null) continue
+                        if (t.header.isNotEmpty() || t.withDate) {
+                            val title = StringBuilder(t.header)
+                            if (t.withDate) {
+                                val fmt = SimpleDateFormat("d MMMM yyyy, EEEE", Locale("tr"))
+                                if (title.isNotEmpty()) title.append("  ·  ")
+                                title.append(fmt.format(Date()))
+                            }
+                            val it = PageItem(PageItem.TEXT, 0f, 0f)
+                            it.text = title.toString()
+                            it.size = 30f
+                            it.color = Color.rgb(120, 108, 110)
+                            it.w = pg.width - 140f
+                            PageRenderer().measureItem(it)
+                            it.x = 70f + it.w / 2f
+                            it.y = 14f + it.h / 2f
+                            pg.items.add(it)
+                        }
+                        if (t.withDate) { pg.dateKey = todayKey(); ensureDateTab(pg) }
+                    }
+                    draw.setPaperFor(targets.filter { it.pdfName == null }, t.paper)
+                    refresh()
+                    scheduleSave()
+                }
+                .setNegativeButton("Vazgeç", null)
+                .show()
+        }
+        if (r == null) { pickTemplate(listOf(draw.page)); return }
+        AlertDialog.Builder(this)
+            .setTitle("Hangi sayfaya şablon uygulansın?")
+            .setItems(arrayOf("Sol sayfa", "Sağ sayfa", "İki sayfa birden")) { _, w ->
+                pickTemplate(when (w) { 0 -> listOf(l); 1 -> listOf(r); else -> listOf(l, r) })
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
     private fun showNewPageMenu(anchor: View) {
         val m = android.widget.PopupMenu(this, anchor)
         m.menu.add(0, 1000, 0, "Aynı sayfa gibi yeni sayfa")
         val all = builtinTemplates() + customTemplates()
         for ((i, t) in all.withIndex()) m.menu.add(0, 2000 + i, 1 + i, t.name + "  ·  " + t.paper.label)
+        m.menu.add(0, 1004, 99, "Açık sayfayı şablonla değiştir (sol/sağ ayrı)…")
         m.menu.add(0, 1001, 100, "Kâğıt şablonlarını gör…")
         m.menu.add(0, 1002, 101, "Şablonlarım: yeni oluştur / sil…")
         m.menu.add(0, 1003, 102, "Planlayıcıyı bu deftere ekle…")
@@ -394,6 +443,7 @@ class MainActivity : Activity() {
             when {
                 mi.itemId == 1000 -> addPage()
                 mi.itemId == 1001 -> showTemplatePageDialog()
+                mi.itemId == 1004 -> showApplyTemplateDialog()
                 mi.itemId == 1002 -> showTemplateManager()
                 mi.itemId == 1003 -> showAddPlannerDialog()
                 mi.itemId >= 2000 -> all.getOrNull(mi.itemId - 2000)?.let { addTemplatePage(it) }
