@@ -4,7 +4,16 @@ import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.drawable.GradientDrawable
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.view.MotionEvent
+import android.view.View
+import kotlin.math.hypot
 import android.view.Gravity
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -17,7 +26,9 @@ import org.json.JSONObject
 
 /** Defterin kendi kenar notları: sayfaların solundaki ve sağındaki boşlukta duran küçük hatırlatma kartları. */
 object MarginNotes {
-    class Note(val id: Long, var text: String, var color: Int, var side: Int)
+    class Ink(val color: Int, val pts: ArrayList<Float> = ArrayList())
+
+    class Note(val id: Long, var text: String, var color: Int, var side: Int, var ink: ArrayList<Ink> = ArrayList())
 
     private fun key(nb: String) = "n_$nb"
 
@@ -28,7 +39,16 @@ object MarginNotes {
             val a = JSONArray(s)
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
-                out.add(Note(o.getLong("id"), o.getString("text"), o.getInt("color"), o.optInt("side", 0)))
+                val n = Note(o.getLong("id"), o.getString("text"), o.getInt("color"), o.optInt("side", 0))
+                val ia = o.optJSONArray("ink")
+                if (ia != null) for (k in 0 until ia.length()) {
+                    val io = ia.getJSONObject(k)
+                    val st = Ink(io.getInt("c"))
+                    val pa = io.getJSONArray("p")
+                    for (q in 0 until pa.length()) st.pts.add(pa.getDouble(q).toFloat())
+                    n.ink.add(st)
+                }
+                out.add(n)
             }
         } catch (e: Exception) {
         }
@@ -37,7 +57,15 @@ object MarginNotes {
 
     fun save(ctx: Context, nb: String, list: List<Note>) {
         val a = JSONArray()
-        for (n in list) a.put(JSONObject().put("id", n.id).put("text", n.text).put("color", n.color).put("side", n.side))
+        for (n in list) {
+            val ia = JSONArray()
+            for (st in n.ink) {
+                val pa = JSONArray()
+                for (v in st.pts) pa.put(Math.round(v * 1000f) / 1000.0)
+                ia.put(JSONObject().put("c", st.color).put("p", pa))
+            }
+            a.put(JSONObject().put("id", n.id).put("text", n.text).put("color", n.color).put("side", n.side).put("ink", ia))
+        }
         ctx.getSharedPreferences("kenar", Context.MODE_PRIVATE).edit().putString(key(nb), a.toString()).apply()
     }
 
@@ -48,7 +76,7 @@ object MarginNotes {
         box.orientation = LinearLayout.VERTICAL
         box.setPadding((20 * d).toInt(), (8 * d).toInt(), (20 * d).toInt(), 0)
         val et = EditText(ctx)
-        et.hint = "Örneğin: ilacımı iç"
+        et.hint = "Yazı (isteğe bağlı; boş bırakıp kalemle üstüne yazabilirsiniz)"
         et.minLines = 3
         et.setText(note?.text ?: "")
         box.addView(et)
@@ -71,6 +99,9 @@ object MarginNotes {
         sg.addView(sl); sg.addView(sr)
         sg.check(800 + (note?.side ?: defaultSide).coerceIn(0, 1))
         box.addView(sg)
+        val clearInk = android.widget.CheckBox(ctx)
+        clearInk.text = "Üzerindeki kalem yazısını temizle"
+        if (note != null && note.ink.isNotEmpty()) box.addView(clearInk)
         val b = AlertDialog.Builder(ctx).setTitle(if (note == null) "Yeni kenar notu" else "Kenar notunu düzenle").setView(box)
             .setPositiveButton("Kaydet") { _, _ ->
                 val col = colors[(grp.checkedRadioButtonId - 700).coerceIn(0, 3)]
@@ -78,11 +109,12 @@ object MarginNotes {
                 val txt = et.text.toString().trim()
                 val l = load(ctx, nb)
                 if (note == null) {
-                    if (txt.isNotEmpty()) l.add(Note(System.currentTimeMillis(), txt, col, side))
+                    l.add(Note(System.currentTimeMillis(), txt, col, side))
                 } else {
                     val n = l.firstOrNull { it.id == note.id }
                     if (n != null) {
-                        if (txt.isEmpty()) l.remove(n) else { n.text = txt; n.color = col; n.side = side }
+                        n.text = txt; n.color = col; n.side = side
+                        if (clearInk.isChecked) n.ink.clear()
                     }
                 }
                 save(ctx, nb, l)
@@ -101,49 +133,164 @@ object MarginNotes {
     }
 }
 
+/** Yapışkan not görünümlü, üzerine kalemle yazılabilen kenar notu. */
+class NoteCard(
+    ctx: Context,
+    private val nb: String,
+    private val note: MarginNotes.Note,
+    private val penColor: () -> Int,
+    private val onEdit: () -> Unit
+) : View(ctx) {
+    private val d = ctx.resources.displayMetrics.density
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val inkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = 2.2f * d
+    }
+    private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(60, 50, 40)
+        textSize = 11f * d
+        typeface = Typeface.SERIF
+    }
+    private val path = Path()
+    private var cur: MarginNotes.Ink? = null
+    private var downX = 0f
+    private var downY = 0f
+    private var moved = false
+    private var downTime = 0L
+
+    init {
+        val g = GradientDrawable()
+        g.setColor(note.color)
+        g.cornerRadius = 3 * d
+        background = g
+        elevation = 4 * d
+        rotation = 0f
+        isClickable = true
+    }
+
+    override fun onMeasure(wSpec: Int, hSpec: Int) {
+        val w = MeasureSpec.getSize(wSpec)
+        setMeasuredDimension(w, w)
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        // kıvrık köşe
+        val f = w * 0.22f
+        fill.style = Paint.Style.FILL
+        fill.color = Color.argb(60, 0, 0, 0)
+        path.reset()
+        path.moveTo(w, h - f); path.lineTo(w - f, h); path.lineTo(w, h); path.close()
+        c.drawPath(path, fill)
+        if (note.text.isNotEmpty()) {
+            val sl = StaticLayout(note.text, textPaint, (w - 12 * d).toInt(), Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
+            c.save()
+            c.translate(6 * d, 6 * d)
+            c.clipRect(0f, 0f, w - 12 * d, h - 12 * d)
+            sl.draw(c)
+            c.restore()
+        }
+        for (st in note.ink) drawInk(c, st, w, h)
+        cur?.let { drawInk(c, it, w, h) }
+    }
+
+    private fun drawInk(c: Canvas, st: MarginNotes.Ink, w: Float, h: Float) {
+        if (st.pts.size < 2) return
+        inkPaint.color = st.color
+        path.reset()
+        path.moveTo(st.pts[0] * w, st.pts[1] * h)
+        if (st.pts.size == 2) path.lineTo(st.pts[0] * w + 0.1f, st.pts[1] * h)
+        var i = 2
+        while (i + 1 < st.pts.size) { path.lineTo(st.pts[i] * w, st.pts[i + 1] * h); i += 2 }
+        c.drawPath(path, inkPaint)
+    }
+
+    private fun persist() {
+        val l = MarginNotes.load(context, nb)
+        val n = l.firstOrNull { it.id == note.id } ?: return
+        n.ink = ArrayList(note.ink)
+        MarginNotes.save(context, nb, l)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val pen = e.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                downX = e.x; downY = e.y; moved = false; downTime = e.eventTime
+                if (pen) {
+                    val st = MarginNotes.Ink(penColor())
+                    st.pts.add((e.x / width).coerceIn(0f, 1f)); st.pts.add((e.y / height).coerceIn(0f, 1f))
+                    cur = st
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (hypot(e.x - downX, e.y - downY) > 8 * d) moved = true
+                val st = cur
+                if (pen && st != null) {
+                    for (i in 0 until e.historySize) {
+                        st.pts.add((e.getHistoricalX(i) / width).coerceIn(0f, 1f)); st.pts.add((e.getHistoricalY(i) / height).coerceIn(0f, 1f))
+                    }
+                    st.pts.add((e.x / width).coerceIn(0f, 1f)); st.pts.add((e.y / height).coerceIn(0f, 1f))
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val st = cur
+                if (st != null) {
+                    note.ink.add(st)
+                    cur = null
+                    persist()
+                    invalidate()
+                } else if (e.actionMasked == MotionEvent.ACTION_UP && !moved) {
+                    onEdit()
+                }
+            }
+        }
+        return true
+    }
+}
+
 /** Sayfaların bir yanındaki dikey kart sütunu. */
-class MarginColumn(private val ctx: Context, private val nb: String, private val side: Int, private val onChange: () -> Unit) : ScrollView(ctx) {
+class MarginColumn(
+    private val ctx: Context,
+    private val nb: String,
+    private val side: Int,
+    private val penColor: () -> Int,
+    private val onChange: () -> Unit
+) : ScrollView(ctx) {
     private val col = LinearLayout(ctx)
     private val d = ctx.resources.displayMetrics.density
 
     init {
         isVerticalScrollBarEnabled = false
         col.orientation = LinearLayout.VERTICAL
-        col.setPadding((4 * d).toInt(), (6 * d).toInt(), (4 * d).toInt(), (6 * d).toInt())
+        col.setPadding((6 * d).toInt(), (10 * d).toInt(), (6 * d).toInt(), (10 * d).toInt())
         addView(col)
     }
 
     fun refresh(): Int {
         col.removeAllViews()
         val mine = MarginNotes.load(ctx, nb).filter { it.side == side }
-        for ((i, n) in mine.withIndex()) {
-            val t = TextView(ctx)
-            t.text = n.text
-            t.textSize = 11f
-            t.setTextColor(Color.rgb(60, 50, 40))
-            t.setTypeface(Typeface.SERIF, Typeface.NORMAL)
-            t.maxLines = 8
-            t.ellipsize = android.text.TextUtils.TruncateAt.END
-            t.setPadding((7 * d).toInt(), (7 * d).toInt(), (7 * d).toInt(), (7 * d).toInt())
-            val g = GradientDrawable()
-            g.setColor(n.color)
-            g.cornerRadius = 3 * d
-            t.background = g
-            t.elevation = 3 * d
-            t.rotation = if (i % 2 == 0) -1f else 1f
-            t.setOnClickListener { MarginNotes.edit(ctx, nb, n, side) { onChange() } }
+        for (n in mine) {
+            val card = NoteCard(ctx, nb, n, penColor) { MarginNotes.edit(ctx, nb, n, side) { onChange() } }
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, (3 * d).toInt(), 0, (5 * d).toInt())
-            col.addView(t, lp)
+            lp.setMargins(0, (4 * d).toInt(), 0, (10 * d).toInt())
+            col.addView(card, lp)
         }
         if (mine.isNotEmpty()) {
             val add = TextView(ctx)
             add.text = "＋"
-            add.textSize = 20f
+            add.textSize = 22f
             add.gravity = Gravity.CENTER
             add.setTextColor(Look.accent)
             add.setOnClickListener { MarginNotes.edit(ctx, nb, null, side) { onChange() } }
-            col.addView(add, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (36 * d).toInt()))
+            col.addView(add, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (40 * d).toInt()))
         }
         visibility = if (mine.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         return mine.size

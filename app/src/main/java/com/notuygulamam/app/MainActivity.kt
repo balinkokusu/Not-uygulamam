@@ -1244,7 +1244,7 @@ class MainActivity : Activity() {
             "Yapışkan not ekle",
             "Hatırlatıcılarım (defter dışı notlar)",
             "Ayraçları toplu düzenle…",
-            "Kenar notu ekle (sayfaların yanında küçük hatırlatma)",
+            "Kenar notu ekle (boş yapışkan not, üstüne kalemle yazılır)",
             "Cilt görünümü: " + arrayOf("yalnız gölge", "düz dikiş", "tel spiral")[draw.binding.coerceIn(0, 2)] + " (değiştirmek için dokunun)",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
@@ -2127,8 +2127,8 @@ class MainActivity : Activity() {
         ibLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         ibLp.topMargin = dp(8f)
         frame.addView(itemBar, ibLp)
-        marginL = MarginColumn(this, itemId.ifEmpty { "ana" }, 0) { refreshMargins() }
-        marginR = MarginColumn(this, itemId.ifEmpty { "ana" }, 1) { refreshMargins() }
+        marginL = MarginColumn(this, itemId.ifEmpty { "ana" }, 0, { draw.penColor }) { refreshMargins() }
+        marginR = MarginColumn(this, itemId.ifEmpty { "ana" }, 1, { draw.penColor }) { refreshMargins() }
         frame.addView(marginL, android.widget.FrameLayout.LayoutParams(dp(MARGIN_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START))
         frame.addView(marginR, android.widget.FrameLayout.LayoutParams(dp(MARGIN_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.END))
         root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))

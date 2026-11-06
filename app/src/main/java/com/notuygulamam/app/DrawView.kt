@@ -629,20 +629,37 @@ class DrawView(context: Context) : View(context) {
         c.scale(sc, sc)
         c.clipRect(0f, 0f, x + r.width, h)
         // iç gölge
-        val gw = 30f
+        val gw = 38f
         bindPaint.style = Paint.Style.FILL
-        bindPaint.shader = LinearGradient(x - gw, 0f, x, 0f, Color.argb(0, 60, 40, 40), Color.argb(46, 60, 40, 40), Shader.TileMode.CLAMP)
+        bindPaint.shader = LinearGradient(x - gw, 0f, x, 0f, Color.argb(0, 60, 40, 40), Color.argb(70, 60, 40, 40), Shader.TileMode.CLAMP)
         c.drawRect(x - gw, 0f, x, h, bindPaint)
-        bindPaint.shader = LinearGradient(x, 0f, x + gw, 0f, Color.argb(46, 60, 40, 40), Color.argb(0, 60, 40, 40), Shader.TileMode.CLAMP)
+        bindPaint.shader = LinearGradient(x, 0f, x + gw, 0f, Color.argb(70, 60, 40, 40), Color.argb(0, 60, 40, 40), Shader.TileMode.CLAMP)
         c.drawRect(x, 0f, x + gw, h, bindPaint)
         bindPaint.shader = null
         if (binding == 1) {
+            // katlanma çizgisi
             bindPaint.style = Paint.Style.STROKE
-            bindPaint.strokeWidth = 2.4f
-            bindPaint.setColor(Color.argb(150, 120, 110, 120))
-            bindPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
-            c.drawLine(x, 14f, x, h - 14f, bindPaint)
-            bindPaint.pathEffect = null
+            bindPaint.strokeWidth = 1.6f
+            bindPaint.setColor(Color.argb(110, 70, 55, 55))
+            c.drawLine(x, 0f, x, h, bindPaint)
+            // gerçek dikiş: iğne delikleri ve üstten geçen iplik
+            var y = 36f
+            val len = 30f
+            while (y + len < h - 20f) {
+                bindPaint.style = Paint.Style.FILL
+                bindPaint.setColor(Color.argb(170, 60, 50, 50))
+                c.drawCircle(x, y, 2.6f, bindPaint)
+                c.drawCircle(x, y + len, 2.6f, bindPaint)
+                bindPaint.style = Paint.Style.STROKE
+                bindPaint.strokeCap = Paint.Cap.ROUND
+                bindPaint.strokeWidth = 4.2f
+                bindPaint.setColor(Color.argb(235, 176, 142, 104))
+                c.drawLine(x, y + 1f, x, y + len - 1f, bindPaint)
+                bindPaint.strokeWidth = 1.4f
+                bindPaint.setColor(Color.argb(200, 236, 214, 182))
+                c.drawLine(x - 0.8f, y + 3f, x - 0.8f, y + len - 3f, bindPaint)
+                y += len * 2f
+            }
         } else if (binding == 2) {
             var y = 44f
             while (y < h - 20f) {
