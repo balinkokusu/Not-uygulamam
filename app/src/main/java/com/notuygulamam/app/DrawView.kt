@@ -604,12 +604,14 @@ class DrawView(context: Context) : View(context) {
         spiralClip(c, offX)
     }
 
-    /** Tel spiralde kalem telin bulunduğu şeride yazamaz; çizgi telin altından geçip öbür yanda devam eder. */
+    /** Katlanma yerinde kalem izi hafifçe kesilir (tel spiralde şerit geniştir); çizgi telin altından geçip öbür yanda devam eder. */
     private fun spiralClip(c: Canvas, off: Float) {
-        if (binding != 2 || rightPage == null) return
+        if (rightPage == null) return
+        // her cilt türünde katlanma yerinde hafif bir kesiklik olur; tel spiralde şerit daha geniştir
+        val half = if (binding == 2) SPIRAL_HALF else SPINE_HALF
         val x = leftPage.width - off
         @Suppress("DEPRECATION")
-        c.clipRect(x - SPIRAL_HALF, -10f, x + SPIRAL_HALF, 100000f, android.graphics.Region.Op.DIFFERENCE)
+        c.clipRect(x - half, -10f, x + half, 100000f, android.graphics.Region.Op.DIFFERENCE)
     }
 
     /** Cilt görünümü: 0 yalnız gölge, 1 düz dikiş, 2 tel spiral. */
@@ -2560,6 +2562,7 @@ class DrawView(context: Context) : View(context) {
         const val UNIT = 2.2f
         const val SPREAD_GAP = 0f
         const val SPIRAL_HALF = 30f
+        const val SPINE_HALF = 6f
         const val STICKY_KIND = 77
         const val HOLD_MS = 320L
         const val TAB_OUT = 50f
