@@ -629,8 +629,8 @@ class DrawView(context: Context) : View(context) {
         c.scale(sc, sc)
         c.clipRect(0f, 0f, x + r.width, h)
         // iç gölge
-        val gw = if (binding == 0) 14f else 38f
-        val ga = if (binding == 0) 34 else 70
+        val gw = if (binding == 0) 10f else 38f
+        val ga = if (binding == 0) 20 else 70
         bindPaint.style = Paint.Style.FILL
         bindPaint.shader = LinearGradient(x - gw, 0f, x, 0f, Color.argb(0, 60, 40, 40), Color.argb(ga, 60, 40, 40), Shader.TileMode.CLAMP)
         c.drawRect(x - gw, 0f, x, h, bindPaint)
@@ -689,18 +689,21 @@ class DrawView(context: Context) : View(context) {
         c.drawColor(Look.canvas)
         val list = listOfNotNull(leftPage, rightPage)
         val total = spreadW()
-        for ((k, pg) in list.withIndex()) {
-            val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
-            // Sayfanın altına yumuşak gölge
-            val sl = ox + off * sc
+        // Gölge tüm açık defter için tek parça çizilir: iki sayfa ayrı kâğıtlar gibi görünmesin
+        run {
+            val sl = ox
+            val hgt = worldH() * sc
             for (g in 1..7) {
                 shadowPaint.setColor(Color.argb(13, 70, 40, 45))
                 val e = g * 1.6f * density
                 c.drawRoundRect(
-                    sl - e, oy + 2f * density - e * 0.4f, sl + pg.width * sc + e, oy + pg.height * sc + 4f * density + e,
+                    sl - e, oy + 2f * density - e * 0.4f, sl + total * sc + e, oy + hgt + 4f * density + e,
                     e + 3f * density, e + 3f * density, shadowPaint
                 )
             }
+        }
+        for ((k, pg) in list.withIndex()) {
+            val off = if (k == 0) 0f else leftPage.width + SPREAD_GAP
             c.save()
             c.translate(ox + off * sc, oy)
             c.scale(sc, sc)

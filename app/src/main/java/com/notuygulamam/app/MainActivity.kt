@@ -1882,7 +1882,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
-        draw.binding = prefs.getInt("cilt_$itemId", 1)
+        draw.binding = prefs.getInt("cilt_$itemId", 0)
         draw.scribbleErase = prefs.getBoolean("karala", true)
         draw.onChanged = {
             markWritten()
