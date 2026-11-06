@@ -373,9 +373,7 @@ class MainActivity : Activity() {
             it.y = 14f + it.h / 2f
             pg.items.add(it)
         }
-        val at = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it } + 1
-        nb.pages.add(at, pg)
-        gotoPage(at)
+        insertNewPage(cur, pg)
         if (t.withDate) {
             ensureDateTab(pg)
             refresh()
@@ -965,11 +963,25 @@ class MainActivity : Activity() {
 
     private fun addPage() {
         val cur = draw.page
-        val at = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it } + 1
         val np = PageData(cur.width, cur.height, cur.paper)
         np.paperColor = cur.paperColor
-        nb.pages.add(at, np)
-        gotoPage(at)
+        insertNewPage(cur, np)
+    }
+
+    /** Yeni sayfayı ekler. Çift sayfa görünümünde yeni sayfa, açık ikilinin hemen arkasında kendi ikilisini (sol sayfa + boş eş) oluşturur; böylece iki sayfa birden değişir ve eskiler yerinde kalır. */
+    private fun insertNewPage(cur: PageData, pg: PageData) {
+        val idx = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it }
+        if (spread) {
+            val at = idx - idx % 2 + 2
+            val mate = PageData(pg.width, pg.height, pg.paper)
+            mate.paperColor = pg.paperColor
+            nb.pages.add(at, pg)
+            nb.pages.add(at + 1, mate)
+            gotoPage(at)
+        } else {
+            nb.pages.add(idx + 1, pg)
+            gotoPage(idx + 1)
+        }
     }
 
     private fun deleteCurrentPage() {
@@ -1663,9 +1675,7 @@ class MainActivity : Activity() {
                 val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, Paper.values()[which])
                 else PageData(1200f, 1697f, Paper.values()[which])
                 if (cur.pdfName == null) pg.paperColor = cur.paperColor
-                val at = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it } + 1
-                nb.pages.add(at, pg)
-                gotoPage(at)
+                insertNewPage(cur, pg)
             }
         }
         val sv = android.widget.ScrollView(this)
