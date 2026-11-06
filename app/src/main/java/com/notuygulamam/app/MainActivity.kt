@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.View
 import android.text.InputFilter
 import android.widget.ArrayAdapter
+import android.widget.ImageView
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ScrollView
@@ -678,6 +679,54 @@ class MainActivity : Activity() {
             }
             row?.addView(v)
         }
+        val mine = StickerCatalog.list(this)
+        val hd = TextView(this)
+        hd.text = "Çıkartmalarım (ayırdıklarınız)"
+        hd.textSize = 13f
+        hd.setTextColor(Look.ink)
+        hd.setPadding(dp(4f), dp(16f), dp(4f), dp(6f))
+        grid.addView(hd)
+        if (mine.isEmpty()) {
+            val t = TextView(this)
+            t.text = "Henüz yok. Toplu çıkartma görselini seçip \"Çıkartmalara ayır\" derseniz parçalar burada birikir."
+            t.textSize = 12f
+            t.setTextColor(Look.inkSoft)
+            t.setPadding(dp(4f), 0, dp(4f), dp(8f))
+            grid.addView(t)
+        } else {
+            val hint = TextView(this)
+            hint.text = "Dokunarak ekleyin; silmek için basılı tutun."
+            hint.textSize = 11f
+            hint.setTextColor(Look.inkSoft)
+            hint.setPadding(dp(4f), 0, dp(4f), dp(6f))
+            grid.addView(hint)
+            var crow: LinearLayout? = null
+            for ((ci, f) in mine.withIndex()) {
+                if (ci % 5 == 0) {
+                    crow = LinearLayout(this)
+                    crow.orientation = LinearLayout.HORIZONTAL
+                    grid.addView(crow)
+                }
+                val opts = android.graphics.BitmapFactory.Options()
+                opts.inSampleSize = 1
+                val tb = android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts) ?: continue
+                val iv = ImageView(this)
+                iv.setImageBitmap(tb)
+                iv.scaleType = ImageView.ScaleType.FIT_CENTER
+                iv.setPadding(dp(5f), dp(5f), dp(5f), dp(5f))
+                iv.setOnClickListener {
+                    addCatalogSticker(f, null)
+                    dlg?.dismiss()
+                }
+                iv.setOnLongClickListener {
+                    AlertDialog.Builder(this).setTitle("Bu çıkartma katalogdan silinsin mi?")
+                        .setPositiveButton("Sil") { _, _ -> f.delete(); dlg?.dismiss(); showStickerDialog() }
+                        .setNegativeButton("Vazgeç", null).show()
+                    true
+                }
+                crow?.addView(iv, LinearLayout.LayoutParams(dp(86f), dp(86f)))
+            }
+        }
         val sv = ScrollView(this)
         sv.addView(grid)
         dlg = AlertDialog.Builder(this)
@@ -707,12 +756,12 @@ class MainActivity : Activity() {
                 bounds.inJustDecodeBounds = true
                 contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
                 var sample = 1
-                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2400) sample *= 2
+                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 3600) sample *= 2
                 val opts = android.graphics.BitmapFactory.Options()
                 opts.inSampleSize = sample
                 var bmp = contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
                     ?: throw java.io.IOException("Resim açılamadı")
-                val maxSide = 1100f
+                val maxSide = 2400f
                 val sc = maxSide / maxOf(bmp.width, bmp.height)
                 if (sc < 1f) {
                     bmp = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt(), (bmp.height * sc).toInt(), true)
@@ -1248,7 +1297,6 @@ class MainActivity : Activity() {
             "Ayraçları toplu düzenle…",
             "Ekran kenarına yapışkan not koy (sürüklenir, her sayfada sabit)",
             "Cilt görünümü: " + arrayOf("yalnız gölge", "düz dikiş", "tel spiral")[draw.binding.coerceIn(0, 2)] + " (değiştirmek için dokunun)",
-            "Çıkartma kataloğum (ayrılan çıkartmalar): aç / kapat",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
@@ -1286,10 +1334,6 @@ class MainActivity : Activity() {
                 }
                 17 -> MarginNotes.edit(this, itemId.ifEmpty { "ana" }, null, 1) { refreshMargins() }
                 19 -> {
-                    tray.refresh()
-                    tray.visibility = if (tray.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-                }
-                20 -> {
                     val sp = getSharedPreferences("ayar", MODE_PRIVATE)
                     sp.edit().putBoolean("ayraç_süz_$itemId", !sp.getBoolean("ayraç_süz_$itemId", true)).apply()
                     rebuildTabs()
@@ -1718,14 +1762,13 @@ class MainActivity : Activity() {
                 }
                 AlertDialog.Builder(this)
                     .setTitle(pieces.size.toString() + " çıkartma bulundu")
-                    .setMessage("Katalog, ekranın kenarında durur; istediğiniz çıkartmayı oradan seçip sayfaya koyarsınız. Gereksiz olanları katalogda silebilirsiniz.")
+                    .setMessage("Parçalar Çıkartmalar penceresinin altındaki \"Çıkartmalarım\" bölümünde birikir; istediğinizi oradan seçersiniz, gereksizleri basılı tutup silebilirsiniz.")
                     .setPositiveButton("Kataloğa ekle") { _, _ ->
                         Thread {
                             for ((i, pc) in pieces.withIndex()) StickerCatalog.add(this, pc.bmp, i)
                             runOnUiThread {
-                                tray.refresh()
-                                tray.visibility = View.VISIBLE
                                 Toast.makeText(this, "Çıkartmalar kataloğa eklendi", Toast.LENGTH_SHORT).show()
+                                showStickerDialog()
                             }
                         }.start()
                     }
@@ -1753,8 +1796,6 @@ class MainActivity : Activity() {
             }
         }.start()
     }
-
-    private lateinit var tray: StickerTray
 
     /** Katalogdaki çıkartmayı sayfaya koyar: pos verilmişse o ekran noktasına, yoksa görünen alanın ortasına. */
     private fun addCatalogSticker(f: java.io.File, pos: FloatArray?) {
@@ -2326,12 +2367,6 @@ class MainActivity : Activity() {
                 true
             } else false
         }
-        tray = StickerTray(this, frame, { f -> addCatalogSticker(f, null) }, { f, cx, cy -> addCatalogSticker(f, floatArrayOf(cx, cy)) })
-        val trayLp = android.widget.FrameLayout.LayoutParams(dp(92f), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.TOP)
-        trayLp.setMargins(dp(6f), dp(64f), 0, dp(16f))
-        frame.addView(tray, trayLp)
-        tray.visibility = View.GONE
-        tray.refresh()
         frame.addView(desk, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         draw.onStickyToDesk = { item, sx, sy -> stickyToDesk(item, sx, sy) }
         root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))

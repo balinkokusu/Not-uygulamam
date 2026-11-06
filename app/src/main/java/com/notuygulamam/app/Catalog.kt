@@ -29,7 +29,7 @@ object StickerCatalog {
         dir(ctx).listFiles { f -> f.name.endsWith(".png") }?.sortedBy { it.name } ?: emptyList()
 
     fun add(ctx: Context, bmp: Bitmap, seq: Int): File {
-        val s = min(1f, 512f / max(bmp.width, bmp.height))
+        val s = min(1f, 768f / max(bmp.width, bmp.height))
         val b = if (s < 1f) Bitmap.createScaledBitmap(bmp, max(1, (bmp.width * s).toInt()), max(1, (bmp.height * s).toInt()), true) else bmp
         val f = File(dir(ctx), String.format("%013d_%03d.png", System.currentTimeMillis(), seq))
         FileOutputStream(f).use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -113,7 +113,7 @@ class StickerTray(
         }
         for (f in files) {
             val opts = BitmapFactory.Options()
-            opts.inSampleSize = 4
+            opts.inSampleSize = 1
             val bmp = BitmapFactory.decodeFile(f.absolutePath, opts) ?: continue
             val iv = ImageView(ctx)
             iv.setImageBitmap(bmp)

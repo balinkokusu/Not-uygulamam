@@ -24,7 +24,7 @@ object ImageTools {
     }
 
     /** Arka plan renginden ayrışan bölgeleri bulur, her birini ayrı saydam görsel olarak keser. */
-    fun split(src: Bitmap, maxSide: Int = 1600): List<Piece> {
+    fun split(src: Bitmap, maxSide: Int = 2400): List<Piece> {
         val sc = min(1f, maxSide.toFloat() / max(src.width, src.height))
         val w = max(1, (src.width * sc).toInt())
         val h = max(1, (src.height * sc).toInt())
