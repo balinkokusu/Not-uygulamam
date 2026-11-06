@@ -1027,12 +1027,15 @@ class DrawView(context: Context) : View(context) {
                     renderer.measureItem(sel)
                     val hr = 30f * density / sc
                     val del = handleAt(sel, -1f, -1f)
-                    if (hypot(gx - del[0], gy - del[1]) <= hr) {
+                    val rs = handleAt(sel, 1f, 1f)
+                    val dDel = hypot(gx - del[0], gy - del[1])
+                    val dRs = hypot(gx - rs[0], gy - rs[1])
+                    // küçük nesnelerde iki tutamaç üst üste biner; en yakın olan seçilir, silme yalnız açıkça ona dokunulunca
+                    if (dDel <= hr && dDel < dRs) {
                         deleteSelected()
                         return true
                     }
-                    val rs = handleAt(sel, 1f, 1f)
-                    if (hypot(gx - rs[0], gy - rs[1]) <= hr) {
+                    if (dRs <= hr) {
                         dragMode = 2
                         dragItem = sel
                         dist0 = max(1f, hypot(gx - sel.x, gy - sel.y))
@@ -1094,7 +1097,7 @@ class DrawView(context: Context) : View(context) {
                         it.rowH = max(30f, rowH0 * ratio)
                         renderer.measureItem(it)
                     } else {
-                        it.w = max(30f, w0 * ratio)
+                        it.w = max(70f, w0 * ratio)
                         it.h = it.w * aspect
                     }
                     keepInPage(it)
