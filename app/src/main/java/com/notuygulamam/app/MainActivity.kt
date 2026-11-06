@@ -373,10 +373,12 @@ class MainActivity : Activity() {
             it.y = 14f + it.h / 2f
             pg.items.add(it)
         }
-        insertNewPage(cur, pg)
-        if (t.withDate) {
-            ensureDateTab(pg)
-            refresh()
+        askPlacement { m ->
+            insertNewPage(cur, pg, m)
+            if (t.withDate) {
+                ensureDateTab(pg)
+                refresh()
+            }
         }
     }
 
@@ -408,20 +410,31 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Hangi yılın planlayıcısı eklensin?")
             .setItems(years.map { "Planlayıcı $it" }.toTypedArray()) { _, which ->
-                val cur = draw.page
-                val built = Planner.build(years[which])
-                for (pg in built.pages) {
-                    if (cur.pdfName == null) {
-                        pg.width = cur.width
-                        pg.height = cur.height
-                        pg.paperColor = cur.paperColor
+                AlertDialog.Builder(this)
+                    .setTitle("Planlayıcı nereye eklensin?")
+                    .setItems(arrayOf("Defterin sonuna", "Açık ikilinin arkasına", "Defterin başına")) { _, where ->
+                        val cur = draw.page
+                        val built = Planner.build(years[which])
+                        for (pg in built.pages) {
+                            if (cur.pdfName == null) {
+                                pg.width = cur.width
+                                pg.height = cur.height
+                                pg.paperColor = cur.paperColor
+                            }
+                        }
+                        val ci = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it }
+                        val start = when (where) {
+                            0 -> nb.pages.size
+                            1 -> if (spread) ci - ci % 2 + 2 else ci + 1
+                            else -> 0
+                        }.coerceIn(0, nb.pages.size)
+                        nb.pages.addAll(start, built.pages)
+                        nb.tabs.addAll(built.tabs)
+                        gotoPage(start)
+                        Toast.makeText(this, "Planlayıcı eklendi (sayfa ${start + 1})", Toast.LENGTH_LONG).show()
                     }
-                }
-                val start = nb.pages.size
-                nb.pages.addAll(built.pages)
-                nb.tabs.addAll(built.tabs)
-                gotoPage(start)
-                Toast.makeText(this, "Planlayıcı defterin sonuna eklendi (sayfa ${start + 1})", Toast.LENGTH_LONG).show()
+                    .setNegativeButton("Vazgeç", null)
+                    .show()
             }
             .setNegativeButton("Vazgeç", null)
             .show()
@@ -965,23 +978,45 @@ class MainActivity : Activity() {
         val cur = draw.page
         val np = PageData(cur.width, cur.height, cur.paper)
         np.paperColor = cur.paperColor
-        insertNewPage(cur, np)
+        askPlacement { m -> insertNewPage(cur, np, m) }
     }
 
-    /** Yeni sayfayı ekler. Çift sayfa görünümünde yeni sayfa, açık ikilinin hemen arkasında kendi ikilisini (sol sayfa + boş eş) oluşturur; böylece iki sayfa birden değişir ve eskiler yerinde kalır. */
-    private fun insertNewPage(cur: PageData, pg: PageData) {
+    /** Çift sayfa görünümünde yeni sayfanın nereye ve hangi tarafa konacağını sorar; tek sayfa görünümünde sormadan 0 verir. */
+    private fun askPlacement(onPick: (Int) -> Unit) {
+        if (!spread) { onPick(-1); return }
+        AlertDialog.Builder(this)
+            .setTitle("Yeni sayfa nereye konsun?")
+            .setItems(arrayOf(
+                "Açık ikilinin arkasına, sol sayfa olarak (sağ boş)",
+                "Açık ikilinin arkasına, sağ sayfa olarak (sol boş)",
+                "Açık ikilinin önüne, sol sayfa olarak (sağ boş)",
+                "Açık ikilinin önüne, sağ sayfa olarak (sol boş)",
+                "Arkasına, iki sayfa da aynı kâğıtla"
+            )) { _, w -> onPick(w) }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
+    /** Yeni sayfayı ekler; mode çift sayfa görünümünde askPlacement'taki seçimdir (-1: tek sayfa görünümü). Eşi her zaman boş sayfadır, kâğıt stili sonradan sayfa bazında değiştirilebilir. */
+    private fun insertNewPage(cur: PageData, pg: PageData, mode: Int) {
         val idx = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it }
-        if (spread) {
-            val at = idx - idx % 2 + 2
-            val mate = PageData(pg.width, pg.height, pg.paper)
-            mate.paperColor = pg.paperColor
-            nb.pages.add(at, pg)
-            nb.pages.add(at + 1, mate)
-            gotoPage(at)
-        } else {
+        if (mode < 0) {
             nb.pages.add(idx + 1, pg)
             gotoPage(idx + 1)
+            return
         }
+        val base = idx - idx % 2
+        val at = if (mode == 2 || mode == 3) base else base + 2
+        val mate = PageData(pg.width, pg.height, if (mode == 4) pg.paper else Paper.BLANK)
+        mate.paperColor = pg.paperColor
+        if (mode == 1 || mode == 3) {
+            nb.pages.add(at, mate)
+            nb.pages.add(at + 1, pg)
+        } else {
+            nb.pages.add(at, pg)
+            nb.pages.add(at + 1, mate)
+        }
+        gotoPage(at)
     }
 
     private fun deleteCurrentPage() {
@@ -1675,7 +1710,7 @@ class MainActivity : Activity() {
                 val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, Paper.values()[which])
                 else PageData(1200f, 1697f, Paper.values()[which])
                 if (cur.pdfName == null) pg.paperColor = cur.paperColor
-                insertNewPage(cur, pg)
+                askPlacement { m -> insertNewPage(cur, pg, m) }
             }
         }
         val sv = android.widget.ScrollView(this)
