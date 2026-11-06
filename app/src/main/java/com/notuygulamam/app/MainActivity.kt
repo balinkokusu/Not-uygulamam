@@ -1036,23 +1036,17 @@ class MainActivity : Activity() {
         askPlacement { m -> insertNewPage(cur, np, m) }
     }
 
-    /** Çift sayfa görünümünde yeni sayfanın nereye ve hangi tarafa konacağını sorar; tek sayfa görünümünde sormadan 0 verir. */
+    /** Çift sayfa görünümünde yeni ikili (sayfa çevirmiş gibi) açık ikilinin arkasına eklenir; hangi tarafın şablonlu olacağı sorulur. 0: yalnız sol, 1: yalnız sağ, 2: ikisi de. Tek sayfa görünümünde -1. */
     private fun askPlacement(onPick: (Int) -> Unit) {
         if (!spread) { onPick(-1); return }
         AlertDialog.Builder(this)
-            .setTitle("Yeni sayfa nereye konsun?")
-            .setItems(arrayOf(
-                "Açık ikilinin arkasına, sol sayfa olarak (sağ boş)",
-                "Açık ikilinin arkasına, sağ sayfa olarak (sol boş)",
-                "Açık ikilinin önüne, sol sayfa olarak (sağ boş)",
-                "Açık ikilinin önüne, sağ sayfa olarak (sol boş)",
-                "Arkasına, iki sayfa da aynı kâğıtla"
-            )) { _, w -> onPick(w) }
+            .setTitle("Yeni sayfa hangi tarafa eklensin?")
+            .setItems(arrayOf("Yalnız sol sayfa", "Yalnız sağ sayfa", "İki sayfa da")) { _, w -> onPick(w) }
             .setNegativeButton("Vazgeç", null)
             .show()
     }
 
-    /** Yeni sayfayı ekler; mode çift sayfa görünümünde askPlacement'taki seçimdir (-1: tek sayfa görünümü). Eşi her zaman boş sayfadır, kâğıt stili sonradan sayfa bazında değiştirilebilir. */
+    /** Yeni ikiliyi açık ikilinin hemen arkasına koyar. Seçilmeyen taraf, mevcut sayfanın kâğıt stiliyle gelir ve sonradan "+" menüsündeki "Açık sayfayı şablonla değiştir" ile ayrı ayrı düzenlenebilir. */
     private fun insertNewPage(cur: PageData, pg: PageData, mode: Int) {
         val idx = nb.pages.indexOf(cur).let { if (it < 0) nb.current else it }
         if (mode < 0) {
@@ -1060,11 +1054,19 @@ class MainActivity : Activity() {
             gotoPage(idx + 1)
             return
         }
-        val base = idx - idx % 2
-        val at = if (mode == 2 || mode == 3) base else base + 2
-        val mate = PageData(pg.width, pg.height, if (mode == 4) pg.paper else Paper.BLANK)
+        val at = idx - idx % 2 + 2
+        val plain = if (cur.pdfName == null) cur.paper else Paper.BLANK
+        val mate = PageData(pg.width, pg.height, if (mode == 2) pg.paper else plain)
         mate.paperColor = pg.paperColor
-        if (mode == 1 || mode == 3) {
+        if (mode == 2) {
+            for (x in pg.items) {
+                if (x.type != PageItem.TEXT) continue
+                val c = PageItem(PageItem.TEXT, x.x, x.y)
+                c.text = x.text; c.size = x.size; c.color = x.color; c.w = x.w; c.h = x.h; c.kind = x.kind
+                mate.items.add(c)
+            }
+        }
+        if (mode == 1) {
             nb.pages.add(at, mate)
             nb.pages.add(at + 1, pg)
         } else {
