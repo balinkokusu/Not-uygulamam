@@ -1248,6 +1248,7 @@ class MainActivity : Activity() {
             "Ayraçları toplu düzenle…",
             "Ekran kenarına yapışkan not koy (sürüklenir, her sayfada sabit)",
             "Cilt görünümü: " + arrayOf("yalnız gölge", "düz dikiş", "tel spiral")[draw.binding.coerceIn(0, 2)] + " (değiştirmek için dokunun)",
+            "Çıkartma kataloğum (ayrılan çıkartmalar): aç / kapat",
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         for ((i, n) in names.withIndex()) m.menu.add(0, i, i, n)
@@ -1285,6 +1286,10 @@ class MainActivity : Activity() {
                 }
                 17 -> MarginNotes.edit(this, itemId.ifEmpty { "ana" }, null, 1) { refreshMargins() }
                 19 -> {
+                    tray.refresh()
+                    tray.visibility = if (tray.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                }
+                20 -> {
                     val sp = getSharedPreferences("ayar", MODE_PRIVATE)
                     sp.edit().putBoolean("ayraç_süz_$itemId", !sp.getBoolean("ayraç_süz_$itemId", true)).apply()
                     rebuildTabs()
@@ -1698,39 +1703,80 @@ class MainActivity : Activity() {
         return android.graphics.BitmapFactory.decodeByteArray(d, 0, d.size)
     }
 
-    /** Toplu çıkartma görselini arka plandan ayrıştırıp tek tek çıkartma yapar. */
+    /** Toplu çıkartma görselini arka plandan ayrıştırır; parçalar kataloğa ya da sayfaya konur. */
     private fun splitSelectedImage() {
         val item = draw.selectedItem ?: return
         val src = bitmapOf(item) ?: return
         val wait = AlertDialog.Builder(this).setTitle("Çıkartmalar ayrılıyor…").setMessage("Görsel taranıyor, birkaç saniye sürebilir.").setCancelable(false).show()
         Thread {
             val pieces = try { ImageTools.split(src) } catch (e: Throwable) { emptyList() }
-            val made = ArrayList<PageItem>()
-            val rad = Math.toRadians(item.rot.toDouble())
-            val cs = Math.cos(rad).toFloat()
-            val sn = Math.sin(rad).toFloat()
-            for (pc in pieces) {
-                val ox = (pc.cx - 0.5f) * item.w
-                val oy = (pc.cy - 0.5f) * item.h
-                val n = PageItem(PageItem.IMAGE, item.x + ox * cs - oy * sn, item.y + ox * sn + oy * cs)
-                n.w = pc.w * item.w
-                n.h = pc.h * item.h
-                n.rot = item.rot
-                n.bmp = pc.bmp
-                n.data = pngOf(pc.bmp)
-                made.add(n)
-            }
             runOnUiThread {
                 wait.dismiss()
-                if (made.size < 2) {
-                    Toast.makeText(this, if (made.isEmpty()) "Ayrılacak çıkartma bulunamadı" else "Görselde tek parça bulundu; ayırmaya gerek yok", Toast.LENGTH_LONG).show()
-                } else {
-                    draw.replaceItem(item, made)
-                    refresh()
-                    Toast.makeText(this, made.size.toString() + " çıkartma ayrıldı. Beğenmezseniz geri al düğmesi hepsini eski görsele döndürür.", Toast.LENGTH_LONG).show()
+                if (pieces.isEmpty()) {
+                    Toast.makeText(this, "Ayrılacak çıkartma bulunamadı", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
                 }
+                AlertDialog.Builder(this)
+                    .setTitle(pieces.size.toString() + " çıkartma bulundu")
+                    .setMessage("Katalog, ekranın kenarında durur; istediğiniz çıkartmayı oradan seçip sayfaya koyarsınız. Gereksiz olanları katalogda silebilirsiniz.")
+                    .setPositiveButton("Kataloğa ekle") { _, _ ->
+                        Thread {
+                            for ((i, pc) in pieces.withIndex()) StickerCatalog.add(this, pc.bmp, i)
+                            runOnUiThread {
+                                tray.refresh()
+                                tray.visibility = View.VISIBLE
+                                Toast.makeText(this, "Çıkartmalar kataloğa eklendi", Toast.LENGTH_SHORT).show()
+                            }
+                        }.start()
+                    }
+                    .setNeutralButton("Sayfada ayır") { _, _ ->
+                        val made = ArrayList<PageItem>()
+                        val rad = Math.toRadians(item.rot.toDouble())
+                        val cs = Math.cos(rad).toFloat()
+                        val sn = Math.sin(rad).toFloat()
+                        for (pc in pieces) {
+                            val ox = (pc.cx - 0.5f) * item.w
+                            val oy = (pc.cy - 0.5f) * item.h
+                            val n = PageItem(PageItem.IMAGE, item.x + ox * cs - oy * sn, item.y + ox * sn + oy * cs)
+                            n.w = pc.w * item.w
+                            n.h = pc.h * item.h
+                            n.rot = item.rot
+                            n.bmp = pc.bmp
+                            n.data = pngOf(pc.bmp)
+                            made.add(n)
+                        }
+                        draw.replaceItem(item, made)
+                        refresh()
+                    }
+                    .setNegativeButton("Vazgeç", null)
+                    .show()
             }
         }.start()
+    }
+
+    private lateinit var tray: StickerTray
+
+    /** Katalogdaki çıkartmayı sayfaya koyar: pos verilmişse o ekran noktasına, yoksa görünen alanın ortasına. */
+    private fun addCatalogSticker(f: java.io.File, pos: FloatArray?) {
+        val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return
+        val it = PageItem(PageItem.IMAGE, 0f, 0f)
+        val k = 320f / maxOf(bmp.width, bmp.height)
+        it.w = bmp.width * k
+        it.h = bmp.height * k
+        it.bmp = bmp
+        it.data = f.readBytes()
+        draw.tool = Tool.OBJECT
+        if (pos == null) {
+            val c = draw.viewCenterOnPage()
+            it.x = c[0]; it.y = c[1]
+            draw.addItem(it)
+        } else if (draw.screenInsideSpread(pos[0], pos[1])) {
+            draw.addItemAtScreen(it, pos[0], pos[1])
+        } else {
+            Toast.makeText(this, "Çıkartmayı sayfanın üzerine bırakın", Toast.LENGTH_SHORT).show()
+            return
+        }
+        refresh()
     }
 
     /** Kement ile görselin bir bölümünü kesip ayrı çıkartma yapar. */
@@ -2280,6 +2326,12 @@ class MainActivity : Activity() {
                 true
             } else false
         }
+        tray = StickerTray(this, frame, { f -> addCatalogSticker(f, null) }, { f, cx, cy -> addCatalogSticker(f, floatArrayOf(cx, cy)) })
+        val trayLp = android.widget.FrameLayout.LayoutParams(dp(92f), android.widget.FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.TOP)
+        trayLp.setMargins(dp(6f), dp(64f), 0, dp(16f))
+        frame.addView(tray, trayLp)
+        tray.visibility = View.GONE
+        tray.refresh()
         frame.addView(desk, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         draw.onStickyToDesk = { item, sx, sy -> stickyToDesk(item, sx, sy) }
         root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))

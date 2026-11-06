@@ -65,7 +65,7 @@ object ImageTools {
         }
 
         // Yakın parçaları (gölge, ince boşluk) aynı çıkartmada toplamak için genişlet
-        val r = max(2, min(w, h) / 260)
+        val r = max(1, min(w, h) / 700)
         val fg = BooleanArray(w * h) { !bgLike[it] }
         val tmp = IntArray(w * h)
         for (y in 0 until h) {
