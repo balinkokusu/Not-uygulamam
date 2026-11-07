@@ -1869,7 +1869,6 @@ class MainActivity : Activity() {
             "Ayraçlar" to listOf(8, 16, 19),
             "Araçlar ve görünüm" to listOf(9, 21, 25, 18)
         )
-        )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
             for (id in g.second) {
