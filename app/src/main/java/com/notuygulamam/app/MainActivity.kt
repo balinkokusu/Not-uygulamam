@@ -382,6 +382,175 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Şablon başlığını (ve tarihi) sayfaya uygular; önceki şablon başlığı silinir. */
+    private fun applyTemplateHeader(pg: PageData, t: PageTemplate) {
+        pg.items.removeAll { x ->
+            x.type == PageItem.TEXT && x.size == 30f && x.color == Color.rgb(120, 108, 110) &&
+                x.y < 80f && Math.abs((x.x - x.w / 2f) - 70f) < 2f
+        }
+        if (t.header.isNotEmpty() || t.withDate) {
+            val title = StringBuilder(t.header)
+            if (t.withDate) {
+                val fmt = SimpleDateFormat("d MMMM yyyy, EEEE", Locale("tr"))
+                if (title.isNotEmpty()) title.append("  ·  ")
+                title.append(fmt.format(Date()))
+            }
+            val it = PageItem(PageItem.TEXT, 0f, 0f)
+            it.text = title.toString()
+            it.size = 30f
+            it.color = Color.rgb(120, 108, 110)
+            it.w = pg.width - 140f
+            PageRenderer().measureItem(it)
+            it.x = 70f + it.w / 2f
+            it.y = 14f + it.h / 2f
+            pg.items.add(it)
+        }
+        if (t.withDate) { pg.dateKey = todayKey(); ensureDateTab(pg) }
+    }
+
+    /** Tek ekranda şablon seçimi: önizlemeli kâğıtlar, sayfa rengi, hazır şablonlar; sol/sağ sayfaya ayrı uygulanır ya da yeni sayfa olarak eklenir. */
+    private fun showTemplateScreen() {
+        val r = draw.spreadRight()
+        val l = draw.spreadLeft()
+        val spreadOn = r != null
+        var side = if (spreadOn && draw.page === r) 1 else 0
+        fun targets(): List<PageData> = if (!spreadOn) listOf(draw.page) else when (side) {
+            0 -> listOf(l); 1 -> listOf(r!!); else -> listOf(l, r!!)
+        }
+        var selPaper = targets()[0].paper
+        var selColor = targets()[0].paperColor
+        var selT: PageTemplate? = null
+        val colors = listOf(
+            Pair("Beyaz", Color.WHITE), Pair("Krem", Color.rgb(250, 244, 225)), Pair("Sarı", Color.rgb(255, 249, 196)),
+            Pair("Gri", Color.rgb(236, 238, 242)), Pair("Mavi", Color.rgb(226, 238, 252)), Pair("Yeşil", Color.rgb(228, 244, 232)),
+            Pair("Pembe", Color.rgb(252, 232, 238)), Pair("Koyu", Color.rgb(34, 35, 40))
+        )
+        val basics = listOf(Paper.BLANK, Paper.RULED, Paper.GRID, Paper.DOTTED)
+        val others = Paper.values().filter { it !in basics }
+        val all = builtinTemplates() + customTemplates()
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(18f), dp(8f), dp(18f), dp(8f))
+        val sv = ScrollView(this)
+        sv.addView(box)
+
+        fun head(txt: String) {
+            val t = TextView(this)
+            t.text = txt
+            t.textSize = 15f
+            t.setTextColor(Look.ink)
+            t.setTypeface(null, android.graphics.Typeface.BOLD)
+            t.setPadding(0, dp(14f), 0, dp(6f))
+            box.addView(t)
+        }
+        fun chip(txt: String, on: Boolean, click: () -> Unit): TextView {
+            val c = TextView(this)
+            c.text = txt
+            c.textSize = 14f
+            c.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+            val g = GradientDrawable()
+            g.cornerRadius = dp(18f).toFloat()
+            g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
+            g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
+            c.background = g
+            c.setTextColor(if (on) Look.accent else Look.ink)
+            c.setOnClickListener { click() }
+            return c
+        }
+        lateinit var build: () -> Unit
+        build = {
+            box.removeAllViews()
+            if (spreadOn) {
+                val row = LinearLayout(this)
+                row.orientation = LinearLayout.HORIZONTAL
+                val names = arrayOf("Sol sayfa", "Sağ sayfa", "İki sayfa")
+                for (i in 0..2) {
+                    val c = chip(names[i], side == i) {
+                        side = i
+                        if (i < 2) { selPaper = targets()[0].paper; selColor = targets()[0].paperColor }
+                        selT = null
+                        build()
+                    }
+                    val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    lp.rightMargin = dp(8f)
+                    row.addView(c, lp)
+                }
+                box.addView(row)
+            }
+            val cur = targets()[0]
+            val curColorName = colors.firstOrNull { it.second == cur.paperColor }?.first ?: "özel renk"
+            val now = TextView(this)
+            now.text = "Şu anki: " + cur.paper.label + " · " + curColorName.lowercase(Locale("tr"))
+            now.textSize = 12f
+            now.setTextColor(Look.inkSoft)
+            now.setPadding(0, dp(8f), 0, 0)
+            box.addView(now)
+
+            head("Temel kâğıtlar")
+            box.addView(PaperGrid(this, basics.map { Pair(it.label, it) }, if (selT == null) basics.indexOf(selPaper) else -1, selColor) { i ->
+                selPaper = basics[i]; selT = null; build()
+            })
+            val colorRow = LinearLayout(this)
+            colorRow.orientation = LinearLayout.HORIZONTAL
+            colorRow.setPadding(0, dp(8f), 0, 0)
+            for ((nm, col) in colors) {
+                val v = View(this)
+                val g = GradientDrawable()
+                g.shape = GradientDrawable.OVAL
+                g.setColor(col)
+                g.setStroke(if (col == selColor) dp(4f) else dp(1f), if (col == selColor) Look.accent else Color.LTGRAY)
+                v.background = g
+                v.setOnClickListener { selColor = col; build() }
+                val lp = LinearLayout.LayoutParams(dp(40f), dp(40f))
+                lp.rightMargin = dp(10f)
+                colorRow.addView(v, lp)
+            }
+            box.addView(colorRow)
+
+            head("Planlayıcı ve liste kâğıtları")
+            box.addView(PaperGrid(this, others.map { Pair(it.label, it) }, if (selT == null) others.indexOf(selPaper) else -1, selColor) { i ->
+                selPaper = others[i]; selT = null; build()
+            })
+
+            head("Başlıklı hazır şablonlar")
+            for (t in all) {
+                val c = chip(t.name + "  ·  " + t.paper.label, selT === t) {
+                    selT = t; selPaper = t.paper; build()
+                }
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.bottomMargin = dp(8f)
+                box.addView(c, lp)
+            }
+        }
+        build()
+
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Şablonlar")
+            .setView(sv)
+            .setPositiveButton("Uygula") { _, _ ->
+                for (pg in targets()) {
+                    if (pg.pdfName != null) continue
+                    pg.paper = selPaper
+                    pg.paperColor = selColor
+                    selT?.let { applyTemplateHeader(pg, it) }
+                }
+                showCurrent()
+                refresh()
+                scheduleSave()
+            }
+            .setNeutralButton("Yeni sayfa olarak ekle") { _, _ ->
+                val cur = draw.page
+                val pg = PageData(if (cur.pdfName == null) cur.width else 1200f, if (cur.pdfName == null) cur.height else 1697f, selPaper)
+                pg.paperColor = selColor
+                selT?.let { applyTemplateHeader(pg, it) }
+                insertNewPage(cur, pg, if (spreadOn) side else -1)
+                refresh()
+            }
+            .setNegativeButton("Kapat", null)
+            .create()
+        dlg.show()
+    }
+
     /** Açık ikilideki sayfalardan birine (ya da ikisine) şablon uygular: kâğıt stili değişir, başlık/tarih eklenir; sayfadaki yazı ve çizimler korunur. */
     private fun showApplyTemplateDialog() {
         val r = draw.spreadRight()
@@ -440,6 +609,7 @@ class MainActivity : Activity() {
         m.menu.add(0, 1000, 0, "Aynı sayfa gibi yeni sayfa")
         val all = builtinTemplates() + customTemplates()
         for ((i, t) in all.withIndex()) m.menu.add(0, 2000 + i, 1 + i, t.name + "  ·  " + t.paper.label)
+        m.menu.add(0, 1005, 0, "Şablonlar ekranı (önizleme, renk, sol/sağ ayrı)…")
         m.menu.add(0, 1004, 99, "Açık sayfayı şablonla değiştir (sol/sağ ayrı)…")
         m.menu.add(0, 1001, 100, "Kâğıt şablonlarını gör…")
         m.menu.add(0, 1002, 101, "Şablonlarım: yeni oluştur / sil…")
@@ -449,6 +619,7 @@ class MainActivity : Activity() {
                 mi.itemId == 1000 -> addPage()
                 mi.itemId == 1001 -> showTemplatePageDialog()
                 mi.itemId == 1004 -> showApplyTemplateDialog()
+                mi.itemId == 1005 -> showTemplateScreen()
                 mi.itemId == 1002 -> showTemplateManager()
                 mi.itemId == 1003 -> showAddPlannerDialog()
                 mi.itemId >= 2000 -> all.getOrNull(mi.itemId - 2000)?.let { addTemplatePage(it) }
@@ -1414,7 +1585,7 @@ class MainActivity : Activity() {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
             for (id in g.second) {
                 val label = when (id) {
-                    20 -> "Açık sayfayı şablonla değiştir (sol/sağ ayrı)"
+                    20 -> "Şablonlar (önizleme, renk, sol/sağ ayrı uygulama)"
                     21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
                     else -> names[id]
                 }
@@ -1424,7 +1595,7 @@ class MainActivity : Activity() {
         m.setOnMenuItemClickListener { mi ->
             when (mi.itemId) {
                 0 -> pickPdf()
-                20 -> showApplyTemplateDialog()
+                20 -> showTemplateScreen()
                 21 -> {
                     val box = LinearLayout(this)
                     box.orientation = LinearLayout.VERTICAL
