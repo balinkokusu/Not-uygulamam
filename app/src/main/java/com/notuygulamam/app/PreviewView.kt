@@ -49,7 +49,7 @@ class PreviewView(context: Context, private val draw: DrawView) : View(context) 
             5 -> 0.08f
             6, 7, 8, 9, 10, 11, 12 -> 0.04f
             13 -> 0.4f
-            else -> ps * 0.55f
+            else -> ps * 0.95f
         }
 
         /** Örnek bir dalga çizgisi; basınç ortada artar ki kalem türlerinin farkı görülsün. */

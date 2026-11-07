@@ -75,18 +75,27 @@ class PageRenderer {
         val key = (color.toLong() and 0xFFFFFFFFL) * 4L + (if (dark) 2L else 0L) + pass
         grainCache[key]?.let { return it }
         val n = 128
-        val px = IntArray(n * n)
-        val speck = if (dark) 0.16f else 0.42f
+        val rnd = java.util.Random(7L + pass * 101L)
+        val raw = FloatArray(n * n) { rnd.nextFloat() }
+        // 3x3 bulanıklaştırma: tek tek benekler yerine kâğıt lifi gibi küçük kümeler oluşur
+        val bl = FloatArray(n * n)
         for (y in 0 until n) for (x in 0 until n) {
-            val u = hash(x * 131 + y * 7 + pass * 977, 5)
-            val v = hash(y * 173 + x * 3 + pass * 31, 9)
-            val a = if (u < speck) 25 + v * 70 else (if (dark) 185 else 130) + v * 100
-            px[y * n + x] = Color.argb(a.toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+            var sum = 0f
+            for (dy in -1..1) for (dx in -1..1) sum += raw[((y + dy + n) % n) * n + (x + dx + n) % n]
+            bl[y * n + x] = sum / 9f
+        }
+        val px = IntArray(n * n)
+        val cut = if (dark) 0.40f else 0.50f
+        for (i in 0 until n * n) {
+            // 0.5 çevresinde yoğunlaşan değerleri açarak kontrast artırılır
+            val v = ((bl[i] - 0.5f) * 3.2f + 0.5f).coerceIn(0f, 1f)
+            val a = if (v < cut) 20 + v * 120f else (if (dark) 200 else 150) + (v - cut) * 110f
+            px[i] = Color.argb(a.toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
         }
         val bm = Bitmap.createBitmap(px, n, n, Bitmap.Config.ARGB_8888)
         val sh = android.graphics.BitmapShader(bm, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT)
         val m = android.graphics.Matrix()
-        m.setScale(2.6f, 2.6f)
+        m.setScale(1.8f, 1.8f)
         m.postTranslate(pass * 37f, pass * 19f)
         sh.setLocalMatrix(m)
         grainCache[key] = sh
@@ -120,6 +129,7 @@ class PageRenderer {
                 grainPaint.style = Paint.Style.STROKE
                 grainPaint.strokeCap = Paint.Cap.ROUND
                 grainPaint.strokeJoin = Paint.Join.ROUND
+                grainPaint.isFilterBitmap = true
                 for (pass in 0..1) {
                     grainPaint.shader = grainShader(graphite, dark, pass)
                     grainPaint.strokeWidth = if (pass == 0) w else w * 0.82f
@@ -175,7 +185,7 @@ class PageRenderer {
                 val dy = s.ys[i] - s.ys[j]
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
-                    w *= (0.62 + 0.38 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 1.1f
+                    w *= (0.42 + 0.58 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 1.1f
                 }
             }
             3 -> w *= speedFactor(s, i)
@@ -373,8 +383,12 @@ class PageRenderer {
     }
 
     private fun drawMonthly(c: Canvas, page: PageData) {
-        val dated = page.calMonth in 1..12 && page.calYear > 0
-        val title = if (dated) Planner.MONTHS[page.calMonth - 1] + " " + page.calYear else "AYLIK TAKVİM"
+        // yıl ve ay belirtilmemişse içinde bulunulan ay gösterilir; böylece gün sayıları her zaman çıkar
+        val nowCal = Calendar.getInstance()
+        val calY = if (page.calYear > 0) page.calYear else nowCal.get(Calendar.YEAR)
+        val calM = if (page.calMonth in 1..12) page.calMonth else nowCal.get(Calendar.MONTH) + 1
+        val dated = true
+        val title = Planner.MONTHS[calM - 1] + " " + calY
         label(c, title, 70f, 125f, 60f, ink, true)
         val x0 = 70f
         val cw = 1060f / 7f
@@ -390,7 +404,7 @@ class PageRenderer {
         c.drawLine(x0, top, x0 + 1060f, top, boxPaint)
         for (i in 0..7) c.drawLine(x0 + i * cw, top, x0 + i * cw, gridTop + 6 * rh, boxPaint)
         if (dated) {
-            val (off, n) = monthShape(page.calYear, page.calMonth)
+            val (off, n) = monthShape(calY, calM)
             for (d in 1..n) {
                 val idx = off + d - 1
                 label(c, d.toString(), x0 + (idx % 7) * cw + 10f, gridTop + (idx / 7) * rh + 34f, 26f, ink)
@@ -733,8 +747,9 @@ class PageRenderer {
     }
 
     private fun drawYear(c: Canvas, page: PageData) {
-        val dated = page.calYear > 0
-        label(c, if (dated) "YILLIK TAKVİM " + page.calYear else "YILLIK TAKVİM", 80f, 125f, 56f, ink, true)
+        val calY = if (page.calYear > 0) page.calYear else Calendar.getInstance().get(Calendar.YEAR)
+        val dated = true
+        label(c, "YILLIK TAKVİM $calY", 80f, 125f, 56f, ink, true)
         val letters = arrayOf("P", "S", "Ç", "P", "C", "C", "P")
         for (m in 0 until 12) {
             val bx = 75f + (m % 3) * 350f
@@ -746,7 +761,7 @@ class PageRenderer {
             label(c, Planner.MONTHS[m], bx + 167f, by + 33f, 30f, Color.WHITE, true, Paint.Align.CENTER)
             for (i in 0 until 7) label(c, letters[i], bx + 25f + i * 50f, by + 76f, 20f, soft, false, Paint.Align.CENTER)
             if (dated) {
-                val (off, n) = monthShape(page.calYear, m + 1)
+                val (off, n) = monthShape(calY, m + 1)
                 for (d in 1..n) {
                     val idx = off + d - 1
                     label(c, d.toString(), bx + 25f + (idx % 7) * 50f, by + 118f + (idx / 7) * 42f, 22f, ink, false, Paint.Align.CENTER)
