@@ -49,7 +49,7 @@ class DrawView(context: Context) : View(context) {
     var hlKind = 0
 
     /** Kalemle hızlı iki kez dokunmak kalem ile silgi arasında geçiş yapar. */
-    var penDoubleTap = true
+    var penDoubleTap = false
 
     /** Çizgi dengeleme (titremeyi azaltır): 0 kapalı, 100 en yüksek. */
     var stabilize = 0
@@ -177,6 +177,7 @@ class DrawView(context: Context) : View(context) {
     /** Metin aracıyla boşa dokunulunca (item=null, x, y) ya da seçili metne tekrar dokunulunca çağrılır. */
     var onTextTap: ((PageItem?, Float, Float) -> Unit)? = null
     private var dragMode = 0
+    private var rotSnap = false
     private var dragItem: PageItem? = null
     private var dragMoved = false
     private var tapOnSelected = false
@@ -937,6 +938,17 @@ class DrawView(context: Context) : View(context) {
         c.scale(sc, sc)
         val px = 1f / sc
         if (dragMode == 1 && dragMoved && dragItem === it) renderer.drawItem(c, it)
+        if (dragMode == 2 && dragItem === it && it.type != PageItem.TABLE) {
+            // 0 / 90 / 180 / 270 derece kılavuzu: yaklaşınca tam açıya yapışır ve çizgi belirginleşir
+            val len = max(it.w, it.h) * 0.9f
+            selPaint.style = Paint.Style.STROKE
+            selPaint.strokeWidth = (if (rotSnap) 2.6f else 1.2f) * density * px
+            selPaint.setColor(if (rotSnap) Look.accent else Color.argb(120, 110, 110, 118))
+            selPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(10f * density * px, 7f * density * px), 0f)
+            c.drawLine(it.x - len, it.y, it.x + len, it.y, selPaint)
+            c.drawLine(it.x, it.y - len, it.x, it.y + len, selPaint)
+            selPaint.pathEffect = null
+        }
         c.save()
         c.translate(it.x, it.y)
         c.rotate(it.rot)
@@ -1214,7 +1226,11 @@ class DrawView(context: Context) : View(context) {
                     val dist = max(1f, hypot(gx - it.x, gy - it.y))
                     val ratio = (dist / dist0).coerceIn(0.2f, 8f)
                     val ang = Math.toDegrees(Math.atan2((gy - it.y).toDouble(), (gx - it.x).toDouble())).toFloat()
-                    it.rot = if (it.type == PageItem.TABLE) 0f else rot0 + (ang - ang0)
+                    var rr = rot0 + (ang - ang0)
+                    val md = ((rr % 90f) + 90f) % 90f
+                    rotSnap = min(md, 90f - md) < 4f
+                    if (rotSnap) rr = Math.round(rr / 90f) * 90f
+                    it.rot = if (it.type == PageItem.TABLE) 0f else rr
                     val aspect = if (it.w > 0f) it.h / it.w else 1f
                     if (it.type == PageItem.TEXT) {
                         it.w = max(60f, w0 * ratio)
@@ -1841,9 +1857,9 @@ class DrawView(context: Context) : View(context) {
                 holdHandler.removeCallbacks(holdRunnable)
                 strokeActive = false
                 val isTap = e.actionMasked == MotionEvent.ACTION_UP && isStylus && penDoubleTap &&
-                    (e.eventTime - e.downTime) < 260L && hypot(e.x - downX, e.y - downY) < 9f * density
-                val twice = isTap && e.eventTime - lastTapTime < 420L &&
-                    hypot(e.x - lastTapX, e.y - lastTapY) < 48f * density
+                    (e.eventTime - e.downTime) < 220L && hypot(e.x - downX, e.y - downY) < 7f * density
+                val twice = isTap && e.eventTime - lastTapTime < 320L &&
+                    hypot(e.x - lastTapX, e.y - lastTapY) < 16f * density
                 if (twice) {
                     // İkinci hızlı dokunuş: iki nokta/silme izini geri al, kalem-silgi geçişi yap.
                     val ps = lastTapStroke
@@ -1995,8 +2011,10 @@ class DrawView(context: Context) : View(context) {
         val za = zigzag(pa, extA)
         val zb = zigzag(pb, extB)
         scribbleInfo = "karalama: eksen1 dönüş=${za.first} yol=${(za.second / max(1f, extA)).toInt()}x, eksen2 dönüş=${zb.first} yol=${(zb.second / max(1f, extB)).toInt()}x"
-        val okA = extA >= 40f && za.first >= 3 && za.second >= 3.2f * extA
-        val okB = extB >= 40f && zb.first >= 3 && zb.second >= 3.2f * extB
+        // el yazısı (özellikle bitişik yazı) iki eksende de uzar; karalama dar bir bantta gidip gelir
+        if (min(extA, extB) > 0.5f * max(extA, extB)) return false
+        val okA = extA >= 60f && za.first >= 5 && za.second >= 5f * extA
+        val okB = extB >= 60f && zb.first >= 5 && zb.second >= 5f * extB
         return okA || okB
     }
 

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -234,13 +235,6 @@ class LibraryActivity : Activity() {
         titleView.setTextColor(Look.ink)
         header.addView(backBtn)
         header.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        val cardsBtn = TextView(this)
-        cardsBtn.text = "Flaş kartlar"
-        cardsBtn.textSize = 16f
-        cardsBtn.setTextColor(Look.accent)
-        cardsBtn.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
-        cardsBtn.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java)) }
-        header.addView(cardsBtn)
         val backupBtn = TextView(this)
         backupBtn.text = "Yedek"
         backupBtn.textSize = 16f
@@ -266,6 +260,28 @@ class LibraryActivity : Activity() {
         }
 
         root.addView(header)
+        val tabs = LinearLayout(this)
+        tabs.orientation = LinearLayout.HORIZONTAL
+        tabs.setPadding(dp(20f), 0, dp(20f), dp(4f))
+        fun tab(t: String, on: Boolean, click: () -> Unit) {
+            val v = TextView(this)
+            v.text = t
+            v.textSize = 15f
+            v.setPadding(dp(18f), dp(8f), dp(18f), dp(8f))
+            v.setTextColor(if (on) Look.accent else Look.inkSoft)
+            val g = GradientDrawable()
+            g.cornerRadius = dp(16f).toFloat()
+            g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
+            g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
+            v.background = g
+            v.setOnClickListener { click() }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.rightMargin = dp(8f)
+            tabs.addView(v, lp)
+        }
+        tab("Notlar", true) {}
+        tab("Flaş kartlar", false) { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+        root.addView(tabs)
         board = ReminderBoard(this)
         root.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
