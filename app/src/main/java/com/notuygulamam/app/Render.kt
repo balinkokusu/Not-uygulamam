@@ -895,7 +895,21 @@ class PageRenderer {
                 }
                 if (b != null) {
                     val r = RectF(-it.w / 2f, -it.h / 2f, it.w / 2f, it.h / 2f)
-                    c.drawBitmap(b, null, r, bmpPaint)
+                    if (it.kind == TAPE_KIND && it.text == "k") {
+                        // kalkmış bant: yalnız yapışık uç ve silik bir iz kalır; dokununca yeniden kapanır
+                        c.save()
+                        c.clipRect(r.left, r.top, r.left + it.w * 0.1f, r.bottom)
+                        c.drawBitmap(b, null, r, bmpPaint)
+                        c.restore()
+                        val dp = Paint(Paint.ANTI_ALIAS_FLAG)
+                        dp.style = Paint.Style.STROKE
+                        dp.strokeWidth = 3f
+                        dp.color = Color.argb(110, 120, 100, 100)
+                        dp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
+                        c.drawRect(r, dp)
+                    } else {
+                        c.drawBitmap(b, null, r, bmpPaint)
+                    }
                 }
             }
         }
@@ -903,6 +917,7 @@ class PageRenderer {
     }
 
     private val bmpPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    private val TAPE_KIND = DrawView.TAPE_KIND
 }
 
 /** Defteri, çizimleri PDF sayfalarının üstüne işleyerek tek bir PDF dosyasına yazar. */

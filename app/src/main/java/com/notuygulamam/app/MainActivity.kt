@@ -863,11 +863,97 @@ class MainActivity : Activity() {
         dlg.show()
     }
 
+    /** Bant koleksiyonu: kategoriler, altı renk, isteğe bağlı gizleme bandı (dokununca kalkar, tekrar dokununca kapanır). */
+    private fun showTapeDialog() {
+        var cat = 0
+        var hide = true
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+        val chipsScroll = HorizontalScrollView(this)
+        val chips = LinearLayout(this)
+        chips.orientation = LinearLayout.HORIZONTAL
+        chipsScroll.addView(chips)
+        box.addView(chipsScroll)
+        val hideBox = CheckBox(this)
+        hideBox.text = "Gizleme bandı: dokununca kalkar, tekrar dokununca kapanır"
+        hideBox.isChecked = true
+        hideBox.setOnCheckedChangeListener { _, v -> hide = v }
+        hideBox.setPadding(0, dp(10f), 0, dp(6f))
+        box.addView(hideBox)
+        val list = LinearLayout(this)
+        list.orientation = LinearLayout.VERTICAL
+        box.addView(list)
+        val sv = ScrollView(this)
+        sv.addView(box)
+        var dlg: AlertDialog? = null
+        lateinit var rebuild: () -> Unit
+        rebuild = {
+            chips.removeAllViews()
+            for ((i, name) in Tapes.categories.withIndex()) {
+                val c = TextView(this)
+                c.text = name
+                c.textSize = 14f
+                c.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+                val g = GradientDrawable()
+                g.cornerRadius = dp(18f).toFloat()
+                g.setColor(if (i == cat) Look.accentSoft else Color.TRANSPARENT)
+                g.setStroke(dp(1f), if (i == cat) Look.accent else Look.hairline)
+                c.background = g
+                c.setTextColor(if (i == cat) Look.accent else Look.ink)
+                c.setOnClickListener { cat = i; rebuild() }
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.rightMargin = dp(8f)
+                chips.addView(c, lp)
+            }
+            list.removeAllViews()
+            for (v in 0 until 6) {
+                val bmp = Tapes.make(cat, v, false)
+                val iv = ImageView(this)
+                iv.setImageBitmap(bmp)
+                iv.scaleType = ImageView.ScaleType.FIT_CENTER
+                iv.adjustViewBounds = true
+                iv.setOnClickListener {
+                    val b = Tapes.make(cat, v, hide)
+                    val png = pngOf(b)
+                    val it = PageItem(PageItem.IMAGE, 0f, 0f)
+                    it.w = 520f
+                    it.h = 520f * Tapes.H / Tapes.W
+                    it.bmp = b
+                    it.data = png
+                    if (hide) it.kind = DrawView.TAPE_KIND
+                    val c = draw.viewCenterOnPage()
+                    it.x = c[0]; it.y = c[1]
+                    draw.tool = Tool.OBJECT
+                    draw.addItem(it)
+                    refresh()
+                    dlg?.dismiss()
+                }
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.bottomMargin = dp(10f)
+                list.addView(iv, lp)
+            }
+        }
+        rebuild()
+        dlg = AlertDialog.Builder(this)
+            .setTitle("Bantlar")
+            .setView(sv)
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
     private fun showStickerDialog() {
         var dlg: AlertDialog? = null
         val grid = LinearLayout(this)
         grid.orientation = LinearLayout.VERTICAL
         grid.setPadding(dp(10f), dp(6f), dp(10f), dp(6f))
+        val tapeRow = TextView(this)
+        tapeRow.text = "Bantlar (washi bant koleksiyonu, dokununca kalkan gizleme bandı)  ›"
+        tapeRow.textSize = 14f
+        tapeRow.setTextColor(Look.accent)
+        tapeRow.setPadding(dp(4f), dp(6f), dp(4f), dp(12f))
+        tapeRow.setOnClickListener { dlg?.dismiss(); showTapeDialog() }
+        grid.addView(tapeRow)
         var row: LinearLayout? = null
         for (k in Stickers.names.indices) {
             if (k % 5 == 0) {
@@ -2051,7 +2137,7 @@ class MainActivity : Activity() {
         val show = sel != null && (draw.tool == Tool.TEXT || draw.tool == Tool.OBJECT)
         itemBar.visibility = if (show) View.VISIBLE else View.GONE
         if (sel != null) layerBtn.text = if (sel.above) "Çizginin üstünde" else "Çizginin altında"
-        val img = sel != null && sel.type == PageItem.IMAGE && sel.kind != DrawView.STICKY_KIND
+        val img = sel != null && sel.type == PageItem.IMAGE && sel.kind != DrawView.STICKY_KIND && sel.kind != DrawView.TAPE_KIND
         splitBtn.visibility = if (img) View.VISIBLE else View.GONE
         cutBtn.visibility = if (img) View.VISIBLE else View.GONE
     }

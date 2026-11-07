@@ -150,6 +150,18 @@ class DrawView(context: Context) : View(context) {
             onChanged?.invoke()
         }
 
+    /** Gizleme bandını kaldırır ya da yeniden kapatır (durum, nesnenin text alanında "k" olarak tutulur). */
+    private fun toggleTape(t: PageItem) {
+        t.text = if (t.text == "k") "" else "k"
+        rebuildBase()
+        onChanged?.invoke()
+        invalidate()
+    }
+
+    private var tapDX = 0f
+    private var tapDY = 0f
+    private var tapDT = 0L
+
     fun spreadLeft(): PageData = leftPage
     fun spreadRight(): PageData? = rightPage
 
@@ -1139,6 +1151,8 @@ class DrawView(context: Context) : View(context) {
                         onChanged?.invoke()
                     } else if (dragMode != 0 && dragMoved) {
                         onChanged?.invoke()
+                    } else if (dragMode == 1 && !dragMoved && it != null && it.type == PageItem.IMAGE && it.kind == TAPE_KIND) {
+                        toggleTape(it)
                     } else if (dragMode == 1 && !dragMoved && tapOnSelected && it != null && it.type == PageItem.TEXT) {
                         onTextTap?.invoke(it, it.x, it.y)
                     } else if (dragMode == 1 && !dragMoved && tapOnSelected && it != null && it.type == PageItem.TABLE) {
@@ -1614,7 +1628,18 @@ class DrawView(context: Context) : View(context) {
         if (tool == Tool.LASER) return handleLaserTouch(e)
         if (tool == Tool.LASSO) return handleLassoTouch(e)
 
-        if (!isStylus && !fingerDraw) return true
+        if (!isStylus && !fingerDraw) {
+            // parmakla kısa dokunuş: gizleme bandı kalkar / kapanır
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) { tapDX = e.x; tapDY = e.y; tapDT = e.eventTime }
+            if (e.actionMasked == MotionEvent.ACTION_UP && hypot(e.x - tapDX, e.y - tapDY) < 14f * density && e.eventTime - tapDT < 350L) {
+                activateAt(e.x)
+                val gx = pageX(e.x)
+                val gy = pageY(e.y)
+                val t = page.items.lastOrNull { it.type == PageItem.IMAGE && it.kind == TAPE_KIND && itemHit(it, gx, gy) }
+                if (t != null) toggleTape(t)
+            }
+            return true
+        }
 
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -2697,6 +2722,7 @@ class DrawView(context: Context) : View(context) {
         const val SPIRAL_HALF = 30f
         const val SPINE_HALF = 6f
         const val STICKY_KIND = 77
+        const val TAPE_KIND = 78
         const val HOLD_MS = 320L
         const val TAB_OUT = 50f
         const val TAB_IN = 6f
