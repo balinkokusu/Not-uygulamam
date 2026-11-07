@@ -47,6 +47,10 @@ class PageRenderer {
         2 -> 0.9f
         3 -> 1.9f
         4 -> 1.3f
+        5 -> 1.5f
+        6, 7 -> 1f
+        8 -> 1.8f
+        9 -> 1f
         else -> 1f
     }
 
@@ -77,6 +81,15 @@ class PageRenderer {
             }
             3 -> w *= speedFactor(s, i)
             4 -> w *= 0.85f + 0.3f * (1f - speedFactor(s, i))
+            5 -> {
+                // Modern kaligrafi: sabit açılı geniş uç; yatay vuruş kalın, 45 derece dikey ince
+                val dx = s.xs[i] - s.xs[i - 1]
+                val dy = s.ys[i] - s.ys[i - 1]
+                if (dx != 0f || dy != 0f) {
+                    val ang = Math.atan2(dy.toDouble(), dx.toDouble())
+                    w *= (0.18 + 0.82 * Math.abs(Math.sin(ang - 0.785))).toFloat()
+                }
+            }
         }
         return w
     }
@@ -649,6 +662,67 @@ class PageRenderer {
                 var t = minOf(1f, 0.25f + i / 10f)
                 if (last) t = minOf(t, 0.25f + (n - 1 - i) / 10f)
                 w *= t
+                linePaint.strokeWidth = w
+                c.drawLine(x0, y0, x1, y1, linePaint)
+            }
+            6 -> {
+                // Kesikli kalem: yay uzunluğuna göre eşit çizgi ve boşluklar
+                val bw = s.width * widthFactor(s, 0.5f)
+                val dash = bw * 3.2f + 6f
+                val per = dash + bw * 2.4f + 6f
+                val a0 = s.arc(i - 1)
+                val a1 = s.arc(i)
+                val len = a1 - a0
+                linePaint.strokeWidth = bw
+                if (len > 0f) {
+                    var k = Math.floor((a0 / per).toDouble()).toInt()
+                    while (k * per <= a1) {
+                        val ds = maxOf(k * per, a0)
+                        val de = minOf(k * per + dash, a1)
+                        if (de > ds) {
+                            val t0 = (ds - a0) / len
+                            val t1 = (de - a0) / len
+                            c.drawLine(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0, x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1, linePaint)
+                        }
+                        k++
+                    }
+                }
+            }
+            7 -> {
+                // Noktalı kalem: yay uzunluğu boyunca eşit aralıklı yuvarlak noktalar
+                val bw = s.width * widthFactor(s, 0.5f)
+                val per = bw * 2.3f + 4f
+                val a0 = s.arc(i - 1)
+                val a1 = s.arc(i)
+                val len = a1 - a0
+                fillPaint.setColor(s.color)
+                if (len > 0f) {
+                    var k = Math.floor((a0 / per).toDouble()).toInt() + 1
+                    while (k * per <= a1) {
+                        val t = (k * per - a0) / len
+                        c.drawCircle(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, bw * 0.5f, fillPaint)
+                        k++
+                    }
+                }
+            }
+            8 -> {
+                // Dış çizgili kalem: dış hat seçili renkte, içi açık
+                linePaint.strokeWidth = w
+                c.drawLine(x0, y0, x1, y1, linePaint)
+                linePaint.setColor(Color.argb(255, 255 - (255 - Color.red(s.color)) / 6, 255 - (255 - Color.green(s.color)) / 6, 255 - (255 - Color.blue(s.color)) / 6))
+                linePaint.strokeWidth = w * 0.52f
+                c.drawLine(x0, y0, x1, y1, linePaint)
+                linePaint.setColor(s.color)
+            }
+            9 -> {
+                // Gölgeli kalem: kayık, yumuşak bir gölge ve üstünde asıl çizgi
+                val off = w * 0.4f
+                linePaint.alpha = 70
+                linePaint.setColor(Color.argb(70, 0, 0, 0))
+                linePaint.strokeWidth = w
+                c.drawLine(x0 + off, y0 + off, x1 + off, y1 + off, linePaint)
+                linePaint.setColor(s.color)
+                linePaint.alpha = 255
                 linePaint.strokeWidth = w
                 c.drawLine(x0, y0, x1, y1, linePaint)
             }

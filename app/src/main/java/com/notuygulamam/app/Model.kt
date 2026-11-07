@@ -28,6 +28,25 @@ class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sen
     fun add(x: Float, y: Float, p: Float) {
         xs.add(x); ys.add(y); ps.add(p)
     }
+
+    private var cum = FloatArray(64)
+    private var cumN = 0
+
+    /** i. noktaya kadar çizginin yay uzunluğu (kesikli ve noktalı kalemler için); önbellekli. */
+    fun arc(i: Int): Float {
+        if (i <= 0) return 0f
+        if (i == 1 || cumN > xs.size) cumN = 1
+        if (cum.size < xs.size + 1) cum = cum.copyOf(maxOf(xs.size * 2, 64))
+        if (cumN < 1) cumN = 1
+        cum[0] = 0f
+        var j = cumN
+        while (j <= i && j < xs.size) {
+            cum[j] = cum[j - 1] + Math.hypot((xs[j] - xs[j - 1]).toDouble(), (ys[j] - ys[j - 1]).toDouble()).toFloat()
+            j++
+        }
+        if (j > cumN) cumN = j
+        return cum[minOf(i, xs.size - 1)]
+    }
 }
 
 /** Sayfadaki metin kutusu, çıkartma ya da resim; (x, y) nesnenin merkezidir, ölçüler sayfa birimindedir. */

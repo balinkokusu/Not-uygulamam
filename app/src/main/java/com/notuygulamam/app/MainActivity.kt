@@ -283,8 +283,63 @@ class MainActivity : Activity() {
         }
         kindRow.visibility = View.VISIBLE
         if (st == Tool.PEN) {
-            val order = listOf(Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun", 2))
+            val order = listOf(
+                Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun", 2),
+                Pair("Kesikli", 6), Pair("Noktalı", 7), Pair("Dış çizgili", 8), Pair("Gölgeli", 9)
+            )
             for ((n, k) in order) kindRow.addView(kindChip(n, false, k, draw.penKind == k))
+            // favori kalemler: tür, renk ve kalınlık birlikte saklanır; dokununca uygulanır, basılı tutunca silinir
+            val sp = getSharedPreferences("ayar", MODE_PRIVATE)
+            val favs = (sp.getString("kalem_fav", "") ?: "").split(';').filter { it.isNotBlank() }.toMutableList()
+            fun chipTv(txt: String, tint: Int): TextView {
+                val t = TextView(this)
+                t.text = txt
+                t.textSize = 13f
+                t.setPadding(dp(12f), dp(7f), dp(12f), dp(7f))
+                val g = GradientDrawable()
+                g.cornerRadius = dp(14f).toFloat()
+                g.setColor(tint)
+                g.setStroke(dp(1f), Look.hairline)
+                t.background = g
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40f))
+                lp.setMargins(dp(4f), dp(10f), dp(4f), dp(10f))
+                t.layoutParams = lp
+                t.gravity = Gravity.CENTER
+                return t
+            }
+            val add = chipTv("☆ Favori ekle", Look.accentSoft)
+            add.setTextColor(Look.accent)
+            add.setOnClickListener {
+                favs.add(draw.penKind.toString() + "," + draw.penColor + "," + draw.penWidthDp)
+                sp.edit().putString("kalem_fav", favs.joinToString(";")).apply()
+                Toast.makeText(this, "Kalem favorilere eklendi", Toast.LENGTH_SHORT).show()
+                rebuildKinds()
+            }
+            kindRow.addView(add)
+            for ((fi, f) in favs.withIndex()) {
+                val parts = f.split(',')
+                if (parts.size < 3) continue
+                val kd = parts[0].toIntOrNull() ?: continue
+                val col = parts[1].toIntOrNull() ?: continue
+                val wd = parts[2].toFloatOrNull() ?: continue
+                val name = order.firstOrNull { it.second == kd }?.first ?: "Kalem"
+                val t = chipTv("★ " + name, Color.argb(60, Color.red(col), Color.green(col), Color.blue(col)))
+                t.setTextColor(col)
+                t.setOnClickListener {
+                    draw.penKind = kd
+                    draw.penColor = col
+                    draw.penWidthDp = wd
+                    refresh()
+                }
+                t.setOnLongClickListener {
+                    favs.removeAt(fi)
+                    sp.edit().putString("kalem_fav", favs.joinToString(";")).apply()
+                    Toast.makeText(this, "Favori silindi", Toast.LENGTH_SHORT).show()
+                    rebuildKinds()
+                    true
+                }
+                kindRow.addView(t)
+            }
         } else {
             val names = listOf("Düz", "Pırıltılı", "Yıldız", "Kalp")
             for ((i, n) in names.withIndex()) kindRow.addView(kindChip(n, true, i, draw.hlKind == i))
