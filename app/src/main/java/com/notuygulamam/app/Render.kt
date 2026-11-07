@@ -51,7 +51,54 @@ class PageRenderer {
         6, 7 -> 1f
         8 -> 1.8f
         9 -> 1f
+        10 -> 1.3f
+        11 -> 1.9f
+        12 -> 0.8f
         else -> 1f
+    }
+
+    private fun mix(c: Int, with: Int, t: Float): Int = Color.rgb(
+        (Color.red(c) + (Color.red(with) - Color.red(c)) * t).toInt(),
+        (Color.green(c) + (Color.green(with) - Color.green(c)) * t).toInt(),
+        (Color.blue(c) + (Color.blue(with) - Color.blue(c)) * t).toInt()
+    )
+
+    /** Birkaç katmandan oluşan kalemler (dış çizgili, boru, neon): katmanlar tek yol olarak çizilince birleşim yerleri temiz olur. */
+    private fun layeredPen(k: Int) = k == 8 || k == 11 || k == 12
+
+    private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
+        fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f) {
+            linePaint.setColor(color)
+            linePaint.alpha = 255
+            linePaint.strokeWidth = width
+            if (path != null) {
+                c.save(); c.translate(dx, dy); c.drawPath(path, linePaint); c.restore()
+            } else {
+                c.drawLine(x0 + dx, y0 + dy, x1 + dx, y1 + dy, linePaint)
+            }
+        }
+        val col = s.color
+        when (s.kind) {
+            8 -> {
+                line(w, col)
+                line(w * 0.52f, mix(col, Color.WHITE, 0.85f))
+            }
+            11 -> {
+                // Boru: koyu kenar, ana renk, üst solda parlak yansıma; üç boyutlu bir boru gibi görünür
+                line(w, mix(col, Color.BLACK, 0.45f))
+                line(w * 0.8f, col)
+                line(w * 0.5f, mix(col, Color.WHITE, 0.3f), -w * 0.06f, -w * 0.08f)
+                line(w * 0.17f, mix(col, Color.WHITE, 0.78f), -w * 0.15f, -w * 0.19f)
+            }
+            12 -> {
+                // Neon: dışa doğru açılan ışıma, renkli çekirdek, beyaz iç hat
+                line(w * 3.1f, mix(col, Color.WHITE, 0.86f))
+                line(w * 2.3f, mix(col, Color.WHITE, 0.68f))
+                line(w * 1.6f, mix(col, Color.WHITE, 0.4f))
+                line(w * 1.0f, col)
+                line(w * 0.38f, mix(col, Color.WHITE, 0.9f))
+            }
+        }
     }
 
     /** Son üç parçanın ortalama uzunluğundan hız tahmini: hızlı çizgi 0,4'e, yavaş çizgi 1'e yaklaşır. */
@@ -675,31 +722,51 @@ class PageRenderer {
         linePaint.strokeCap = Paint.Cap.ROUND
         when (s.kind) {
             2 -> {
-                // Kurşun kalem: ince, hafif saydam bir iz ve çizginin içinde kalan ince grafit tanesi
+                // Kurşun kalem: kâğıda sürtünen grafit; birkaç ince, farklı koyulukta şerit yan yana
                 val p = (s.ps[i] + s.ps[i - 1]) / 2f
-                val len = Math.hypot((x1 - x0).toDouble(), (y1 - y0).toDouble()).toFloat()
-                val base = s.width * 0.75f * (0.8f + 0.4f * p)
-                linePaint.alpha = (110 + 80 * p).toInt().coerceAtMost(235)
-                linePaint.strokeWidth = base * 0.62f
-                c.drawLine(x0, y0, x1, y1, linePaint)
-                linePaint.alpha = 255
-                fillPaint.setColor(s.color)
-                val steps = max(1, (len / (base * 0.35f)).toInt() + 1)
-                val nx = if (len > 0f) -(y1 - y0) / len else 0f
-                val ny = if (len > 0f) (x1 - x0) / len else 0f
-                for (k in 0 until steps) {
-                    val t = (k + hash(i * 31 + k, 11)) / steps
-                    val h1 = hash(i * 31 + k, 1)
-                    val h2 = hash(i * 31 + k, 2)
-                    val h3 = hash(i * 31 + k, 3)
-                    val off = (h1 - 0.5f) * base * 0.8f
-                    val px = x0 + (x1 - x0) * t + nx * off
-                    val py = y0 + (y1 - y0) * t + ny * off
-                    fillPaint.alpha = (30 + 110 * h3 * (0.6f + p)).toInt().coerceIn(0, 200)
-                    c.drawCircle(px, py, base * (0.05f + 0.07f * h2), fillPaint)
+                val base = s.width * 0.8f * (0.8f + 0.4f * p)
+                val dx = x1 - x0
+                val dy = y1 - y0
+                val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                val nx = if (len > 0f) -dy / len else 0f
+                val ny = if (len > 0f) dx / len else 0f
+                val graphite = mix(s.color, Color.rgb(60, 60, 64), 0.45f)
+                for (k in -1..1) {
+                    val h = hash(i * 7 + k, 21)
+                    val o = k * base * 0.3f + (h - 0.5f) * base * 0.12f
+                    linePaint.setColor(graphite)
+                    linePaint.alpha = (70 + 70 * h + 60 * p).toInt().coerceIn(50, 215)
+                    linePaint.strokeWidth = base * (0.42f + 0.16f * hash(i * 7 + k, 22))
+                    linePaint.strokeCap = Paint.Cap.BUTT
+                    c.drawLine(x0 + nx * o, y0 + ny * o, x1 + nx * o, y1 + ny * o, linePaint)
                 }
-                fillPaint.alpha = 255
+                linePaint.alpha = 255
+                linePaint.strokeCap = Paint.Cap.ROUND
             }
+            5 -> {
+                // Kaligrafi: sabit açılı, düz ve geniş uç. Uç 40 derece yukarı bakar; çizgi uca paralelken incelir, dik giderken kalınlaşır.
+                val half = s.width * 1.5f
+                val a = -0.7f
+                val ux = Math.cos(a.toDouble()).toFloat() * half
+                val uy = Math.sin(a.toDouble()).toFloat() * half
+                fillPaint.setColor(s.color)
+                fillPaint.alpha = 255
+                path.reset()
+                path.moveTo(x0 - ux, y0 - uy)
+                path.lineTo(x0 + ux, y0 + uy)
+                path.lineTo(x1 + ux, y1 + uy)
+                path.lineTo(x1 - ux, y1 - uy)
+                path.close()
+                c.drawPath(path, fillPaint)
+            }
+            10 -> {
+                // Gökkuşağı: yay uzunluğuna göre renk döner
+                val hsv = floatArrayOf(((s.arc(i) * 0.55f) % 360f + 360f) % 360f, 0.82f, 1f)
+                linePaint.setColor(Color.HSVToColor(hsv))
+                linePaint.strokeWidth = w
+                c.drawLine(x0, y0, x1, y1, linePaint)
+            }
+            11, 12 -> drawLayered(c, s, null, x0, y0, x1, y1, w)
             3 -> {
                 // Fırça: başta ve sonda incelen çizgi
                 val n = s.xs.size
@@ -749,15 +816,7 @@ class PageRenderer {
                     }
                 }
             }
-            8 -> {
-                // Dış çizgili kalem: dış hat seçili renkte, içi açık
-                linePaint.strokeWidth = w
-                c.drawLine(x0, y0, x1, y1, linePaint)
-                linePaint.setColor(Color.argb(255, 255 - (255 - Color.red(s.color)) / 6, 255 - (255 - Color.green(s.color)) / 6, 255 - (255 - Color.blue(s.color)) / 6))
-                linePaint.strokeWidth = w * 0.52f
-                c.drawLine(x0, y0, x1, y1, linePaint)
-                linePaint.setColor(s.color)
-            }
+            8 -> drawLayered(c, s, null, x0, y0, x1, y1, w)
             9 -> {
                 // Gölgeli kalem: kayık, yumuşak bir gölge ve üstünde asıl çizgi
                 val off = w * 0.4f
@@ -874,6 +933,19 @@ class PageRenderer {
         if (n == 1) {
             fillPaint.setColor(s.color)
             c.drawCircle(s.xs[0], s.ys[0], s.width * widthFactor(s, s.ps[0]) * 0.5f, fillPaint)
+            return
+        }
+        if (layeredPen(s.kind)) {
+            var sp = 0f
+            for (i in 1 until n) sp += s.ps[i]
+            val p = if (n > 1) sp / (n - 1) else 0.5f
+            val w = s.width * widthFactor(s, p) * kindScale(s.kind)
+            path.reset()
+            path.moveTo(s.xs[0], s.ys[0])
+            for (i in 1 until n) path.lineTo(s.xs[i], s.ys[i])
+            drawLayered(c, s, path, 0f, 0f, 0f, 0f, w)
+            linePaint.setColor(s.color)
+            linePaint.alpha = 255
             return
         }
         for (i in 1 until n) drawPenSegment(c, s, i, true)

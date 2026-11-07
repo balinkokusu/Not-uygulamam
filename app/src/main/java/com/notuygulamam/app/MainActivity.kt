@@ -188,12 +188,52 @@ class MainActivity : Activity() {
         return v
     }
 
+    /** Silgi seçiliyken renk satırının yerinde, neyin silineceği seçilir; satır hiç gizlenmediği için sayfa yerinden oynamaz. */
+    private fun eraserChips() {
+        val lbl = TextView(this)
+        lbl.text = "Silinecek katmanlar:"
+        lbl.textSize = 13f
+        lbl.setTextColor(Look.inkSoft)
+        lbl.setPadding(dp(14f), 0, dp(8f), 0)
+        lbl.gravity = Gravity.CENTER_VERTICAL
+        swatchRow.addView(lbl)
+
+            fun chip(name: String, on: Boolean, flip: () -> Unit) {
+                val t = TextView(this)
+                t.text = name
+                t.textSize = 13f
+                t.setPadding(dp(12f), dp(7f), dp(12f), dp(7f))
+                t.setTextColor(if (on) Look.accent else Look.inkSoft)
+                val g = GradientDrawable()
+                g.cornerRadius = dp(12f).toFloat()
+                g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
+                g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
+                t.background = g
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.setMargins(dp(3f), dp(4f), dp(3f), dp(6f))
+                t.layoutParams = lp
+                t.setOnClickListener {
+                    flip()
+                    refresh()
+                }
+                swatchRow.addView(t)
+            }
+            chip("Çizim", draw.eraseInk) { draw.eraseInk = !draw.eraseInk }
+            chip("Yazı", draw.eraseText) { draw.eraseText = !draw.eraseText }
+            chip("Çıkartma", draw.eraseSticker) { draw.eraseSticker = !draw.eraseSticker }
+            chip("Resim", draw.eraseImage) { draw.eraseImage = !draw.eraseImage }
+    }
+
     private var swatchHost: View? = null
 
     private fun rebuildSwatches() {
         // silginin rengi olmaz; paleti gizleriz ki yanlışlıkla kalem rengi değişmesin
-        swatchHost?.visibility = if (toolsVisible && draw.tool != Tool.ERASER) View.VISIBLE else View.GONE
+        swatchHost?.visibility = if (toolsVisible) View.VISIBLE else View.GONE
         swatchRow.removeAllViews()
+        if (draw.tool == Tool.ERASER) {
+            eraserChips()
+            return
+        }
         val highlighter = draw.tool == Tool.HIGHLIGHTER
         val selected = if (highlighter) draw.hlColor else draw.penColor
         swatchRow.addView(colorButton())
@@ -248,38 +288,7 @@ class MainActivity : Activity() {
         kindRow.removeAllViews()
         val st = sliderTool()
         if (st == Tool.ERASER) {
-            kindScrollHost?.visibility = View.VISIBLE
-            val lbl = TextView(this)
-            lbl.text = "Silinecek katmanlar:"
-            lbl.textSize = 12f
-            lbl.setTextColor(Look.inkSoft)
-            lbl.setPadding(dp(8f), 0, dp(6f), 0)
-            lbl.gravity = Gravity.CENTER_VERTICAL
-            kindRow.addView(lbl)
-            fun chip(name: String, on: Boolean, flip: () -> Unit) {
-                val t = TextView(this)
-                t.text = name
-                t.textSize = 13f
-                t.setPadding(dp(12f), dp(7f), dp(12f), dp(7f))
-                t.setTextColor(if (on) Look.accent else Look.inkSoft)
-                val g = GradientDrawable()
-                g.cornerRadius = dp(12f).toFloat()
-                g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
-                g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
-                t.background = g
-                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                lp.setMargins(dp(3f), dp(4f), dp(3f), dp(6f))
-                t.layoutParams = lp
-                t.setOnClickListener {
-                    flip()
-                    refresh()
-                }
-                kindRow.addView(t)
-            }
-            chip("Çizim", draw.eraseInk) { draw.eraseInk = !draw.eraseInk }
-            chip("Yazı", draw.eraseText) { draw.eraseText = !draw.eraseText }
-            chip("Çıkartma", draw.eraseSticker) { draw.eraseSticker = !draw.eraseSticker }
-            chip("Resim", draw.eraseImage) { draw.eraseImage = !draw.eraseImage }
+            kindScrollHost?.visibility = View.GONE
             return
         }
         if (st != Tool.PEN && st != Tool.HIGHLIGHTER) {
@@ -290,7 +299,8 @@ class MainActivity : Activity() {
         if (st == Tool.PEN) {
             val order = listOf(
                 Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun", 2),
-                Pair("Kesikli", 6), Pair("Noktalı", 7), Pair("Dış çizgili", 8), Pair("Gölgeli", 9)
+                Pair("Kesikli", 6), Pair("Noktalı", 7), Pair("Dış çizgili", 8), Pair("Gölgeli", 9),
+                Pair("Gökkuşağı", 10), Pair("Boru", 11), Pair("Neon", 12)
             )
             for ((n, k) in order) kindRow.addView(kindChip(n, false, k, draw.penKind == k))
             // favori kalemler: tür, renk ve kalınlık birlikte saklanır; dokununca uygulanır, basılı tutunca silinir
@@ -2934,7 +2944,7 @@ class MainActivity : Activity() {
             toolsVisible = !toolsVisible
             val vis = if (toolsVisible) View.VISIBLE else View.GONE
             toolScroll.visibility = vis
-            swatchScroll.visibility = if (toolsVisible && draw.tool != Tool.ERASER) View.VISIBLE else View.GONE
+            swatchScroll.visibility = vis
             toggle.text = if (toolsVisible) "Araçları gizle" else "Araçları göster"
             settingsPopup?.dismiss()
         }
