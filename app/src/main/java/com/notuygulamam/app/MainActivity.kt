@@ -1408,12 +1408,16 @@ class MainActivity : Activity() {
             "Defter ve dosya" to listOf(0, 2, 3, 4),
             "Ekle" to listOf(13, 14, 17, 15),
             "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(9, 12, 18)
+            "Araçlar ve görünüm" to listOf(9, 21, 12, 18)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
             for (id in g.second) {
-                val label = if (id == 20) "Açık sayfayı şablonla değiştir (sol/sağ ayrı)" else names[id]
+                val label = when (id) {
+                    20 -> "Açık sayfayı şablonla değiştir (sol/sağ ayrı)"
+                    21 -> "Çizgi dengeleme: " + arrayOf("kapalı", "düşük", "orta", "yüksek")[draw.stabilize.coerceIn(0, 3)] + " (değiştirmek için dokunun)"
+                    else -> names[id]
+                }
                 sub.add(0, id, id, label)
             }
         }
@@ -1421,6 +1425,11 @@ class MainActivity : Activity() {
             when (mi.itemId) {
                 0 -> pickPdf()
                 20 -> showApplyTemplateDialog()
+                21 -> {
+                    draw.stabilize = (draw.stabilize + 1) % 4
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putInt("denge", draw.stabilize).apply()
+                    Toast.makeText(this, "Çizgi dengeleme: " + arrayOf("kapalı", "düşük", "orta", "yüksek")[draw.stabilize], Toast.LENGTH_SHORT).show()
+                }
                 1 -> showNewPageMenu(anchor)
                 2 -> saveWithMessage()
                 3 -> startExport()
@@ -2196,6 +2205,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
+        draw.stabilize = prefs.getInt("denge", 0)
         draw.binding = prefs.getInt("cilt_$itemId", 0)
         draw.scribbleErase = prefs.getBoolean("karala", true)
         draw.onChanged = {

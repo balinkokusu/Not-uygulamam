@@ -51,6 +51,21 @@ class DrawView(context: Context) : View(context) {
     /** Kalemle hızlı iki kez dokunmak kalem ile silgi arasında geçiş yapar. */
     var penDoubleTap = true
 
+    /** Çizgi dengeleme (titremeyi azaltır): 0 kapalı, 1 düşük, 2 orta, 3 yüksek. */
+    var stabilize = 0
+    private val stabAlpha = floatArrayOf(1f, 0.6f, 0.38f, 0.22f)
+
+    private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
+        if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
+            val a = stabAlpha[stabilize.coerceIn(0, 3)]
+            val lx = s.xs[s.xs.size - 1]
+            val ly = s.ys[s.ys.size - 1]
+            s.add(lx + (x - lx) * a, ly + (y - ly) * a, p)
+        } else {
+            s.add(x, y, p)
+        }
+    }
+
     /** Yazının üstünü karalayınca altındaki çizgiler silinir. */
     var scribbleErase = true
     private var lastToggleMs = 0L
@@ -1670,12 +1685,12 @@ class DrawView(context: Context) : View(context) {
                             val hl = s.highlighter
                             val before = s.xs.size
                             for (h in 0 until e.historySize) {
-                                s.add(
-                                    pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)),
+                                addStab(
+                                    s, pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)),
                                     if (hl) 0.5f else normP(e.getHistoricalPressure(h))
                                 )
                             }
-                            s.add(pageX(e.x), pageY(e.y), if (hl) 0.5f else normP(e.pressure))
+                            addStab(s, pageX(e.x), pageY(e.y), if (hl) 0.5f else normP(e.pressure))
                             if (rulerSnap) snapLast(s, before)
                             if (hl) {
                                 val from = max(0, before - 1)
@@ -1747,6 +1762,21 @@ class DrawView(context: Context) : View(context) {
                     gestureRemovedItems.clear()
                 } else {
                     val s = current
+                    if (s != null && stabilize > 0 && e.actionMasked == MotionEvent.ACTION_UP && !straightLive && !shapeFrozen && !rulerSnap) {
+                        // dengeleme geride kaldığı için çizginin ucu kalemin bittiği noktaya tamamlanır
+                        val ex = pageX(e.x)
+                        val ey = pageY(e.y)
+                        val lx = s.xs[s.xs.size - 1]
+                        val ly = s.ys[s.ys.size - 1]
+                        val pr = s.ps[s.ps.size - 1]
+                        val before = s.xs.size
+                        for (k in 1..3) s.add(lx + (ex - lx) * k / 3f, ly + (ey - ly) * k / 3f, pr)
+                        if (s.highlighter) {
+                            for (i in before until s.xs.size) invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width)
+                        } else {
+                            drawPenIncrement(s)
+                        }
+                    }
                     if (s != null && scribbleErase && !s.highlighter && !straightLive && !shapeFrozen &&
                         isScribble(s) && eraseUnderScribble(s)
                     ) {
