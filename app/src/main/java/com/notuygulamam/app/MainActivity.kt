@@ -1415,7 +1415,7 @@ class MainActivity : Activity() {
             for (id in g.second) {
                 val label = when (id) {
                     20 -> "Açık sayfayı şablonla değiştir (sol/sağ ayrı)"
-                    21 -> "Çizgi dengeleme: " + arrayOf("kapalı", "düşük", "orta", "yüksek")[draw.stabilize.coerceIn(0, 3)] + " (değiştirmek için dokunun)"
+                    21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
                     else -> names[id]
                 }
                 sub.add(0, id, id, label)
@@ -1426,9 +1426,34 @@ class MainActivity : Activity() {
                 0 -> pickPdf()
                 20 -> showApplyTemplateDialog()
                 21 -> {
-                    draw.stabilize = (draw.stabilize + 1) % 4
-                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putInt("denge", draw.stabilize).apply()
-                    Toast.makeText(this, "Çizgi dengeleme: " + arrayOf("kapalı", "düşük", "orta", "yüksek")[draw.stabilize], Toast.LENGTH_SHORT).show()
+                    val box = LinearLayout(this)
+                    box.orientation = LinearLayout.VERTICAL
+                    box.setPadding(dp(24f), dp(12f), dp(24f), dp(4f))
+                    val label = TextView(this)
+                    label.textSize = 15f
+                    val bar = SeekBar(this)
+                    bar.max = 100
+                    bar.progress = draw.stabilize
+                    fun upd(v: Int) { label.text = if (v == 0) "Kapalı" else "%$v" }
+                    upd(draw.stabilize)
+                    bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onProgressChanged(sb: SeekBar?, v: Int, fromUser: Boolean) {
+                            draw.stabilize = v
+                            getSharedPreferences("ayar", MODE_PRIVATE).edit().putInt("denge100", v).apply()
+                            upd(v)
+                        }
+                        override fun onStartTrackingTouch(sb: SeekBar?) {}
+                        override fun onStopTrackingTouch(sb: SeekBar?) {}
+                    })
+                    val hint = TextView(this)
+                    hint.text = "Yükseldikçe çizgi daha düzgün olur, ama kalemin ucunun biraz gerisinde kalır."
+                    hint.textSize = 12f
+                    hint.setTextColor(Look.inkSoft)
+                    hint.setPadding(0, dp(8f), 0, 0)
+                    box.addView(label)
+                    box.addView(bar)
+                    box.addView(hint)
+                    AlertDialog.Builder(this).setTitle("Çizgi dengeleme").setView(box).setPositiveButton("Tamam", null).show()
                 }
                 1 -> showNewPageMenu(anchor)
                 2 -> saveWithMessage()
@@ -2205,7 +2230,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
-        draw.stabilize = prefs.getInt("denge", 0)
+        draw.stabilize = prefs.getInt("denge100", 0)
         draw.binding = prefs.getInt("cilt_$itemId", 0)
         draw.scribbleErase = prefs.getBoolean("karala", true)
         draw.onChanged = {

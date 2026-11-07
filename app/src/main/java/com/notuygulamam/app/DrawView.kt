@@ -51,13 +51,13 @@ class DrawView(context: Context) : View(context) {
     /** Kalemle hızlı iki kez dokunmak kalem ile silgi arasında geçiş yapar. */
     var penDoubleTap = true
 
-    /** Çizgi dengeleme (titremeyi azaltır): 0 kapalı, 1 düşük, 2 orta, 3 yüksek. */
+    /** Çizgi dengeleme (titremeyi azaltır): 0 kapalı, 100 en yüksek. */
     var stabilize = 0
-    private val stabAlpha = floatArrayOf(1f, 0.6f, 0.38f, 0.22f)
 
     private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
         if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
-            val a = stabAlpha[stabilize.coerceIn(0, 3)]
+            val t = stabilize.coerceIn(0, 100) / 100f
+            val a = 1f / (1f + 11f * Math.pow(t.toDouble(), 1.3).toFloat())
             val lx = s.xs[s.xs.size - 1]
             val ly = s.ys[s.ys.size - 1]
             s.add(lx + (x - lx) * a, ly + (y - ly) * a, p)
