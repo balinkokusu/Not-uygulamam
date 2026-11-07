@@ -49,7 +49,7 @@ class DrawView(context: Context) : View(context) {
     var hlKind = 0
 
     /** Kalemle hızlı iki kez dokunmak kalem ile silgi arasında geçiş yapar. */
-    var penDoubleTap = false
+    var penDoubleTap = true
 
     /** Çizgi dengeleme (titremeyi azaltır): 0 kapalı, 100 en yüksek. */
     var stabilize = 0
@@ -198,6 +198,7 @@ class DrawView(context: Context) : View(context) {
     private var downX = 0f
     private var downY = 0f
     private var lastTapTime = 0L
+    private var lastInkUp = 0L
     private var lastTapX = 0f
     private var lastTapY = 0f
     private var lastTapStroke: Stroke? = null
@@ -1888,7 +1889,9 @@ class DrawView(context: Context) : View(context) {
                 }
                 lastTapStroke = null
                 lastTapErase = null
-                if (isTap) {
+                // yazı akarken (kısa bir önceki çizgiden hemen sonra) atılan noktalar çift dokunuş sayılmaz;
+                // bilerek yapılan çift dokunuş, yazıya ara verip yapılır
+                if (isTap && e.downTime - lastInkUp > 700L) {
                     lastTapTime = e.eventTime
                     lastTapX = e.x
                     lastTapY = e.y
@@ -1897,6 +1900,7 @@ class DrawView(context: Context) : View(context) {
                     lastTapAdded = ArrayList(gestureAdded)
                 } else {
                     lastTapTime = 0L
+                    lastInkUp = e.eventTime
                 }
                 if (gestureErasing) {
                     if (gestureRemoved.isNotEmpty() || gestureRemovedItems.isNotEmpty()) {
@@ -1963,6 +1967,34 @@ class DrawView(context: Context) : View(context) {
     private var scribbleInfo = ""
 
     /** Bir eksendeki gidiş-dönüşleri sayar: (dönüş sayısı, toplam katedilen yol). Küçük titremeler eşikle elenir. */
+    /** Çizgiyi eşit aralıkla örnekleyip, iki adım arayla noktaların birbirine neredeyse geri döndüğü keskin dönüşleri sayar. */
+    private fun sharpReversals(s: Stroke): Int {
+        val step = 12f * density / sc
+        val px = ArrayList<Float>()
+        val py = ArrayList<Float>()
+        px.add(s.xs[0]); py.add(s.ys[0])
+        var carry = 0f
+        for (i in 1 until s.xs.size) {
+            val dx = s.xs[i] - s.xs[i - 1]
+            val dy = s.ys[i] - s.ys[i - 1]
+            val len = hypot(dx, dy)
+            if (len == 0f) continue
+            var d = step - carry
+            while (d <= len) {
+                px.add(s.xs[i - 1] + dx * d / len); py.add(s.ys[i - 1] + dy * d / len)
+                d += step
+            }
+            carry = len - (d - step)
+        }
+        var cnt = 0
+        var k = 1
+        while (k < px.size - 1) {
+            val chord = hypot(px[k + 1] - px[k - 1], py[k + 1] - py[k - 1])
+            if (chord < 0.35f * 2f * step) { cnt++; k += 2 } else k++
+        }
+        return cnt
+    }
+
     private fun zigzag(a: FloatArray, ext: Float): Pair<Int, Float> {
         val h = max(14f, 0.18f * ext)
         var dir = 0
@@ -2013,6 +2045,8 @@ class DrawView(context: Context) : View(context) {
         scribbleInfo = "karalama: eksen1 dönüş=${za.first} yol=${(za.second / max(1f, extA)).toInt()}x, eksen2 dönüş=${zb.first} yol=${(zb.second / max(1f, extB)).toInt()}x"
         // el yazısı (özellikle bitişik yazı) iki eksende de uzar; karalama dar bir bantta gidip gelir
         if (min(extA, extB) > 0.5f * max(extA, extB)) return false
+        // karalamada yön keskin biçimde tersine döner; bitişik el yazısındaki halkalar ise yumuşaktır
+        if (sharpReversals(s) < 5) return false
         val okA = extA >= 60f && za.first >= 5 && za.second >= 5f * extA
         val okB = extB >= 60f && zb.first >= 5 && zb.second >= 5f * extB
         return okA || okB

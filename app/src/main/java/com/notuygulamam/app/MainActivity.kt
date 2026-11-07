@@ -1907,7 +1907,7 @@ class MainActivity : Activity() {
                 }
                 9 -> {
                     draw.penDoubleTap = !draw.penDoubleTap
-                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("kalem_cift2", draw.penDoubleTap).apply()
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("kalem_cift3", draw.penDoubleTap).apply()
                 }
                 10 -> showTemplateManager()
                 11 -> showAddPlannerDialog()
@@ -2667,11 +2667,11 @@ class MainActivity : Activity() {
         draw.onInfo = { msg -> info.text = "v$versionText · $msg" }
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
-        draw.penDoubleTap = prefs.getBoolean("kalem_cift2", false)
+        draw.penDoubleTap = prefs.getBoolean("kalem_cift3", true)
         draw.stabilize = prefs.getInt("denge100", 0)
         draw.palmReject = prefs.getBoolean("avuc", true)
         draw.binding = prefs.getInt("cilt_$itemId", 0)
-        draw.scribbleErase = prefs.getBoolean("karala2", false)
+        draw.scribbleErase = prefs.getBoolean("karala3", true)
         draw.onChanged = {
             markWritten()
             scheduleSave()
@@ -2926,7 +2926,7 @@ class MainActivity : Activity() {
         scribbleBox.isChecked = draw.scribbleErase
         scribbleBox.setOnCheckedChangeListener { _, checked ->
             draw.scribbleErase = checked
-            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("karala2", checked).apply()
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("karala3", checked).apply()
         }
         panel.addView(scribbleBox)
 
