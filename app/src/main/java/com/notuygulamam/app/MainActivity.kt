@@ -942,6 +942,22 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private lateinit var toolsHost: android.widget.FrameLayout
+    private var calcPanel: FloatingPanel? = null
+    private var pomoPanel: FloatingPanel? = null
+
+    private fun toggleCalculator() {
+        val c = calcPanel
+        if (c != null && c.parent != null) { c.close(); calcPanel = null; return }
+        calcPanel = CalculatorPanel(this, toolsHost)
+    }
+
+    private fun togglePomodoro() {
+        val c = pomoPanel
+        if (c != null && c.parent != null) { c.close(); pomoPanel = null; return }
+        pomoPanel = PomodoroPanel(this, toolsHost)
+    }
+
     private fun showStickerDialog() {
         var dlg: AlertDialog? = null
         val grid = LinearLayout(this)
@@ -1665,13 +1681,15 @@ class MainActivity : Activity() {
             "Defter ve dosya" to listOf(0, 2, 3, 4),
             "Ekle" to listOf(13, 14, 17, 15),
             "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(9, 21, 12, 18)
+            "Araçlar ve görünüm" to listOf(22, 23, 9, 21, 12, 18)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
             for (id in g.second) {
                 val label = when (id) {
                     20 -> "Şablonlar (önizleme, renk, sol/sağ ayrı uygulama)"
+                    22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
+                    23 -> "Pomodoro zamanlayıcı (sürüklenir, aç / kapat)"
                     21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
                     else -> names[id]
                 }
@@ -1682,6 +1700,8 @@ class MainActivity : Activity() {
             when (mi.itemId) {
                 0 -> pickPdf()
                 20 -> showTemplateScreen()
+                22 -> toggleCalculator()
+                23 -> togglePomodoro()
                 21 -> {
                     val box = LinearLayout(this)
                     box.orientation = LinearLayout.VERTICAL
@@ -2781,6 +2801,7 @@ class MainActivity : Activity() {
         root.addView(statusRow)
         itemBar = buildItemBar()
         val frame = android.widget.FrameLayout(this)
+        toolsHost = frame
         frame.addView(draw, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         val ibLp = android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT)
         ibLp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
