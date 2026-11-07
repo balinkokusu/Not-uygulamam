@@ -64,12 +64,12 @@ class PageRenderer {
     )
 
     /** Birkaç katmandan oluşan kalemler (dış çizgili, boru, neon): katmanlar tek yol olarak çizilince birleşim yerleri temiz olur. */
-    private fun layeredPen(k: Int) = k == 8 || k == 11 || k == 12
+    private fun layeredPen(k: Int) = k == 8 || k == 9 || k == 11 || k == 12
 
     private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
-        fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f) {
+        fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255) {
             linePaint.setColor(color)
-            linePaint.alpha = 255
+            linePaint.alpha = alpha
             linePaint.strokeWidth = width
             if (path != null) {
                 c.save(); c.translate(dx, dy); c.drawPath(path, linePaint); c.restore()
@@ -82,6 +82,13 @@ class PageRenderer {
             8 -> {
                 line(w, col)
                 line(w * 0.52f, mix(col, Color.WHITE, 0.85f))
+            }
+            9 -> {
+                // Gölgeli: kayık yumuşak gölge (tek yol olarak çizilir, parçalar üst üste binip noktalanmaz) ve asıl çizgi
+                val off = w * 0.4f
+                line(w * 1.15f, Color.BLACK, off, off, 28)
+                line(w * 0.9f, Color.BLACK, off, off, 42)
+                line(w, col)
             }
             11 -> {
                 // Boru: koyu kenar, ana renk, üst solda parlak yansıma; üç boyutlu bir boru gibi görünür

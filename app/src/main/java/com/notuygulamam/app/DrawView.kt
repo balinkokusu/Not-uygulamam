@@ -1490,7 +1490,7 @@ class DrawView(context: Context) : View(context) {
         var i = drawnUpTo + 1
         while (i < n) {
             renderer.drawPenSegment(c, s, i, false)
-            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], maxOf(segmentWidth(s, i) * 1.3f, if (s.kind == 5 || s.kind == 11 || s.kind == 12) s.width * 4f else 0f))
+            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], maxOf(segmentWidth(s, i) * 1.3f, if (s.kind == 5 || s.kind == 9 || s.kind == 11 || s.kind == 12) s.width * 4f else 0f))
             i++
         }
         c.restore()
@@ -2098,7 +2098,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 3 || s.kind == 8 || s.kind == 11 || s.kind == 12
+                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 3 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
