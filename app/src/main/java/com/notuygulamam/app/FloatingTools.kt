@@ -265,3 +265,119 @@ class PomodoroPanel(private val ctx: Context, host: FrameLayout) : FloatingPanel
         super.close()
     }
 }
+
+/** Durum satırına sığan küçük dikdörtgen Pomodoro: süre, başlat/duraklat, sıfırla; süreye dokununca çalışma ve mola dakikaları ayarlanır. */
+class PomodoroStrip(private val ctx: Context) : LinearLayout(ctx) {
+    private val handler = Handler(Looper.getMainLooper())
+    private val d = ctx.resources.displayMetrics.density
+    private var work = true
+    private var workMin = 25
+    private var breakMin = 5
+    private var left = workMin * 60
+    private var running = false
+    private var rounds = 0
+    private val timeView = TextView(ctx)
+    private val phase = TextView(ctx)
+    private val playBtn = TextView(ctx)
+    private val tick = object : Runnable {
+        override fun run() {
+            if (!running) return
+            left--
+            if (left <= 0) finishPhase() else { show(); handler.postDelayed(this, 1000) }
+        }
+    }
+
+    init {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        val g = GradientDrawable()
+        g.cornerRadius = 10 * d
+        g.setColor(Look.accentSoft)
+        background = g
+        setPadding((10 * d).toInt(), (3 * d).toInt(), (6 * d).toInt(), (3 * d).toInt())
+        phase.textSize = 11f
+        phase.setTextColor(Look.accent)
+        timeView.textSize = 15f
+        timeView.setTypeface(null, android.graphics.Typeface.BOLD)
+        timeView.setTextColor(Look.ink)
+        timeView.setPadding((6 * d).toInt(), 0, (8 * d).toInt(), 0)
+        timeView.setOnClickListener { settings() }
+        fun small(t: TextView, label: String, click: () -> Unit) {
+            t.text = label
+            t.textSize = 16f
+            t.setTextColor(Look.accent)
+            t.gravity = Gravity.CENTER
+            t.setPadding((10 * d).toInt(), (2 * d).toInt(), (10 * d).toInt(), (2 * d).toInt())
+            t.setOnClickListener { click() }
+        }
+        small(playBtn, "▶") { toggle() }
+        val reset = TextView(ctx)
+        small(reset, "↺") { reset() }
+        addView(phase)
+        addView(timeView)
+        addView(playBtn)
+        addView(reset)
+        show()
+    }
+
+    private fun show() {
+        timeView.text = String.format(Locale.US, "%02d:%02d", left / 60, left % 60)
+        phase.text = (if (work) "Çalışma" else "Mola") + (if (rounds > 0) " ($rounds)" else "")
+        playBtn.text = if (running) "❚❚" else "▶"
+    }
+
+    private fun toggle() {
+        running = !running
+        if (running) handler.postDelayed(tick, 1000) else handler.removeCallbacks(tick)
+        show()
+    }
+
+    private fun reset() {
+        running = false
+        handler.removeCallbacks(tick)
+        work = true
+        left = workMin * 60
+        show()
+    }
+
+    private fun settings() {
+        val box = LinearLayout(ctx)
+        box.orientation = VERTICAL
+        box.setPadding((22 * d).toInt(), (10 * d).toInt(), (22 * d).toInt(), 0)
+        val w = android.widget.EditText(ctx)
+        w.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        w.hint = "Çalışma süresi (dakika)"
+        w.setText(workMin.toString())
+        val b = android.widget.EditText(ctx)
+        b.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        b.hint = "Mola süresi (dakika)"
+        b.setText(breakMin.toString())
+        box.addView(w)
+        box.addView(b)
+        android.app.AlertDialog.Builder(ctx).setTitle("Pomodoro süreleri").setView(box)
+            .setPositiveButton("Kaydet") { _, _ ->
+                workMin = (w.text.toString().toIntOrNull() ?: workMin).coerceIn(1, 120)
+                breakMin = (b.text.toString().toIntOrNull() ?: breakMin).coerceIn(1, 60)
+                if (!running) { left = (if (work) workMin else breakMin) * 60; show() }
+            }.setNegativeButton("Vazgeç", null).show()
+    }
+
+    private fun finishPhase() {
+        running = false
+        handler.removeCallbacks(tick)
+        try { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 90).startTone(ToneGenerator.TONE_PROP_BEEP2, 600) } catch (_: Throwable) {}
+        try {
+            val v = ctx.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (android.os.Build.VERSION.SDK_INT >= 26) v?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE)) else @Suppress("DEPRECATION") v?.vibrate(500)
+        } catch (_: Throwable) {}
+        if (work) rounds++
+        work = !work
+        left = (if (work) workMin else breakMin) * 60
+        show()
+    }
+
+    override fun onDetachedFromWindow() {
+        handler.removeCallbacks(tick)
+        super.onDetachedFromWindow()
+    }
+}

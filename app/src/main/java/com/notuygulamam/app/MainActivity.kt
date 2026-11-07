@@ -1107,7 +1107,6 @@ class MainActivity : Activity() {
 
     private lateinit var toolsHost: android.widget.FrameLayout
     private var calcPanel: FloatingPanel? = null
-    private var pomoPanel: FloatingPanel? = null
 
     private fun toggleCalculator() {
         val c = calcPanel
@@ -1115,10 +1114,11 @@ class MainActivity : Activity() {
         calcPanel = CalculatorPanel(this, toolsHost)
     }
 
+    private var pomoStrip: PomodoroStrip? = null
+
     private fun togglePomodoro() {
-        val c = pomoPanel
-        if (c != null && c.parent != null) { c.close(); pomoPanel = null; return }
-        pomoPanel = PomodoroPanel(this, toolsHost)
+        val st = pomoStrip ?: return
+        st.visibility = if (st.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
     private fun showStickerDialog() {
@@ -1855,7 +1855,7 @@ class MainActivity : Activity() {
                     25 -> "Avuç içi reddi: " + (if (draw.palmReject) "açık" else "kapalı") + " (kalem yakındayken parmak dokunuşunu yok sayar)"
                     26 -> "Sayfadan flaş kart yap (ön ve arka yüzü sayfadan seçin)"
                     22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
-                    23 -> "Pomodoro zamanlayıcı (sürüklenir, aç / kapat)"
+                    23 -> "Pomodoro zamanlayıcı (durum satırında, aç / kapat)"
                     21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
                     else -> names[id]
                 }
@@ -2974,6 +2974,9 @@ class MainActivity : Activity() {
         info.setTextColor(Look.inkSoft)
         info.textSize = 11f
         statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        pomoStrip = PomodoroStrip(this)
+        pomoStrip!!.visibility = View.GONE
+        statusRow.addView(pomoStrip!!, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(8f), 0, dp(8f), 0) })
         statusRow.addView(toggle)
 
         val root = LinearLayout(this)
