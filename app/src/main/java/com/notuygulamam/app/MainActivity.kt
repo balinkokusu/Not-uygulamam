@@ -251,6 +251,8 @@ class MainActivity : Activity() {
     private var popHold: View? = null
     private var popScribble: View? = null
     private var popStab: View? = null
+    private var popDTap: View? = null
+    private var popPalm: View? = null
     private var popSliderRow: View? = null
 
     private fun rebuildSwatches() {
@@ -1449,6 +1451,8 @@ class MainActivity : Activity() {
         popHold?.visibility = if (st == Tool.PEN || st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
         popScribble?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
         popStab?.visibility = if (st == Tool.PEN) View.VISIBLE else View.GONE
+        popDTap?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
+        popPalm?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
         // silginin boyutu ve ön izlemesi araç çubuğunda zaten var; pencerede yalnız karalama seçeneği kalır
         val eraserOnly = st == Tool.ERASER
         popSliderRow?.visibility = if (eraserOnly) View.GONE else View.VISIBLE
@@ -1883,9 +1887,8 @@ class MainActivity : Activity() {
         val groups = listOf(
             "Sayfa" to listOf(7, 5, 6),
             "Defter ve dosya" to listOf(0, 3, 4),
-            "Ekle" to listOf(13, 14, 17, 15, 26),
-            "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(9, 25, 18)
+            "Ekle" to listOf(13, 14, 15, 26),
+            "Ayraçlar" to listOf(8, 16, 19)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -2901,11 +2904,31 @@ class MainActivity : Activity() {
             refresh()
         }
         toolRow.addView(fingerBtn)
-        spreadBtn = iconBtn(Icon.SPREAD, "Çift sayfa görünümü (ajanda gibi)") {
-            spread = !spread
-            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("cift_$itemId", spread).apply()
-            showCurrent()
-            refresh()
+        spreadBtn = iconBtn(Icon.SPREAD, "Sayfa görünümü ve cilt") { }
+        spreadBtn.setOnClickListener {
+            val pm = android.widget.PopupMenu(this, spreadBtn)
+            pm.menu.add(0, 1, 1, (if (!spread) "✓ " else "") + "Tek sayfa")
+            pm.menu.add(0, 2, 2, (if (spread) "✓ " else "") + "Çift sayfa (ajanda gibi)")
+            val bn = arrayOf("yalnız gölge", "düz dikiş", "tel spiral")
+            for (i in 0..2) pm.menu.add(0, 10 + i, 10 + i, (if (draw.binding == i) "✓ " else "") + "Cilt: " + bn[i])
+            pm.setOnMenuItemClickListener { mi ->
+                val sp = getSharedPreferences("ayar", MODE_PRIVATE)
+                when (mi.itemId) {
+                    1, 2 -> {
+                        spread = mi.itemId == 2
+                        sp.edit().putBoolean("cift_$itemId", spread).apply()
+                        showCurrent()
+                        refresh()
+                    }
+                    else -> {
+                        draw.binding = mi.itemId - 10
+                        sp.edit().putInt("cilt_$itemId", draw.binding).apply()
+                        draw.invalidate()
+                    }
+                }
+                true
+            }
+            pm.show()
         }
         toolRow.addView(spreadBtn)
         toolRow.addView(spacer())
@@ -3008,6 +3031,24 @@ class MainActivity : Activity() {
         }
         panel.addView(scribbleBox)
         popScribble = scribbleBox
+        val dtapBox = CheckBox(this)
+        dtapBox.text = "Kalemle çift dokunuş kalem ile silgi arasında geçiş yapsın"
+        dtapBox.isChecked = draw.penDoubleTap
+        dtapBox.setOnCheckedChangeListener { _, checked ->
+            draw.penDoubleTap = checked
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("kalem_cift3", checked).apply()
+        }
+        panel.addView(dtapBox)
+        popDTap = dtapBox
+        val palmBox = CheckBox(this)
+        palmBox.text = "Avuç içi reddi (kalem yakındayken parmak dokunuşu yok sayılır)"
+        palmBox.isChecked = draw.palmReject
+        palmBox.setOnCheckedChangeListener { _, checked ->
+            draw.palmReject = checked
+            getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("avuc", checked).apply()
+        }
+        panel.addView(palmBox)
+        popPalm = palmBox
 
         val stabLabel = TextView(this)
         stabLabel.textSize = 13f

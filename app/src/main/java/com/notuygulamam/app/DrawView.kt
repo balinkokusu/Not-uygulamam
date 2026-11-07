@@ -69,8 +69,9 @@ class DrawView(context: Context) : View(context) {
             val spd = hypot(x - rawX, y - rawY) / dt * sc / density
             rawX = x
             rawY = y
-            val fmin = 24f - 22f * t
-            val fc = fmin + (0.03f - 0.012f * t) * spd
+            // canlı süzgeç hafif tutulur (gecikme olmasın); asıl düzeltme kalem kalkınca yapılır
+            val fmin = 30f - 14f * t
+            val fc = fmin + 0.08f * spd
             val tau = 1f / (2f * Math.PI.toFloat() * fc)
             val a = 1f / (1f + tau / dt)
             val lx = s.xs[s.xs.size - 1]
@@ -82,22 +83,53 @@ class DrawView(context: Context) : View(context) {
     }
 
     /** Kaligrafi ucunda kalın-ince farkı yön değişiminden doğar; fazla yumuşatma bu farkı eritir, bu yüzden etkisi azaltılır. */
-    private fun effStab(kind: Int): Int = if (kind == 5) stabilize * 35 / 100 else stabilize
+    private fun effStab(kind: Int): Int = if (kind == 5) stabilize * 50 / 100 else stabilize
 
-    /** Kalem kalkınca çizgiye hafif bir yumuşatma geçişi uygulanır; uç noktalar yerinde kalır. */
+    /**
+     * Kalem kalkınca çizgi yay uzunluğuna göre yeniden örneklenir ve Gauss ağırlıklı ortalamayla yumuşatılır.
+     * Yumuşatma yarıçapı yüzdeyle büyür (%100'de yaklaşık 9 sayfa birimi); uç noktalar yerinde kalır.
+     * Yazarken gecikme olmaz, düzeltme kalem kalkınca uygulanır.
+     */
     private fun smoothStroke(s: Stroke) {
         val n = s.xs.size
         val es = effStab(s.kind)
-        if (n < 5 || es < 15) return
-        val passes = 1 + es / 40
-        for (pass in 0 until passes) {
-            val ox2 = ArrayList(s.xs)
-            val oy2 = ArrayList(s.ys)
-            for (i in 1 until n - 1) {
-                s.xs[i] = (ox2[i - 1] + 2f * ox2[i] + ox2[i + 1]) / 4f
-                s.ys[i] = (oy2[i - 1] + 2f * oy2[i] + oy2[i + 1]) / 4f
+        if (n < 4 || es < 5) return
+        val sigma = 0.6f + es / 100f * 8.4f
+        val step = max(1f, sigma / 3f)
+        // yay uzunluğuna göre eşit aralıklı örnekleme
+        val px = ArrayList<Float>(); val py = ArrayList<Float>(); val pp = ArrayList<Float>()
+        px.add(s.xs[0]); py.add(s.ys[0]); pp.add(s.ps[0])
+        var carry = 0f
+        for (i in 1 until n) {
+            val x0 = s.xs[i - 1]; val y0 = s.ys[i - 1]; val p0 = s.ps[i - 1]
+            val seg = hypot(s.xs[i] - x0, s.ys[i] - y0)
+            if (seg <= 0f) continue
+            var d = step - carry
+            while (d <= seg) {
+                val t = d / seg
+                px.add(x0 + (s.xs[i] - x0) * t); py.add(y0 + (s.ys[i] - y0) * t); pp.add(p0 + (s.ps[i] - p0) * t)
+                d += step
             }
+            carry = seg - (d - step)
         }
+        px.add(s.xs[n - 1]); py.add(s.ys[n - 1]); pp.add(s.ps[n - 1])
+        val m = px.size
+        if (m < 4) return
+        val rad = Math.ceil((sigma * 2.2f / step).toDouble()).toInt().coerceAtLeast(1)
+        val wts = FloatArray(rad + 1) { k -> Math.exp(-0.5 * (k * step / sigma) * (k * step / sigma)).toFloat() }
+        val ox2 = FloatArray(m); val oy2 = FloatArray(m); val op2 = FloatArray(m)
+        for (i in 0 until m) {
+            // uçlara yaklaştıkça pencere daralır; ilk ve son nokta değişmez
+            val r = min(rad, min(i, m - 1 - i))
+            var sw = 0f; var sx = 0f; var sy = 0f; var sp = 0f
+            for (k in -r..r) {
+                val w = wts[abs(k)]
+                sw += w; sx += w * px[i + k]; sy += w * py[i + k]; sp += w * pp[i + k]
+            }
+            ox2[i] = sx / sw; oy2[i] = sy / sw; op2[i] = sp / sw
+        }
+        s.xs.clear(); s.ys.clear(); s.ps.clear()
+        for (i in 0 until m) s.add(ox2[i], oy2[i], op2[i])
     }
 
     // ---- Avuç içi reddi: kalem yakındayken parmak dokunuşları yok sayılır ----
@@ -2066,7 +2098,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive || stabilize >= 15 || s.kind == 3 || s.kind == 8 || s.kind == 11 || s.kind == 12
+                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 3 || s.kind == 8 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
@@ -2889,26 +2921,31 @@ class DrawView(context: Context) : View(context) {
         if (rulerOn) {
             val c = viewCenterOnPage()
             val len = min(640f, page.width - 140f)
-            rx1 = (c[0] - len / 2f).coerceIn(40f, max(40f, page.width - 40f - len)); rx2 = rx1 + len
+            rx1 = (c[0] + offX - len / 2f).coerceIn(40f, max(40f, spreadW() - 40f - len)); rx2 = rx1 + len
             ry1 = c[1]; ry2 = c[1]
         }
         invalidate()
         return rulerOn
     }
 
+    /** (x, y) sayfa koordinatındadır; cetvel yüzey koordinatında tutulduğu için aktif sayfanın kaydırması çıkarılır. */
     private fun rulerDist(x: Float, y: Float): Float {
-        val dx = rx2 - rx1; val dy = ry2 - ry1
+        val ax = rx1 - offX; val bx = rx2 - offX
+        val dx = bx - ax; val dy = ry2 - ry1
         val l2 = dx * dx + dy * dy
-        val t = (((x - rx1) * dx + (y - ry1) * dy) / l2).coerceIn(0f, 1f)
-        return hypot(x - (rx1 + t * dx), y - (ry1 + t * dy))
+        if (l2 < 1f) return hypot(x - ax, y - ry1)
+        val t = (((x - ax) * dx + (y - ry1) * dy) / l2).coerceIn(0f, 1f)
+        return hypot(x - (ax + t * dx), y - (ry1 + t * dy))
     }
 
     private fun snapLast(s: Stroke, from: Int) {
+        val ax = rx1 - offX
         val dx = rx2 - rx1; val dy = ry2 - ry1
         val l2 = dx * dx + dy * dy
+        if (l2 < 1f) return
         for (i in max(0, from) until s.xs.size) {
-            val t = (((s.xs[i] - rx1) * dx + (s.ys[i] - ry1) * dy) / l2).coerceIn(0f, 1f)
-            s.xs[i] = rx1 + t * dx; s.ys[i] = ry1 + t * dy
+            val t = (((s.xs[i] - ax) * dx + (s.ys[i] - ry1) * dy) / l2).coerceIn(0f, 1f)
+            s.xs[i] = ax + t * dx; s.ys[i] = ry1 + t * dy
         }
     }
 
@@ -2936,7 +2973,8 @@ class DrawView(context: Context) : View(context) {
 
     private fun handleRulerTouch(e: MotionEvent): Boolean {
         if (e.pointerCount > 1) return false
-        val gx = pageX(e.x); val gy = pageY(e.y)
+        // cetvel çift sayfada iki sayfaya birden ait olduğu için yüzey (ortak) koordinatlarında tutulur
+        val gx = pageX(e.x) + offX; val gy = pageY(e.y)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val thr = 40f * density / sc
@@ -3040,7 +3078,11 @@ class DrawView(context: Context) : View(context) {
 
     private fun drawRuler(c: Canvas) {
         if (!rulerOn) return
-        beginPage(c)
+        // yüzey koordinatları: etkin sayfa değişse de cetvel yerinde kalır
+        c.save()
+        c.translate(ox, oy)
+        c.scale(sc, sc)
+        c.clipRect(0f, 0f, spreadW(), page.height)
         if (rulerAligned && rulerMode != 0) {
             // tam yatay/dikey: cetvelin ekseni boyunca sayfa genişliğinde kılavuz çizgisi
             val gdx = rx2 - rx1; val gdy = ry2 - ry1
