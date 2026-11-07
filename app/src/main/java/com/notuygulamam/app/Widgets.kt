@@ -191,8 +191,12 @@ class IconButton(
                 c.drawArc(rect, 20f, 140f, false, p)
             }
             Icon.TAPE -> {
-                poly(c, u, true, 0.1f, 0.34f, 0.18f, 0.28f, 0.26f, 0.34f, 0.34f, 0.28f, 0.42f, 0.34f, 0.5f, 0.28f, 0.58f, 0.34f, 0.66f, 0.28f, 0.74f, 0.34f, 0.82f, 0.28f, 0.9f, 0.34f,
-                    0.9f, 0.66f, 0.82f, 0.72f, 0.74f, 0.66f, 0.66f, 0.72f, 0.58f, 0.66f, 0.5f, 0.72f, 0.42f, 0.66f, 0.34f, 0.72f, 0.26f, 0.66f, 0.18f, 0.72f, 0.1f, 0.66f)
+                // bant makarası: dış halka, orta delik ve makaradan uzanan bant şeridi
+                c.drawCircle(0.38f * u, 0.46f * u, 0.3f * u, p)
+                c.drawCircle(0.38f * u, 0.46f * u, 0.1f * u, p)
+                c.drawLine(0.38f * u, 0.76f * u, 0.92f * u, 0.76f * u, p)
+                c.drawLine(0.92f * u, 0.76f * u, 0.92f * u, 0.58f * u, p)
+                c.drawLine(0.6f * u, 0.58f * u, 0.92f * u, 0.58f * u, p)
             }
             Icon.CALC -> {
                 rect.set(0.2f * u, 0.08f * u, 0.8f * u, 0.92f * u)

@@ -245,6 +245,10 @@ class MainActivity : Activity() {
     }
 
     private var swatchHost: View? = null
+    private var popPress: View? = null
+    private var popSnap: View? = null
+    private var popHold: View? = null
+    private var popScribble: View? = null
 
     private fun rebuildSwatches() {
         // silginin rengi olmaz; paleti gizleriz ki yanlışlıkla kalem rengi değişmesin
@@ -252,6 +256,27 @@ class MainActivity : Activity() {
         swatchRow.removeAllViews()
         if (draw.tool == Tool.ERASER) {
             eraserChips()
+            return
+        }
+        if (draw.tool == Tool.TAPE) {
+            val pick = TextView(this)
+            pick.text = "Bant seç…"
+            pick.textSize = 14f
+            pick.setTextColor(Look.accent)
+            pick.setPadding(dp(16f), dp(8f), dp(16f), dp(8f))
+            pick.setOnClickListener { showTapeDialog() }
+            swatchRow.addView(pick)
+            draw.tapeBmp?.let { b ->
+                val iv = ImageView(this)
+                iv.setImageBitmap(b)
+                iv.scaleType = ImageView.ScaleType.FIT_CENTER
+                swatchRow.addView(iv, LinearLayout.LayoutParams(dp(150f), dp(26f)).apply { setMargins(dp(8f), dp(6f), dp(12f), dp(6f)) })
+            }
+            val hint = TextView(this)
+            hint.text = "Kalemle bir çizgi çekin; bant çizgi boyunca yerleşir. Gizleme bandına dokununca kalkar."
+            hint.textSize = 12f
+            hint.setTextColor(Look.inkSoft)
+            swatchRow.addView(hint)
             return
         }
         val highlighter = draw.tool == Tool.HIGHLIGHTER
@@ -1078,18 +1103,10 @@ class MainActivity : Activity() {
                 iv.adjustViewBounds = true
                 iv.setOnClickListener {
                     val b = Tapes.make(cat, v, hide)
-                    val png = pngOf(b)
-                    val it = PageItem(PageItem.IMAGE, 0f, 0f)
-                    it.w = 520f
-                    it.h = 520f * Tapes.H / Tapes.W
-                    it.bmp = b
-                    it.data = png
-                    if (hide) it.kind = DrawView.TAPE_KIND
-                    val c = draw.viewCenterOnPage()
-                    it.x = c[0]; it.y = c[1]
-                    draw.tool = Tool.OBJECT
-                    draw.addItem(it)
+                    draw.setTape(b, pngOf(b), hide)
+                    draw.tool = Tool.TAPE
                     refresh()
+                    Toast.makeText(this, "Bandı koymak için sayfada bir çizgi çekin", Toast.LENGTH_SHORT).show()
                     dlg?.dismiss()
                 }
                 val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -1413,6 +1430,11 @@ class MainActivity : Activity() {
         rebuildTabs()
 
         val st = sliderTool()
+        // silgi için basınç, fosforlu düzleştirme ve bekletme ayarları anlamsızdır; yalnızca ilgili araçta görünür
+        popPress?.visibility = if (st == Tool.PEN || st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
+        popSnap?.visibility = if (st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
+        popHold?.visibility = if (st == Tool.PEN || st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
+        popScribble?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
         val range = when (st) {
             Tool.HIGHLIGHTER -> Pair(6, 40)
             Tool.ERASER -> Pair(6, 30)
@@ -2834,6 +2856,11 @@ class MainActivity : Activity() {
         val stickerBtn = iconBtn(Icon.STICKER, "Çıkartma ve resim") { showStickerDialog() }
         toolButtons[Tool.OBJECT] = stickerBtn
         toolRow.addView(stickerBtn)
+        val tapeBtn = iconBtn(Icon.TAPE, "Bant kalemi: çizgi çekerek washi bant koy") {
+            if (draw.tapeBmp == null) showTapeDialog() else { draw.tool = Tool.TAPE; refresh() }
+        }
+        toolButtons[Tool.TAPE] = tapeBtn
+        toolRow.addView(tapeBtn)
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.PAPER, "Sayfa şablonu") { showPaperDialog() })
         toolRow.addView(iconBtn(Icon.TAB, "Ayraç ekle") { showTabDialog(null) })
@@ -2849,7 +2876,6 @@ class MainActivity : Activity() {
             refresh()
         }
         toolRow.addView(spreadBtn)
-        toolRow.addView(iconBtn(Icon.TAPE, "Washi bant (desenli bantlar)") { showTapeDialog() })
         toolRow.addView(iconBtn(Icon.CALC, "Hesap makinesi") { toggleCalculator() })
         toolRow.addView(iconBtn(Icon.TIMER, "Pomodoro zamanlayıcı") { togglePomodoro() })
         toolRow.addView(spacer())
@@ -2928,17 +2954,20 @@ class MainActivity : Activity() {
         pressRow.addView(pressLabel, LinearLayout.LayoutParams(dp(200f), LinearLayout.LayoutParams.WRAP_CONTENT))
         pressRow.addView(pressSeek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(pressRow)
+        popPress = pressRow
 
         val snapBox = CheckBox(this)
         snapBox.text = "Fosforlu, düze yakın çizgileri tam düz çizsin"
         snapBox.isChecked = draw.highlighterSnap
         snapBox.setOnCheckedChangeListener { _, checked -> draw.highlighterSnap = checked }
         panel.addView(snapBox)
+        popSnap = snapBox
         val holdBox = CheckBox(this)
         holdBox.text = "Çizerken kalemi bekletince çizgi düzelsin"
         holdBox.isChecked = draw.holdToStraighten
         holdBox.setOnCheckedChangeListener { _, checked -> draw.holdToStraighten = checked }
         panel.addView(holdBox)
+        popHold = holdBox
         val scribbleBox = CheckBox(this)
         scribbleBox.text = "Yazının üstünü karalayınca silinsin"
         scribbleBox.isChecked = draw.scribbleErase
@@ -2947,6 +2976,7 @@ class MainActivity : Activity() {
             getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("karala3", checked).apply()
         }
         panel.addView(scribbleBox)
+        popScribble = scribbleBox
 
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(bar(dp(20f).toFloat()))

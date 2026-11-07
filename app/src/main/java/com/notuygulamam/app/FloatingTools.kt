@@ -266,7 +266,7 @@ class PomodoroPanel(private val ctx: Context, host: FrameLayout) : FloatingPanel
     }
 }
 
-/** Durum satırına sığan küçük dikdörtgen Pomodoro: süre, başlat/duraklat, sıfırla; süreye dokununca çalışma ve mola dakikaları ayarlanır. */
+/** Durum satırına sığan yalın Pomodoro: Çalışma − 25 +  Mola − 5 +  süre  ▶  ↺. Her şey doğrudan satırda, açılır pencere yok. */
 class PomodoroStrip(private val ctx: Context) : LinearLayout(ctx) {
     private val handler = Handler(Looper.getMainLooper())
     private val d = ctx.resources.displayMetrics.density
@@ -277,14 +277,40 @@ class PomodoroStrip(private val ctx: Context) : LinearLayout(ctx) {
     private var running = false
     private var rounds = 0
     private val timeView = TextView(ctx)
-    private val phase = TextView(ctx)
     private val playBtn = TextView(ctx)
+    private val workView = TextView(ctx)
+    private val breakView = TextView(ctx)
     private val tick = object : Runnable {
         override fun run() {
             if (!running) return
             left--
             if (left <= 0) finishPhase() else { show(); handler.postDelayed(this, 1000) }
         }
+    }
+
+    private fun tv(t: String, size: Float, color: Int): TextView {
+        val v = TextView(ctx)
+        v.text = t
+        v.textSize = size
+        v.setTextColor(color)
+        v.gravity = Gravity.CENTER
+        return v
+    }
+
+    private fun stepper(label: String, value: TextView, change: (Int) -> Unit) {
+        val l = tv(label, 12f, Look.inkSoft)
+        l.setPadding((4 * d).toInt(), 0, (2 * d).toInt(), 0)
+        val minus = tv("−", 18f, Look.accent)
+        minus.setPadding((9 * d).toInt(), 0, (5 * d).toInt(), 0)
+        minus.setOnClickListener { change(-1) }
+        value.textSize = 14f
+        value.setTextColor(Look.ink)
+        value.setTypeface(null, android.graphics.Typeface.BOLD)
+        value.gravity = Gravity.CENTER
+        val plus = tv("+", 18f, Look.accent)
+        plus.setPadding((5 * d).toInt(), 0, (9 * d).toInt(), 0)
+        plus.setOnClickListener { change(1) }
+        addView(l); addView(minus); addView(value); addView(plus)
     }
 
     init {
@@ -294,35 +320,39 @@ class PomodoroStrip(private val ctx: Context) : LinearLayout(ctx) {
         g.cornerRadius = 10 * d
         g.setColor(Look.accentSoft)
         background = g
-        setPadding((10 * d).toInt(), (3 * d).toInt(), (6 * d).toInt(), (3 * d).toInt())
-        phase.textSize = 11f
-        phase.setTextColor(Look.accent)
-        timeView.textSize = 15f
-        timeView.setTypeface(null, android.graphics.Typeface.BOLD)
-        timeView.setTextColor(Look.ink)
-        timeView.setPadding((6 * d).toInt(), 0, (8 * d).toInt(), 0)
-        timeView.setOnClickListener { settings() }
-        fun small(t: TextView, label: String, click: () -> Unit) {
-            t.text = label
-            t.textSize = 16f
-            t.setTextColor(Look.accent)
-            t.gravity = Gravity.CENTER
-            t.setPadding((10 * d).toInt(), (2 * d).toInt(), (10 * d).toInt(), (2 * d).toInt())
-            t.setOnClickListener { click() }
+        setPadding((8 * d).toInt(), (2 * d).toInt(), (6 * d).toInt(), (2 * d).toInt())
+        stepper("Çalışma", workView) { dlt ->
+            workMin = (workMin + dlt).coerceIn(1, 120)
+            if (!running && work) left = workMin * 60
+            show()
         }
-        small(playBtn, "▶") { toggle() }
-        val reset = TextView(ctx)
-        small(reset, "↺") { reset() }
-        addView(phase)
+        stepper("Mola", breakView) { dlt ->
+            breakMin = (breakMin + dlt).coerceIn(1, 60)
+            if (!running && !work) left = breakMin * 60
+            show()
+        }
+        timeView.textSize = 16f
+        timeView.setTypeface(null, android.graphics.Typeface.BOLD)
+        timeView.setTextColor(Look.accent)
+        timeView.setPadding((12 * d).toInt(), 0, (8 * d).toInt(), 0)
         addView(timeView)
+        playBtn.textSize = 17f
+        playBtn.setTextColor(Look.accent)
+        playBtn.setPadding((8 * d).toInt(), 0, (8 * d).toInt(), 0)
+        playBtn.setOnClickListener { toggle() }
         addView(playBtn)
+        val reset = tv("↺", 17f, Look.accent)
+        reset.setPadding((8 * d).toInt(), 0, (6 * d).toInt(), 0)
+        reset.setOnClickListener { reset() }
         addView(reset)
         show()
     }
 
     private fun show() {
-        timeView.text = String.format(Locale.US, "%02d:%02d", left / 60, left % 60)
-        phase.text = (if (work) "Çalışma" else "Mola") + (if (rounds > 0) " ($rounds)" else "")
+        workView.text = workMin.toString()
+        breakView.text = breakMin.toString()
+        timeView.text = (if (work) "" else "Mola ") + String.format(Locale.US, "%02d:%02d", left / 60, left % 60) +
+            (if (rounds > 0) "  ($rounds)" else "")
         playBtn.text = if (running) "❚❚" else "▶"
     }
 
@@ -338,28 +368,6 @@ class PomodoroStrip(private val ctx: Context) : LinearLayout(ctx) {
         work = true
         left = workMin * 60
         show()
-    }
-
-    private fun settings() {
-        val box = LinearLayout(ctx)
-        box.orientation = VERTICAL
-        box.setPadding((22 * d).toInt(), (10 * d).toInt(), (22 * d).toInt(), 0)
-        val w = android.widget.EditText(ctx)
-        w.inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        w.hint = "Çalışma süresi (dakika)"
-        w.setText(workMin.toString())
-        val b = android.widget.EditText(ctx)
-        b.inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        b.hint = "Mola süresi (dakika)"
-        b.setText(breakMin.toString())
-        box.addView(w)
-        box.addView(b)
-        android.app.AlertDialog.Builder(ctx).setTitle("Pomodoro süreleri").setView(box)
-            .setPositiveButton("Kaydet") { _, _ ->
-                workMin = (w.text.toString().toIntOrNull() ?: workMin).coerceIn(1, 120)
-                breakMin = (b.text.toString().toIntOrNull() ?: breakMin).coerceIn(1, 60)
-                if (!running) { left = (if (work) workMin else breakMin) * 60; show() }
-            }.setNegativeButton("Vazgeç", null).show()
     }
 
     private fun finishPhase() {

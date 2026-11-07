@@ -751,7 +751,7 @@ class PageRenderer {
                 val uy = Math.sin(a.toDouble()).toFloat() * half
                 // uç çizgiye paralelken çizgi tamamen kaybolmasın diye ince bir taban çizgi
                 linePaint.setColor(s.color)
-                linePaint.strokeWidth = s.width * 0.3f
+                linePaint.strokeWidth = s.width * 0.1f
                 c.drawLine(x0, y0, x1, y1, linePaint)
                 fillPaint.setColor(s.color)
                 fillPaint.alpha = 255
@@ -1100,17 +1100,7 @@ class PageRenderer {
                 if (b != null) {
                     val r = RectF(-it.w / 2f, -it.h / 2f, it.w / 2f, it.h / 2f)
                     if (it.kind == TAPE_KIND && it.text == "k") {
-                        // kalkmış bant: yalnız yapışık uç ve silik bir iz kalır; dokununca yeniden kapanır
-                        c.save()
-                        c.clipRect(r.left, r.top, r.left + it.w * 0.1f, r.bottom)
-                        c.drawBitmap(b, null, r, bmpPaint)
-                        c.restore()
-                        val dp = Paint(Paint.ANTI_ALIAS_FLAG)
-                        dp.style = Paint.Style.STROKE
-                        dp.strokeWidth = 3f
-                        dp.color = Color.argb(110, 120, 100, 100)
-                        dp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
-                        c.drawRect(r, dp)
+                        // kalkmış bant tamamen görünmez olur; aynı yere dokununca yeniden kapanır
                     } else {
                         c.drawBitmap(b, null, r, bmpPaint)
                     }

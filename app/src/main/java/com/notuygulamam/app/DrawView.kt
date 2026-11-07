@@ -85,6 +85,84 @@ class DrawView(context: Context) : View(context) {
         return super.onHoverEvent(e)
     }
 
+    // ---- Bant kalemi: çizgi çekerek bant koyma ----
+    var tapeBmp: Bitmap? = null
+    var tapePng: ByteArray? = null
+    var tapeHide = true
+    private var tapeX0 = 0f
+    private var tapeY0 = 0f
+    private var tapeX1 = 0f
+    private var tapeY1 = 0f
+    private var tapeDown = false
+    private val tapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun setTape(b: Bitmap, png: ByteArray, hide: Boolean) {
+        tapeBmp = b; tapePng = png; tapeHide = hide
+    }
+
+    private fun tapeEnd(gx: Float, gy: Float) {
+        var ex = gx
+        var ey = gy
+        val dx = gx - tapeX0
+        val dy = gy - tapeY0
+        val ang = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+        val m = ((ang % 90f) + 90f) % 90f
+        if (min(m, 90f - m) < 4f) {
+            // yatay ve dikeye yaklaşınca tam hizaya oturur
+            val len = hypot(dx, dy)
+            val a = Math.toRadians((Math.round(ang / 90f) * 90f).toDouble())
+            ex = tapeX0 + len * Math.cos(a).toFloat()
+            ey = tapeY0 + len * Math.sin(a).toFloat()
+        }
+        tapeX1 = ex; tapeY1 = ey
+    }
+
+    private fun handleTapeTouch(e: MotionEvent): Boolean {
+        val gx = pageX(e.x)
+        val gy = pageY(e.y)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { tapeX0 = gx; tapeY0 = gy; tapeX1 = gx; tapeY1 = gy; tapeDown = true }
+            MotionEvent.ACTION_MOVE -> if (tapeDown) tapeEnd(gx, gy)
+            MotionEvent.ACTION_UP -> {
+                if (tapeDown) {
+                    tapeEnd(gx, gy)
+                    tapeDown = false
+                    val b = tapeBmp
+                    val len = hypot(tapeX1 - tapeX0, tapeY1 - tapeY0)
+                    if (b != null && len > 60f) {
+                        val it = PageItem(PageItem.IMAGE, (tapeX0 + tapeX1) / 2f, (tapeY0 + tapeY1) / 2f)
+                        it.w = len
+                        it.h = (len / 6.5f).coerceIn(44f, 84f)
+                        it.rot = Math.toDegrees(Math.atan2((tapeY1 - tapeY0).toDouble(), (tapeX1 - tapeX0).toDouble())).toFloat()
+                        it.bmp = b
+                        it.data = tapePng
+                        if (tapeHide) it.kind = TAPE_KIND
+                        addItem(it)
+                    }
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> tapeDown = false
+        }
+        invalidate()
+        return true
+    }
+
+    private fun drawTapePreview(c: Canvas) {
+        val b = tapeBmp ?: return
+        if (tool != Tool.TAPE || !tapeDown) return
+        val len = hypot(tapeX1 - tapeX0, tapeY1 - tapeY0)
+        if (len < 4f) return
+        val h = (len / 6.5f).coerceIn(44f, 84f)
+        c.save()
+        c.translate(ox + offX * sc, oy)
+        c.scale(sc, sc)
+        c.translate((tapeX0 + tapeX1) / 2f, (tapeY0 + tapeY1) / 2f)
+        c.rotate(Math.toDegrees(Math.atan2((tapeY1 - tapeY0).toDouble(), (tapeX1 - tapeX0).toDouble())).toFloat())
+        tapePaint.alpha = 190
+        c.drawBitmap(b, null, android.graphics.RectF(-len / 2f, -h / 2f, len / 2f, h / 2f), tapePaint)
+        c.restore()
+    }
+
     // ---- Sayfadan alan seçip görsel olarak almak (flaş kart için) ----
     var captureMode = false
         private set
@@ -906,6 +984,7 @@ class DrawView(context: Context) : View(context) {
         drawRuler(c)
         drawLaser(c)
         drawCaptureRect(c)
+        drawTapePreview(c)
     }
 
     private fun rad(deg: Float) = Math.toRadians(deg.toDouble())
@@ -1750,6 +1829,7 @@ class DrawView(context: Context) : View(context) {
 
         if (tool == Tool.TEXT || tool == Tool.OBJECT) return handleItemTouch(e)
         if (tool == Tool.LASER) return handleLaserTouch(e)
+        if (tool == Tool.TAPE) return handleTapeTouch(e)
         if (tool == Tool.LASSO) return handleLassoTouch(e)
 
         if (!isStylus && !fingerDraw) {
