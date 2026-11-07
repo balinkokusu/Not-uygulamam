@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private lateinit var spreadBtn: IconButton
     private lateinit var presetRow: LinearLayout
     private lateinit var kindRow: LinearLayout
+    private var kindScrollHost: View? = null
     private lateinit var itemBar: LinearLayout
     private lateinit var layerBtn: TextView
     private lateinit var splitBtn: TextView
@@ -187,7 +188,11 @@ class MainActivity : Activity() {
         return v
     }
 
+    private var swatchHost: View? = null
+
     private fun rebuildSwatches() {
+        // silginin rengi olmaz; paleti gizleriz ki yanlışlıkla kalem rengi değişmesin
+        swatchHost?.visibility = if (toolsVisible && draw.tool != Tool.ERASER) View.VISIBLE else View.GONE
         swatchRow.removeAllViews()
         val highlighter = draw.tool == Tool.HIGHLIGHTER
         val selected = if (highlighter) draw.hlColor else draw.penColor
@@ -243,7 +248,7 @@ class MainActivity : Activity() {
         kindRow.removeAllViews()
         val st = sliderTool()
         if (st == Tool.ERASER) {
-            kindRow.visibility = View.VISIBLE
+            kindScrollHost?.visibility = View.VISIBLE
             val lbl = TextView(this)
             lbl.text = "Silinecek katmanlar:"
             lbl.textSize = 12f
@@ -278,10 +283,10 @@ class MainActivity : Activity() {
             return
         }
         if (st != Tool.PEN && st != Tool.HIGHLIGHTER) {
-            kindRow.visibility = View.GONE
+            kindScrollHost?.visibility = View.GONE
             return
         }
-        kindRow.visibility = View.VISIBLE
+        kindScrollHost?.visibility = View.VISIBLE
         if (st == Tool.PEN) {
             val order = listOf(
                 Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun", 2),
@@ -343,6 +348,82 @@ class MainActivity : Activity() {
         } else {
             val names = listOf("Düz", "Pırıltılı", "Yıldız", "Kalp")
             for ((i, n) in names.withIndex()) kindRow.addView(kindChip(n, true, i, draw.hlKind == i))
+        }
+    }
+
+    private var captureBanner: View? = null
+
+    private fun hideCaptureBanner() {
+        captureBanner?.let { toolsHost.removeView(it) }
+        captureBanner = null
+    }
+
+    private fun captureStep(prompt: String, done: (android.graphics.Bitmap) -> Unit) {
+        hideCaptureBanner()
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.setPadding(dp(18f), dp(10f), dp(10f), dp(10f))
+        val g = GradientDrawable()
+        g.cornerRadius = dp(18f).toFloat()
+        g.setColor(Color.WHITE)
+        g.setStroke(dp(1f), Look.hairline)
+        row.background = g
+        row.elevation = dp(8f).toFloat()
+        val t = TextView(this)
+        t.text = prompt
+        t.textSize = 15f
+        t.setTextColor(Look.ink)
+        row.addView(t)
+        val cancel = TextView(this)
+        cancel.text = "Vazgeç"
+        cancel.textSize = 15f
+        cancel.setTextColor(Look.accent)
+        cancel.setPadding(dp(18f), dp(6f), dp(12f), dp(6f))
+        cancel.setOnClickListener { draw.cancelCapture() }
+        row.addView(cancel)
+        val lp = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        )
+        lp.topMargin = dp(80f)
+        toolsHost.addView(row, lp)
+        captureBanner = row
+        draw.startCapture { bmp ->
+            hideCaptureBanner()
+            if (bmp != null) done(bmp)
+        }
+    }
+
+    /** Sayfadan iki alan seçilerek (soru, cevap) görsel bir flaş kart üretir. */
+    private fun startCardCapture() {
+        captureStep("Kartın ön yüzü (soru) için sayfada bir alan çizin") { front ->
+            captureStep("Şimdi arka yüz (cevap) için alan çizin") { back ->
+                val decks = FlashStore.load(this)
+                val labels = decks.map { it.name } + "Yeni deste…"
+                fun store(deck: Deck) {
+                    val c = Card("", "")
+                    c.fImg = FlashStore.saveImage(this, front, "a")
+                    c.bImg = FlashStore.saveImage(this, back, "b")
+                    deck.cards.add(c)
+                    if (!decks.contains(deck)) decks.add(deck)
+                    FlashStore.save(this, decks)
+                    Toast.makeText(this, "Kart \"" + deck.name + "\" destesine eklendi", Toast.LENGTH_SHORT).show()
+                }
+                AlertDialog.Builder(this).setTitle("Kart hangi desteye eklensin?")
+                    .setItems(labels.toTypedArray()) { _, w ->
+                        if (w < decks.size) {
+                            store(decks[w])
+                        } else {
+                            val e = EditText(this)
+                            e.hint = "Deste adı"
+                            AlertDialog.Builder(this).setTitle("Yeni deste").setView(e)
+                                .setPositiveButton("Oluştur") { _, _ ->
+                                    store(Deck(System.currentTimeMillis().toString(), e.text.toString().trim().ifEmpty { "Adsız deste" }))
+                                }.setNegativeButton("Vazgeç", null).show()
+                        }
+                    }.setNegativeButton("Vazgeç", null).show()
+            }
         }
     }
 
@@ -1734,9 +1815,9 @@ class MainActivity : Activity() {
         val groups = listOf(
             "Sayfa" to listOf(1, 20, 7, 10, 11, 5, 6),
             "Defter ve dosya" to listOf(0, 2, 3, 4),
-            "Ekle" to listOf(13, 14, 17, 15),
+            "Ekle" to listOf(13, 14, 17, 15, 26),
             "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(24, 22, 23, 9, 21, 12, 18)
+            "Araçlar ve görünüm" to listOf(24, 25, 22, 23, 9, 21, 12, 18)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -1744,6 +1825,8 @@ class MainActivity : Activity() {
                 val label = when (id) {
                     20 -> "Şablonlar (önizleme, renk, sol/sağ ayrı uygulama)"
                     24 -> "Sayfa görünümü: " + (if (spread) "çift sayfa" else "tek sayfa") + " (değiştirmek için dokunun)"
+                    25 -> "Avuç içi reddi: " + (if (draw.palmReject) "açık" else "kapalı") + " (kalem yakındayken parmak dokunuşunu yok sayar)"
+                    26 -> "Sayfadan flaş kart yap (ön ve arka yüzü sayfadan seçin)"
                     22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
                     23 -> "Pomodoro zamanlayıcı (sürüklenir, aç / kapat)"
                     21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
@@ -1762,6 +1845,12 @@ class MainActivity : Activity() {
                     showCurrent()
                     refresh()
                 }
+                25 -> {
+                    draw.palmReject = !draw.palmReject
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("avuc", draw.palmReject).apply()
+                    Toast.makeText(this, "Avuç içi reddi " + (if (draw.palmReject) "açık" else "kapalı"), Toast.LENGTH_SHORT).show()
+                }
+                26 -> startCardCapture()
                 22 -> toggleCalculator()
                 23 -> togglePomodoro()
                 21 -> {
@@ -2570,6 +2659,7 @@ class MainActivity : Activity() {
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift", true)
         draw.stabilize = prefs.getInt("denge100", 0)
+        draw.palmReject = prefs.getBoolean("avuc", true)
         draw.binding = prefs.getInt("cilt_$itemId", 0)
         draw.scribbleErase = prefs.getBoolean("karala", true)
         draw.onChanged = {
@@ -2758,6 +2848,7 @@ class MainActivity : Activity() {
         swatchScroll.elevation = dp(3f).toFloat()
         swatchScroll.clipToOutline = true
         swatchScroll.addView(swatchRow)
+        swatchHost = swatchScroll
 
         val panel = LinearLayout(this)
         panel.orientation = LinearLayout.VERTICAL
@@ -2766,7 +2857,11 @@ class MainActivity : Activity() {
 
         kindRow = LinearLayout(this)
         kindRow.orientation = LinearLayout.HORIZONTAL
-        panel.addView(kindRow)
+        val kindScroll = HorizontalScrollView(this)
+        kindScroll.isHorizontalScrollBarEnabled = false
+        kindScroll.addView(kindRow)
+        kindScrollHost = kindScroll
+        panel.addView(kindScroll)
         presetRow = LinearLayout(this)
         presetRow.orientation = LinearLayout.HORIZONTAL
         presetRow.gravity = Gravity.CENTER_VERTICAL
@@ -2839,7 +2934,7 @@ class MainActivity : Activity() {
             toolsVisible = !toolsVisible
             val vis = if (toolsVisible) View.VISIBLE else View.GONE
             toolScroll.visibility = vis
-            swatchScroll.visibility = vis
+            swatchScroll.visibility = if (toolsVisible && draw.tool != Tool.ERASER) View.VISIBLE else View.GONE
             toggle.text = if (toolsVisible) "Araçları gizle" else "Araçları göster"
             settingsPopup?.dismiss()
         }

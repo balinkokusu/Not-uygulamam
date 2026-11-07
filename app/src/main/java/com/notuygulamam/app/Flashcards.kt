@@ -19,7 +19,11 @@ import org.json.JSONObject
 import java.io.File
 
 /** Flaş kart destesi: kartlar iki yüzlüdür, aralıklı tekrar için her kartın kutu numarası ve vade günü tutulur. */
-class Card(var front: String, var back: String, var box: Int = 0, var due: Long = 0L)
+class Card(var front: String, var back: String, var box: Int = 0, var due: Long = 0L) {
+    /** Sayfadan alınmış görsel yüzler (kartlar klasöründeki dosya adı). */
+    var fImg: String? = null
+    var bImg: String? = null
+}
 class Deck(val id: String, var name: String, val cards: ArrayList<Card> = ArrayList())
 
 object FlashStore {
@@ -41,7 +45,10 @@ object FlashStore {
                 val cs = o.getJSONArray("cards")
                 for (k in 0 until cs.length()) {
                     val c = cs.getJSONObject(k)
-                    d.cards.add(Card(c.getString("f"), c.getString("b"), c.optInt("x", 0), c.optLong("d", 0L)))
+                    val card = Card(c.getString("f"), c.getString("b"), c.optInt("x", 0), c.optLong("d", 0L))
+                    card.fImg = c.optString("fi", "").ifEmpty { null }
+                    card.bImg = c.optString("bi", "").ifEmpty { null }
+                    d.cards.add(card)
                 }
                 out.add(d)
             }
@@ -62,6 +69,8 @@ object FlashStore {
             for (c in d.cards) {
                 val co = JSONObject()
                 co.put("f", c.front); co.put("b", c.back); co.put("x", c.box); co.put("d", c.due)
+                c.fImg?.let { co.put("fi", it) }
+                c.bImg?.let { co.put("bi", it) }
                 cs.put(co)
             }
             o.put("cards", cs)
@@ -70,6 +79,21 @@ object FlashStore {
         val tmp = File(ctx.filesDir, "kartlar.json.tmp")
         tmp.writeText(arr.toString())
         tmp.renameTo(file(ctx))
+    }
+
+    private fun imgDir(ctx: Context) = File(ctx.filesDir, "kartlar").also { it.mkdirs() }
+
+    fun imageFile(ctx: Context, name: String) = File(imgDir(ctx), name)
+
+    fun saveImage(ctx: Context, bmp: android.graphics.Bitmap, tag: String): String {
+        val name = "k" + System.currentTimeMillis() + tag + ".png"
+        java.io.FileOutputStream(File(imgDir(ctx), name)).use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        return name
+    }
+
+    fun dropImages(ctx: Context, c: Card) {
+        c.fImg?.let { File(imgDir(ctx), it).delete() }
+        c.bImg?.let { File(imgDir(ctx), it).delete() }
     }
 
     fun dueCount(d: Deck): Int = d.cards.count { it.due <= today() }
@@ -219,7 +243,7 @@ class FlashcardsActivity : Activity() {
                     4 -> cardList(deck)
                     5 -> rename(deck)
                     6 -> AlertDialog.Builder(this).setTitle("Bu deste silinsin mi?").setMessage("İçindeki " + deck.cards.size + " kart da silinir.")
-                        .setPositiveButton("Sil") { _, _ -> decks.remove(deck); save(); showDecks() }
+                        .setPositiveButton("Sil") { _, _ -> deck.cards.forEach { FlashStore.dropImages(this, it) }; decks.remove(deck); save(); showDecks() }
                         .setNegativeButton("Vazgeç", null).show()
                 }
             }.setNegativeButton("Kapat", null).show()
@@ -275,7 +299,10 @@ class FlashcardsActivity : Activity() {
 
     private fun cardList(deck: Deck) {
         if (deck.cards.isEmpty()) { Toast.makeText(this, "Bu destede kart yok", Toast.LENGTH_SHORT).show(); return }
-        val labels = deck.cards.map { it.front.replace('\n', ' ').take(60) + "  →  " + it.back.replace('\n', ' ').take(40) }.toTypedArray()
+        val labels = deck.cards.map {
+            (if (it.fImg != null) "[görsel] " else "") + it.front.replace('\n', ' ').take(50) + "  →  " +
+                (if (it.bImg != null) "[görsel] " else "") + it.back.replace('\n', ' ').take(30)
+        }.toTypedArray()
         AlertDialog.Builder(this).setTitle("Kartlar (düzenlemek için dokunun)").setItems(labels) { _, i ->
             val c = deck.cards[i]
             val box = LinearLayout(this)
@@ -285,7 +312,7 @@ class FlashcardsActivity : Activity() {
             box.addView(f); box.addView(b)
             AlertDialog.Builder(this).setTitle("Kartı düzenle").setView(pad(box))
                 .setPositiveButton("Kaydet") { _, _ -> c.front = f.text.toString().trim(); c.back = b.text.toString().trim(); save(); showDecks() }
-                .setNeutralButton("Sil") { _, _ -> deck.cards.removeAt(i); save(); showDecks() }
+                .setNeutralButton("Sil") { _, _ -> FlashStore.dropImages(this, deck.cards[i]); deck.cards.removeAt(i); save(); showDecks() }
                 .setNegativeButton("Vazgeç", null).show()
         }.setNegativeButton("Kapat", null).show()
     }
@@ -339,9 +366,22 @@ class FlashcardsActivity : Activity() {
         g.setStroke(dp(1f), Look.hairline)
         card.background = g
         card.elevation = dp(4f).toFloat()
-        val face = text(if (revealed) c.back else c.front, 30f, Look.ink)
-        face.gravity = Gravity.CENTER
-        card.addView(face)
+        val img = if (revealed) c.bImg else c.fImg
+        val txt = if (revealed) c.back else c.front
+        if (img != null) {
+            val bmp = android.graphics.BitmapFactory.decodeFile(FlashStore.imageFile(this, img).absolutePath)
+            if (bmp != null) {
+                val iv = android.widget.ImageView(this)
+                iv.setImageBitmap(bmp)
+                iv.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                card.addView(iv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            }
+        }
+        if (txt.isNotEmpty() || img == null) {
+            val face = text(txt, if (img != null) 20f else 30f, Look.ink)
+            face.gravity = Gravity.CENTER
+            card.addView(face)
+        }
         val hint = text(if (revealed) "Cevap" else "Cevabı görmek için kartın üstüne dokunun", 13f, Look.inkSoft)
         hint.gravity = Gravity.CENTER
         hint.setPadding(0, dp(18f), 0, 0)

@@ -56,14 +56,104 @@ class DrawView(context: Context) : View(context) {
 
     private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
         if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
+            // "ip" yöntemi: çizgi ucu, kalem ucuna bağlı uzunluğu sabit bir ipin ucunda sürüklenir.
+            // Küçük titremeler ipin boşluğunda kaybolur; 100'de ip yaklaşık 30 dp'dir.
             val t = stabilize.coerceIn(0, 100) / 100f
-            val a = 1f / (1f + 11f * Math.pow(t.toDouble(), 1.3).toFloat())
+            val rope = t * 30f * density / sc
             val lx = s.xs[s.xs.size - 1]
             val ly = s.ys[s.ys.size - 1]
-            s.add(lx + (x - lx) * a, ly + (y - ly) * a, p)
+            val dx = x - lx
+            val dy = y - ly
+            val d = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+            if (d > rope && d > 0f) {
+                val k = (d - rope) / d
+                s.add(lx + dx * k, ly + dy * k, p)
+            }
         } else {
             s.add(x, y, p)
         }
+    }
+
+    // ---- Avuç içi reddi: kalem yakındayken parmak dokunuşları yok sayılır ----
+    var palmReject = true
+    private var lastPenMs = 0L
+    private var rejecting = false
+
+    override fun onHoverEvent(e: MotionEvent): Boolean {
+        val t = e.getToolType(0)
+        if (t == MotionEvent.TOOL_TYPE_STYLUS || t == MotionEvent.TOOL_TYPE_ERASER) lastPenMs = e.eventTime
+        return super.onHoverEvent(e)
+    }
+
+    // ---- Sayfadan alan seçip görsel olarak almak (flaş kart için) ----
+    var captureMode = false
+        private set
+    var onCaptured: ((Bitmap?) -> Unit)? = null
+    private var capX0 = 0f
+    private var capY0 = 0f
+    private var capX1 = 0f
+    private var capY1 = 0f
+    private var capDown = false
+    private val capPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun startCapture(cb: (Bitmap?) -> Unit) {
+        onCaptured = cb
+        captureMode = true
+        capDown = false
+        invalidate()
+    }
+
+    fun cancelCapture() {
+        if (!captureMode) return
+        captureMode = false
+        capDown = false
+        invalidate()
+        onCaptured?.invoke(null)
+    }
+
+    private fun handleCaptureTouch(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { capX0 = e.x; capY0 = e.y; capX1 = e.x; capY1 = e.y; capDown = true }
+            MotionEvent.ACTION_MOVE -> { capX1 = e.x; capY1 = e.y }
+            MotionEvent.ACTION_UP -> {
+                capX1 = e.x; capY1 = e.y
+                capDown = false
+                val b = base
+                val l = Math.min(capX0, capX1).toInt().coerceIn(0, (b?.width ?: 1) - 1)
+                val t = Math.min(capY0, capY1).toInt().coerceIn(0, (b?.height ?: 1) - 1)
+                val r = Math.max(capX0, capX1).toInt().coerceIn(l + 1, b?.width ?: l + 1)
+                val bt = Math.max(capY0, capY1).toInt().coerceIn(t + 1, b?.height ?: t + 1)
+                if (b != null && r - l > 40 && bt - t > 40) {
+                    val crop = Bitmap.createBitmap(b, l, t, r - l, bt - t)
+                    captureMode = false
+                    invalidate()
+                    onCaptured?.invoke(crop)
+                } else {
+                    invalidate()
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> capDown = false
+        }
+        invalidate()
+        return true
+    }
+
+    private fun drawCaptureRect(c: Canvas) {
+        if (!captureMode || !capDown) return
+        val l = Math.min(capX0, capX1)
+        val t = Math.min(capY0, capY1)
+        val r = Math.max(capX0, capX1)
+        val b = Math.max(capY0, capY1)
+        capPaint.style = Paint.Style.FILL
+        capPaint.color = Color.argb(40, 166, 98, 106)
+        c.drawRect(l, t, r, b, capPaint)
+        capPaint.style = Paint.Style.STROKE
+        capPaint.strokeWidth = 2f * density
+        capPaint.color = Color.rgb(166, 98, 106)
+        capPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
+        c.drawRect(l, t, r, b, capPaint)
+        capPaint.pathEffect = null
     }
 
     /** Yazının üstünü karalayınca altındaki çizgiler silinir. */
@@ -813,6 +903,7 @@ class DrawView(context: Context) : View(context) {
         drawCutLasso(c)
         drawRuler(c)
         drawLaser(c)
+        drawCaptureRect(c)
     }
 
     private fun rad(deg: Float) = Math.toRadians(deg.toDouble())
@@ -1579,6 +1670,22 @@ class DrawView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (captureMode) return handleCaptureTouch(e)
+        run {
+            val t0 = e.getToolType(0)
+            if (t0 == MotionEvent.TOOL_TYPE_STYLUS || t0 == MotionEvent.TOOL_TYPE_ERASER) {
+                lastPenMs = e.eventTime
+            } else if (palmReject && !fingerDraw && t0 == MotionEvent.TOOL_TYPE_FINGER) {
+                val a = e.actionMasked
+                if (a == MotionEvent.ACTION_DOWN) {
+                    rejecting = e.eventTime - lastPenMs < 500L || (strokeActive && strokeFromStylus)
+                }
+                if (rejecting) {
+                    if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) rejecting = false
+                    return true
+                }
+            }
+        }
         if (cutTarget != null) return handleCutTouch(e)
         if (tabTouch(e)) return true
         if (handleMultiTouch(e)) return true
@@ -1795,7 +1902,7 @@ class DrawView(context: Context) : View(context) {
                         val ly = s.ys[s.ys.size - 1]
                         val pr = s.ps[s.ps.size - 1]
                         val before = s.xs.size
-                        for (k in 1..3) s.add(lx + (ex - lx) * k / 3f, ly + (ey - ly) * k / 3f, pr)
+                        for (k in 1..6) s.add(lx + (ex - lx) * k / 6f, ly + (ey - ly) * k / 6f, pr)
                         if (s.highlighter) {
                             for (i in before until s.xs.size) invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width)
                         } else {
