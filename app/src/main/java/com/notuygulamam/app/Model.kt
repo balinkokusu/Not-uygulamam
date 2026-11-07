@@ -8,7 +8,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 
-enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER, TEXT, OBJECT, LASSO, LASER, TAPE }
+enum class Tool { PEN, HIGHLIGHTER, ERASER, PICKER, TEXT, OBJECT, LASSO, LASER, TAPE, HAND }
 
 enum class Paper(val label: String) {
     BLANK("boş"), RULED("çizgili"), GRID("kareli"), DOTTED("noktalı"),

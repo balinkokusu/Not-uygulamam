@@ -751,7 +751,7 @@ class PageRenderer {
                 val uy = Math.sin(a.toDouble()).toFloat() * half
                 // uç çizgiye paralelken çizgi tamamen kaybolmasın diye ince bir taban çizgi
                 linePaint.setColor(s.color)
-                linePaint.strokeWidth = s.width * 0.1f
+                linePaint.strokeWidth = s.width * 0.06f
                 c.drawLine(x0, y0, x1, y1, linePaint)
                 fillPaint.setColor(s.color)
                 fillPaint.alpha = 255

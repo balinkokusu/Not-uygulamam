@@ -64,7 +64,7 @@ class DrawView(context: Context) : View(context) {
     private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
         if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
             if (s.xs.size == 1) { rawX = s.xs[0]; rawY = s.ys[0] }
-            val t = stabilize.coerceIn(0, 100) / 100f
+            val t = effStab(s.kind) / 100f
             val dt = 0.008f
             val spd = hypot(x - rawX, y - rawY) / dt * sc / density
             rawX = x
@@ -81,11 +81,15 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
+    /** Kaligrafi ucunda kalın-ince farkı yön değişiminden doğar; fazla yumuşatma bu farkı eritir, bu yüzden etkisi azaltılır. */
+    private fun effStab(kind: Int): Int = if (kind == 5) stabilize * 35 / 100 else stabilize
+
     /** Kalem kalkınca çizgiye hafif bir yumuşatma geçişi uygulanır; uç noktalar yerinde kalır. */
     private fun smoothStroke(s: Stroke) {
         val n = s.xs.size
-        if (n < 5 || stabilize < 15) return
-        val passes = 1 + stabilize / 40
+        val es = effStab(s.kind)
+        if (n < 5 || es < 15) return
+        val passes = 1 + es / 40
         for (pass in 0 until passes) {
             val ox2 = ArrayList(s.xs)
             val oy2 = ArrayList(s.ys)
@@ -99,11 +103,17 @@ class DrawView(context: Context) : View(context) {
     // ---- Avuç içi reddi: kalem yakındayken parmak dokunuşları yok sayılır ----
     var palmReject = true
     private var lastPenMs = 0L
+    private var lastPenX = 0f
+    private var lastPenY = 0f
     private var rejecting = false
 
     override fun onHoverEvent(e: MotionEvent): Boolean {
         val t = e.getToolType(0)
-        if (t == MotionEvent.TOOL_TYPE_STYLUS || t == MotionEvent.TOOL_TYPE_ERASER) lastPenMs = e.eventTime
+        if (t == MotionEvent.TOOL_TYPE_STYLUS || t == MotionEvent.TOOL_TYPE_ERASER) {
+            lastPenMs = e.eventTime
+            lastPenX = e.x
+            lastPenY = e.y
+        }
         return super.onHoverEvent(e)
     }
 
@@ -1804,10 +1814,14 @@ class DrawView(context: Context) : View(context) {
             val t0 = e.getToolType(0)
             if (t0 == MotionEvent.TOOL_TYPE_STYLUS || t0 == MotionEvent.TOOL_TYPE_ERASER) {
                 lastPenMs = e.eventTime
+                lastPenX = e.x
+                lastPenY = e.y
             } else if (palmReject && !fingerDraw && t0 == MotionEvent.TOOL_TYPE_FINGER) {
                 val a = e.actionMasked
                 if (a == MotionEvent.ACTION_DOWN) {
-                    rejecting = e.eventTime - lastPenMs < 500L || (strokeActive && strokeFromStylus)
+                    // avuç kalemin yakınındadır; kalemden uzak, bilerek yapılan parmak dokunuşu (ör. bandı kaldırma) geçer
+                    val near = hypot(e.x - lastPenX, e.y - lastPenY) < 320f * density
+                    rejecting = (e.eventTime - lastPenMs < 500L && near) || (strokeActive && strokeFromStylus)
                 }
                 if (rejecting) {
                     if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) rejecting = false
@@ -1863,6 +1877,7 @@ class DrawView(context: Context) : View(context) {
         if (tool == Tool.TEXT || tool == Tool.OBJECT) return handleItemTouch(e)
         if (tool == Tool.LASER) return handleLaserTouch(e)
         if (tool == Tool.TAPE) return handleTapeTouch(e)
+        if (tool == Tool.HAND) return handleHandTouch(e)
         if (tool == Tool.LASSO) return handleLassoTouch(e)
 
         if (!isStylus && !fingerDraw) {
@@ -2897,6 +2912,28 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
+    // uç tutamaçları sürüklenirken gerçek (oturtulmamış) konum; böylece 0/90/180 derecede yapışma yavaş harekette de bırakılabilir
+    private var rTrueX = 0f
+    private var rTrueY = 0f
+    private var rulerAligned = false
+
+    /** Cetvelin bir ucunu tutarken yatay/dikeye 3,5 dereceden yaklaşınca tam hizaya oturtur. */
+    private fun alignRuler(fixedX: Float, fixedY: Float, movX: Float, movY: Float): FloatArray {
+        val dx = movX - fixedX
+        val dy = movY - fixedY
+        val len = hypot(dx, dy)
+        rulerAligned = false
+        if (len < 1f) return floatArrayOf(movX, movY)
+        val ang = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+        val q = Math.round(ang / 90f) * 90f
+        if (abs(ang - q) < 3.5f) {
+            rulerAligned = true
+            val r = Math.toRadians(q.toDouble())
+            return floatArrayOf(fixedX + len * Math.cos(r).toFloat(), fixedY + len * Math.sin(r).toFloat())
+        }
+        return floatArrayOf(movX, movY)
+    }
+
     private fun handleRulerTouch(e: MotionEvent): Boolean {
         if (e.pointerCount > 1) return false
         val gx = pageX(e.x); val gy = pageY(e.y)
@@ -2910,15 +2947,30 @@ class DrawView(context: Context) : View(context) {
                     else -> 0
                 }
                 rLastX = gx; rLastY = gy
+                if (rulerMode == 1) { rTrueX = rx1; rTrueY = ry1 }
+                if (rulerMode == 2) { rTrueX = rx2; rTrueY = ry2 }
+                rulerAligned = false
                 return rulerMode != 0
             }
             MotionEvent.ACTION_MOVE -> {
                 if (rulerMode == 0) return false
                 val dx = gx - rLastX; val dy = gy - rLastY
                 when (rulerMode) {
-                    1 -> { rx1 += dx; ry1 += dy }
-                    2 -> { rx2 += dx; ry2 += dy }
-                    else -> { rx1 += dx; ry1 += dy; rx2 += dx; ry2 += dy }
+                    1 -> {
+                        rTrueX += dx; rTrueY += dy
+                        val p = alignRuler(rx2, ry2, rTrueX, rTrueY)
+                        rx1 = p[0]; ry1 = p[1]
+                    }
+                    2 -> {
+                        rTrueX += dx; rTrueY += dy
+                        val p = alignRuler(rx1, ry1, rTrueX, rTrueY)
+                        rx2 = p[0]; ry2 = p[1]
+                    }
+                    else -> {
+                        rx1 += dx; ry1 += dy; rx2 += dx; ry2 += dy
+                        val a = Math.toDegrees(Math.atan2((ry2 - ry1).toDouble(), (rx2 - rx1).toDouble())).toFloat()
+                        rulerAligned = abs(a - Math.round(a / 90f) * 90f) < 0.6f
+                    }
                 }
                 rLastX = gx; rLastY = gy
                 invalidate()
@@ -2927,15 +2979,82 @@ class DrawView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val was = rulerMode != 0
                 rulerMode = 0
+                rulerAligned = false
+                invalidate()
                 return was
             }
         }
         return false
     }
 
+    // ---- El aracı: kalemle de parmak gibi kaydırır; cetveli ve gizleme bandını tutar ----
+    private var handRuler = false
+    private var handLastX = 0f
+    private var handLastY = 0f
+    private var handDX = 0f
+    private var handDY = 0f
+    private var handDT = 0L
+    private var handMoved = false
+
+    private fun handleHandTouch(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                handRuler = rulerOn && handleRulerTouch(e)
+                handLastX = e.x; handLastY = e.y
+                handDX = e.x; handDY = e.y; handDT = e.eventTime
+                handMoved = false
+                activateAt(e.x)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (handRuler) { handleRulerTouch(e); return true }
+                val dx = e.x - handLastX
+                val dy = e.y - handLastY
+                handLastX = e.x; handLastY = e.y
+                if (hypot(e.x - handDX, e.y - handDY) > 12f * density) handMoved = true
+                if (handMoved && sc > fitSc * 1.02f) {
+                    ox += dx
+                    oy += dy
+                    clampTransform()
+                    invalidate()
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (handRuler) { handleRulerTouch(e); handRuler = false; return true }
+                if (!handMoved && e.eventTime - handDT < 400L) {
+                    val gx = pageX(e.x)
+                    val gy = pageY(e.y)
+                    val t = page.items.lastOrNull { it.type == PageItem.IMAGE && it.kind == TAPE_KIND && itemHit(it, gx, gy) }
+                    if (t != null) toggleTape(t)
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (handRuler) { handleRulerTouch(e); handRuler = false }
+                return true
+            }
+        }
+        return true
+    }
+
     private fun drawRuler(c: Canvas) {
         if (!rulerOn) return
         beginPage(c)
+        if (rulerAligned && rulerMode != 0) {
+            // tam yatay/dikey: cetvelin ekseni boyunca sayfa genişliğinde kılavuz çizgisi
+            val gdx = rx2 - rx1; val gdy = ry2 - ry1
+            val gl = hypot(gdx, gdy)
+            if (gl > 1f) {
+                rulerPaint.style = Paint.Style.STROKE
+                rulerPaint.strokeWidth = 2f
+                rulerPaint.setColor(Color.argb(190, 166, 98, 106))
+                rulerPaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(18f, 12f), 0f)
+                val far = max(page.width, page.height) * 2f
+                c.drawLine(rx1 - gdx / gl * far, ry1 - gdy / gl * far, rx1 + gdx / gl * far, ry1 + gdy / gl * far, rulerPaint)
+                rulerPaint.pathEffect = null
+            }
+        }
         val dx = rx2 - rx1; val dy = ry2 - ry1
         val len = hypot(dx, dy)
         val ang = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()

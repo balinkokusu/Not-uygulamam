@@ -250,6 +250,8 @@ class MainActivity : Activity() {
     private var popSnap: View? = null
     private var popHold: View? = null
     private var popScribble: View? = null
+    private var popStab: View? = null
+    private var popSliderRow: View? = null
 
     private fun rebuildSwatches() {
         // silginin rengi olmaz; paleti gizleriz ki yanlışlıkla kalem rengi değişmesin
@@ -257,6 +259,16 @@ class MainActivity : Activity() {
         swatchRow.removeAllViews()
         if (draw.tool == Tool.ERASER) {
             eraserChips()
+            return
+        }
+        if (draw.tool == Tool.HAND) {
+            val hint = TextView(this)
+            hint.text = "El aracı: kalem de parmak gibi davranır. Cetvelin uçlarını sürükleyerek boyutlandırın ve döndürün, gövdesinden taşıyın; gizleme bandına dokunarak kaldırın."
+            hint.textSize = 12f
+            hint.setTextColor(Look.inkSoft)
+            hint.setPadding(dp(16f), 0, dp(16f), 0)
+            hint.gravity = Gravity.CENTER_VERTICAL
+            swatchRow.addView(hint)
             return
         }
         if (draw.tool == Tool.TAPE) {
@@ -1436,6 +1448,12 @@ class MainActivity : Activity() {
         popSnap?.visibility = if (st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
         popHold?.visibility = if (st == Tool.PEN || st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
         popScribble?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
+        popStab?.visibility = if (st == Tool.PEN) View.VISIBLE else View.GONE
+        // silginin boyutu ve ön izlemesi araç çubuğunda zaten var; pencerede yalnız karalama seçeneği kalır
+        val eraserOnly = st == Tool.ERASER
+        popSliderRow?.visibility = if (eraserOnly) View.GONE else View.VISIBLE
+        preview.visibility = if (eraserOnly) View.GONE else View.VISIBLE
+        presetRow.visibility = if (eraserOnly) View.GONE else View.VISIBLE
         val range = when (st) {
             Tool.HIGHLIGHTER -> Pair(6, 40)
             Tool.ERASER -> Pair(6, 30)
@@ -1867,7 +1885,7 @@ class MainActivity : Activity() {
             "Defter ve dosya" to listOf(0, 3, 4),
             "Ekle" to listOf(13, 14, 17, 15, 26),
             "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(9, 21, 25, 18)
+            "Araçlar ve görünüm" to listOf(9, 25, 18)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -2825,7 +2843,8 @@ class MainActivity : Activity() {
             Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık"),
             Triple(Tool.TEXT, Icon.TEXT, "Metin kutusu (klavyeyle yazı)"),
             Triple(Tool.LASSO, Icon.LASSO, "Lasso: çevreleyerek seç, taşı, sil, çoğalt"),
-            Triple(Tool.LASER, Icon.LASER, "Lazer işaretçi (iz bırakmaz)")
+            Triple(Tool.LASER, Icon.LASER, "Lazer işaretçi (iz bırakmaz)"),
+            Triple(Tool.HAND, Icon.HAND, "El aracı: sayfayı kaydırır, cetveli ve bandı kalemle de tutar")
         )
         for ((t, ic, lb) in toolIcons) {
             val b = iconBtn(ic, lb) {
@@ -2846,6 +2865,9 @@ class MainActivity : Activity() {
                     }
                     if (t == Tool.LASER) {
                         Toast.makeText(this, "Lazer rengini değiştirmek için düğmeye bir kez daha dokunun", Toast.LENGTH_SHORT).show()
+                    }
+                    if (t == Tool.HAND) {
+                        Toast.makeText(this, "El aracı: yakınlaştırılmışken sayfayı kaydırır; cetvelin uçlarını ve gövdesini kalemle tutabilirsiniz, gizleme bandına dokununca kalkar", Toast.LENGTH_LONG).show()
                     }
                     if (t == Tool.TEXT) {
                         Toast.makeText(this, "Yazı yazmak için sayfada bir yere dokunun (kalemle ya da parmakla)", Toast.LENGTH_LONG).show()
@@ -2911,7 +2933,7 @@ class MainActivity : Activity() {
         swatchScroll.background = bar(dp(20f).toFloat())
         swatchScroll.elevation = dp(3f).toFloat()
         swatchScroll.clipToOutline = true
-        swatchScroll.addView(swatchRow)
+        swatchScroll.addView(swatchRow, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         swatchHost = swatchScroll
 
         val panel = LinearLayout(this)
@@ -2936,6 +2958,7 @@ class MainActivity : Activity() {
         sliderRow.addView(sliderLabel, LinearLayout.LayoutParams(dp(150f), LinearLayout.LayoutParams.WRAP_CONTENT))
         sliderRow.addView(seek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(sliderRow)
+        popSliderRow = sliderRow
         panel.addView(preview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64f)))
 
         val pressLabel = TextView(this)
@@ -2986,6 +3009,33 @@ class MainActivity : Activity() {
         panel.addView(scribbleBox)
         popScribble = scribbleBox
 
+        val stabLabel = TextView(this)
+        stabLabel.textSize = 13f
+        stabLabel.setSingleLine(true)
+        stabLabel.setPadding(dp(8f), 0, dp(8f), 0)
+        fun stabText(v: Int) = "Çizgi dengeleme: " + (if (v == 0) "kapalı" else "%$v")
+        stabLabel.text = stabText(draw.stabilize)
+        val stabSeek = SeekBar(this)
+        stabSeek.max = 100
+        stabSeek.progress = draw.stabilize
+        stabSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, v: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                draw.stabilize = v
+                getSharedPreferences("ayar", MODE_PRIVATE).edit().putInt("denge100", v).apply()
+                stabLabel.text = stabText(v)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        val stabRow = LinearLayout(this)
+        stabRow.orientation = LinearLayout.HORIZONTAL
+        stabRow.gravity = Gravity.CENTER_VERTICAL
+        stabRow.addView(stabLabel, LinearLayout.LayoutParams(dp(200f), LinearLayout.LayoutParams.WRAP_CONTENT))
+        stabRow.addView(stabSeek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        panel.addView(stabRow)
+        popStab = stabRow
+
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(bar(dp(20f).toFloat()))
         popup.isOutsideTouchable = true
@@ -3023,7 +3073,8 @@ class MainActivity : Activity() {
         val barLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         barLp.setMargins(dp(14f), dp(10f), dp(14f), dp(4f))
         root.addView(toolScroll, barLp)
-        val swLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        // yükseklik sabit: silgi, bant ve kalem satırları farklı boyda olsa da çizim alanı değişmez, sayfa yerinde kalır
+        val swLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52f))
         swLp.setMargins(dp(14f), dp(4f), dp(14f), dp(2f))
         root.addView(swatchScroll, swLp)
         root.addView(statusRow)
