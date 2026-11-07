@@ -234,6 +234,13 @@ class LibraryActivity : Activity() {
         titleView.setTextColor(Look.ink)
         header.addView(backBtn)
         header.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val cardsBtn = TextView(this)
+        cardsBtn.text = "Flaş kartlar"
+        cardsBtn.textSize = 16f
+        cardsBtn.setTextColor(Look.accent)
+        cardsBtn.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+        cardsBtn.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+        header.addView(cardsBtn)
         val backupBtn = TextView(this)
         backupBtn.text = "Yedek"
         backupBtn.textSize = 16f
@@ -484,6 +491,19 @@ class LibraryActivity : Activity() {
         var committed = false
         val chooser = PageStyleChooser(this, 1200f, 1697f, Color.WHITE)
         val thumbs = ArrayList<View>()
+        val viewGroup = android.widget.RadioGroup(this)
+        viewGroup.orientation = LinearLayout.HORIZONTAL
+        run {
+            val one = android.widget.RadioButton(this)
+            one.id = 411
+            one.text = "Tek sayfa"
+            val two = android.widget.RadioButton(this)
+            two.id = 412
+            two.text = "Çift sayfa (ajanda gibi)"
+            viewGroup.addView(one)
+            viewGroup.addView(two)
+            viewGroup.check(if (presetPlanner > 0) 412 else 411)
+        }
 
         val content = LinearLayout(this)
         content.orientation = LinearLayout.VERTICAL
@@ -597,6 +617,8 @@ class LibraryActivity : Activity() {
                 val entries = Paper.values().map { Pair(it.label, it) } + plannerPage
                 content.addView(PaperGrid(this, entries, paperIdx, Color.WHITE) { i -> paperIdx = i })
                 content.addView(chooser)
+                content.addView(label("Sayfa görünümü"))
+                content.addView(viewGroup)
             }
         }
 
@@ -629,6 +651,8 @@ class LibraryActivity : Activity() {
                         }
                         store.dir.mkdirs()
                         Storage.save(nb, store.notebookFile(draft.id))
+                        getSharedPreferences("ayar", MODE_PRIVATE).edit()
+                            .putBoolean("cift_" + draft.id, viewGroup.checkedRadioButtonId == 412 || (paperIdx >= Paper.values().size && viewGroup.checkedRadioButtonId != 411)).apply()
                     }
                     store.items.add(draft)
                 } else {

@@ -1736,13 +1736,14 @@ class MainActivity : Activity() {
             "Defter ve dosya" to listOf(0, 2, 3, 4),
             "Ekle" to listOf(13, 14, 17, 15),
             "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(22, 23, 9, 21, 12, 18)
+            "Araçlar ve görünüm" to listOf(24, 22, 23, 9, 21, 12, 18)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
             for (id in g.second) {
                 val label = when (id) {
                     20 -> "Şablonlar (önizleme, renk, sol/sağ ayrı uygulama)"
+                    24 -> "Sayfa görünümü: " + (if (spread) "çift sayfa" else "tek sayfa") + " (değiştirmek için dokunun)"
                     22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
                     23 -> "Pomodoro zamanlayıcı (sürüklenir, aç / kapat)"
                     21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
@@ -1755,6 +1756,12 @@ class MainActivity : Activity() {
             when (mi.itemId) {
                 0 -> pickPdf()
                 20 -> showTemplateScreen()
+                24 -> {
+                    spread = !spread
+                    getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("cift_$itemId", spread).apply()
+                    showCurrent()
+                    refresh()
+                }
                 22 -> toggleCalculator()
                 23 -> togglePomodoro()
                 21 -> {
