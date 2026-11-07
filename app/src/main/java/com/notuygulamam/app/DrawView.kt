@@ -988,6 +988,10 @@ class DrawView(context: Context) : View(context) {
     }
 
     /** Arka planı, kağıdı ve tüm biten çizgileri bitmap'e baştan çizer. */
+    /** Ses oynatılırken: bu andan sonra yazılan çizgiler gizlenir (0 = hepsi görünür). */
+    private var playClock = 0L
+    fun setPlayClock(v: Long) { playClock = v; rebuildBase() }
+
     private fun rebuildBase() {
         val c = baseCanvas ?: return
         c.drawColor(Look.canvas)
@@ -1030,7 +1034,7 @@ class DrawView(context: Context) : View(context) {
             c.scale(sc, sc)
             c.clipRect(-off, 0f, total - off, pg.height)
             spiralClip(c, off)
-            for (s in pg.strokes) drawStroke(c, s)
+            for (s in pg.strokes) if (playClock == 0L || s.t == 0L || s.t <= playClock) drawStroke(c, s)
             c.restore()
         }
         for ((k, pg) in list.withIndex()) {
@@ -1968,6 +1972,7 @@ class DrawView(context: Context) : View(context) {
                     val sens = PreviewView.penSens(penKind, pressureSensitivity / 100f)
                     val s = if (hl) Stroke(hlColor, hlWidthDp * UNIT, true, 0f, hlKind)
                     else Stroke(penColor, penWidthDp * UNIT, false, sens, penKind)
+                    s.t = System.currentTimeMillis()
                     rulerSnap = rulerOn && rulerDist(gx, gy) < 44f * density / sc
                     s.add(gx, gy, if (hl) 0.5f else normP(e.pressure))
                     if (rulerSnap) snapLast(s, 0)
@@ -2382,7 +2387,7 @@ class DrawView(context: Context) : View(context) {
         var cur: Stroke? = null
         for (k in xs.indices) {
             if (keep[k]) {
-                if (cur == null) cur = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind)
+                if (cur == null) { cur = Stroke(s.color, s.width, s.highlighter, s.sens, s.kind); cur.t = s.t }
                 cur.add(xs[k], ys[k], ps[k])
             } else {
                 if (cur != null && cur.xs.size >= 2) out.add(cur)

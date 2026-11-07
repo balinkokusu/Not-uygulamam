@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE, RULER, HAND, IMAGE
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE, RULER, HAND, IMAGE, MIC
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -207,6 +207,14 @@ class IconButton(
                 c.drawLine(0.66f * u, 0.52f * u, 0.78f * u, 0.40f * u, p)
                 rect.set(0.26f * u, 0.46f * u, 0.70f * u, 0.88f * u)
                 c.drawRoundRect(rect, 0.16f * u, 0.16f * u, p)
+            }
+            Icon.MIC -> {
+                rect.set(0.38f * u, 0.12f * u, 0.62f * u, 0.56f * u)
+                c.drawRoundRect(rect, 0.12f * u, 0.12f * u, p)
+                rect.set(0.26f * u, 0.32f * u, 0.74f * u, 0.72f * u)
+                c.drawArc(rect, 0f, 180f, false, p)
+                c.drawLine(0.5f * u, 0.72f * u, 0.5f * u, 0.88f * u, p)
+                c.drawLine(0.36f * u, 0.88f * u, 0.64f * u, 0.88f * u, p)
             }
             Icon.IMAGE -> {
                 rect.set(0.12f * u, 0.2f * u, 0.88f * u, 0.8f * u)

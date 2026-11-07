@@ -26,6 +26,8 @@ class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sen
     val xs = ArrayList<Float>()
     val ys = ArrayList<Float>()
     val ps = ArrayList<Float>()
+    /** Çizginin başladığı an (ms); ses kaydıyla eşleştirmek için. */
+    var t = 0L
     fun add(x: Float, y: Float, p: Float) {
         xs.add(x); ys.add(y); ps.add(p)
     }
@@ -220,7 +222,7 @@ class Notebook {
 
 object Storage {
     private const val MAGIC = 0x4E4F5431
-    private const val VERSION = 9
+    private const val VERSION = 10
 
     /** Günde bir kez, kayıttan önce mevcut dosyanın kopyasını alır; son 4 günün kopyaları saklanır. */
     private fun dailyBackup(file: File) {
@@ -264,6 +266,7 @@ object Storage {
                     o.writeBoolean(s.highlighter)
                     o.writeFloat(s.sens)
                     o.writeInt(s.kind)
+                    o.writeLong(s.t)
                     val n = s.xs.size
                     o.writeInt(n)
                     for (i in 0 until n) {
@@ -357,6 +360,7 @@ object Storage {
                         val kind = if (ver >= 6) i.readInt() else 0
                         val n = i.readInt()
                         val s = Stroke(color, sw, hl, sens, kind)
+                        if (ver >= 10) s.t = i.readLong()
                         for (q in 0 until n) {
                             val x = i.readFloat()
                             val y = i.readFloat()

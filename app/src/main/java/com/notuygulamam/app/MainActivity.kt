@@ -110,7 +110,125 @@ class MainActivity : Activity() {
         }
     }
 
+    private var recorder: android.media.MediaRecorder? = null
+    private var recStart = 0L
+    private var recFile: File? = null
+    private var player: android.media.MediaPlayer? = null
+    private val tick = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun audioDir(): File = File(filesDir, "audio").also { it.mkdirs() }
+    private fun noteKey(): String = if (itemId.isEmpty()) "defter" else itemId
+
+    private fun recordings(): List<File> =
+        audioDir().listFiles { f -> f.name.startsWith(noteKey() + "_") && f.name.endsWith(".m4a") }
+            ?.sortedBy { it.name } ?: emptyList()
+
+    private fun recStartOf(f: File): Long = f.name.removeSuffix(".m4a").substringAfterLast('_').toLongOrNull() ?: 0L
+
+    private fun showAudioDialog() {
+        val rec = recorder != null
+        val items = ArrayList<String>()
+        if (player != null) items.add("Oynatmayı durdur")
+        else if (rec) items.add("Kaydı bitir")
+        else items.add("Yeni ses kaydı başlat")
+        val files = recordings()
+        val fmt = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale("tr"))
+        if (!rec && player == null) for (f in files) items.add("Oynat: " + fmt.format(java.util.Date(recStartOf(f))))
+        if (!rec && player == null && files.isNotEmpty()) items.add("Kayıtları sil")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Ses kaydı")
+            .setItems(items.toTypedArray()) { _, w ->
+                val label = items[w]
+                when {
+                    label == "Oynatmayı durdur" -> stopPlayback()
+                    label == "Kaydı bitir" -> stopRecording()
+                    label == "Yeni ses kaydı başlat" -> startRecording()
+                    label == "Kayıtları sil" -> {
+                        for (f in files) f.delete()
+                        Toast.makeText(this, "Bu defterin ses kayıtları silindi", Toast.LENGTH_SHORT).show()
+                    }
+                    else -> startPlayback(files[w - 1])
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun startRecording() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 77)
+            return
+        }
+        try {
+            val start = System.currentTimeMillis()
+            val f = File(audioDir(), noteKey() + "_" + start + ".m4a")
+            val r = android.media.MediaRecorder()
+            r.setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+            r.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+            r.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+            r.setAudioEncodingBitRate(96000)
+            r.setAudioSamplingRate(44100)
+            r.setOutputFile(f.absolutePath)
+            r.prepare()
+            r.start()
+            recorder = r
+            recStart = start
+            recFile = f
+            Toast.makeText(this, "Kayıt başladı; bitirmek için mikrofon düğmesine yeniden dokunun", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            recorder = null
+            Toast.makeText(this, "Kayıt başlatılamadı", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun stopRecording() {
+        val r = recorder ?: return
+        try { r.stop() } catch (e: Exception) { recFile?.delete() }
+        r.release()
+        recorder = null
+        Toast.makeText(this, "Kayıt kaydedildi", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun startPlayback(f: File) {
+        stopPlayback()
+        val start = recStartOf(f)
+        try {
+            val mp = android.media.MediaPlayer()
+            mp.setDataSource(f.absolutePath)
+            mp.prepare()
+            mp.setOnCompletionListener { stopPlayback() }
+            mp.start()
+            player = mp
+            val step = object : Runnable {
+                override fun run() {
+                    val p = player ?: return
+                    draw.setPlayClock(start + p.currentPosition + 1)
+                    tick.postDelayed(this, 250)
+                }
+            }
+            tick.post(step)
+            Toast.makeText(this, "Oynatılıyor: kayıttan sonra yazılan çizgiler sesle birlikte belirir", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Kayıt oynatılamadı", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun stopPlayback() {
+        tick.removeCallbacksAndMessages(null)
+        player?.let { try { it.stop() } catch (e: Exception) {}; it.release() }
+        player = null
+        draw.setPlayClock(0L)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 77 && grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) startRecording()
+        else if (requestCode == 77) Toast.makeText(this, "Mikrofon izni verilmedi", Toast.LENGTH_LONG).show()
+    }
+
     override fun onPause() {
+        if (recorder != null) stopRecording()
+        if (player != null) stopPlayback()
         super.onPause()
         handler.removeCallbacks(saveRunnable)
         saveNow()
@@ -3018,6 +3136,7 @@ class MainActivity : Activity() {
             toolRow.addView(b)
         }
         toolRow.addView(iconBtn(Icon.IMAGE, "Galeriden resim ekle") { pickImage() })
+        toolRow.addView(iconBtn(Icon.MIC, "Ses kaydı") { showAudioDialog() })
         val stickerBtn = iconBtn(Icon.STICKER, "Çıkartma") { showStickerDialog() }
         toolButtons[Tool.OBJECT] = stickerBtn
         toolRow.addView(stickerBtn)
