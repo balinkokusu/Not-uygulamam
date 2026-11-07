@@ -749,6 +749,10 @@ class PageRenderer {
                 val a = -0.7f
                 val ux = Math.cos(a.toDouble()).toFloat() * half
                 val uy = Math.sin(a.toDouble()).toFloat() * half
+                // uç çizgiye paralelken çizgi tamamen kaybolmasın diye ince bir taban çizgi
+                linePaint.setColor(s.color)
+                linePaint.strokeWidth = s.width * 0.3f
+                c.drawLine(x0, y0, x1, y1, linePaint)
                 fillPaint.setColor(s.color)
                 fillPaint.alpha = 255
                 path.reset()
@@ -931,6 +935,16 @@ class PageRenderer {
         linePaint.alpha = 255
         linePaint.strokeCap = Paint.Cap.ROUND
         if (n == 1) {
+            if (s.kind == 5) {
+                val half = s.width * 1.5f
+                linePaint.setColor(s.color)
+                linePaint.strokeWidth = s.width * 0.3f
+                c.drawLine(
+                    s.xs[0] - Math.cos(-0.7) .toFloat() * half, s.ys[0] - Math.sin(-0.7).toFloat() * half,
+                    s.xs[0] + Math.cos(-0.7).toFloat() * half, s.ys[0] + Math.sin(-0.7).toFloat() * half, linePaint
+                )
+                return
+            }
             fillPaint.setColor(s.color)
             c.drawCircle(s.xs[0], s.ys[0], s.width * widthFactor(s, s.ps[0]) * 0.5f, fillPaint)
             return

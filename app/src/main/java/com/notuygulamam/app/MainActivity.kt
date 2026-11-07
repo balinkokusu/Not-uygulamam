@@ -222,6 +222,26 @@ class MainActivity : Activity() {
             chip("Yazı", draw.eraseText) { draw.eraseText = !draw.eraseText }
             chip("Çıkartma", draw.eraseSticker) { draw.eraseSticker = !draw.eraseSticker }
             chip("Resim", draw.eraseImage) { draw.eraseImage = !draw.eraseImage }
+        // silgi boyutu da burada: ayrı bir pencereye gitmeden ayarlanır
+        val sizeLbl = TextView(this)
+        sizeLbl.text = "Boyut " + draw.eraserRadiusDp.toInt()
+        sizeLbl.textSize = 13f
+        sizeLbl.setTextColor(Look.inkSoft)
+        sizeLbl.setPadding(dp(18f), 0, dp(6f), 0)
+        swatchRow.addView(sizeLbl)
+        val sz = SeekBar(this)
+        sz.max = 24
+        sz.progress = (draw.eraserRadiusDp - 6f).toInt().coerceIn(0, 24)
+        sz.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, v: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                draw.eraserRadiusDp = (6 + v).toFloat()
+                sizeLbl.text = "Boyut " + (6 + v)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) { preview.invalidate() }
+        })
+        swatchRow.addView(sz, LinearLayout.LayoutParams(dp(180f), LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     private var swatchHost: View? = null
@@ -530,10 +550,7 @@ class MainActivity : Activity() {
 
     /** Şablon başlığını (ve tarihi) sayfaya uygular; önceki şablon başlığı silinir. */
     private fun applyTemplateHeader(pg: PageData, t: PageTemplate) {
-        pg.items.removeAll { x ->
-            x.type == PageItem.TEXT && x.size == 30f && x.color == Color.rgb(120, 108, 110) &&
-                x.y < 80f && Math.abs((x.x - x.w / 2f) - 70f) < 2f
-        }
+        pg.items.removeAll { x -> x.isTemplateHeader() }
         if (t.header.isNotEmpty() || t.withDate) {
             val title = StringBuilder(t.header)
             if (t.withDate) {
@@ -2832,6 +2849,7 @@ class MainActivity : Activity() {
             refresh()
         }
         toolRow.addView(spreadBtn)
+        toolRow.addView(iconBtn(Icon.TAPE, "Washi bant (desenli bantlar)") { showTapeDialog() })
         toolRow.addView(iconBtn(Icon.CALC, "Hesap makinesi") { toggleCalculator() })
         toolRow.addView(iconBtn(Icon.TIMER, "Pomodoro zamanlayıcı") { togglePomodoro() })
         toolRow.addView(spacer())

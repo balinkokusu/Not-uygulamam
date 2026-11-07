@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -189,6 +189,10 @@ class IconButton(
                 c.drawCircle(0.62f * u, 0.4f * u, 0.05f * u, p)
                 rect.set(0.28f * u, 0.4f * u, 0.68f * u, 0.7f * u)
                 c.drawArc(rect, 20f, 140f, false, p)
+            }
+            Icon.TAPE -> {
+                poly(c, u, true, 0.1f, 0.34f, 0.18f, 0.28f, 0.26f, 0.34f, 0.34f, 0.28f, 0.42f, 0.34f, 0.5f, 0.28f, 0.58f, 0.34f, 0.66f, 0.28f, 0.74f, 0.34f, 0.82f, 0.28f, 0.9f, 0.34f,
+                    0.9f, 0.66f, 0.82f, 0.72f, 0.74f, 0.66f, 0.66f, 0.72f, 0.58f, 0.66f, 0.5f, 0.72f, 0.42f, 0.66f, 0.34f, 0.72f, 0.26f, 0.66f, 0.18f, 0.72f, 0.1f, 0.66f)
             }
             Icon.CALC -> {
                 rect.set(0.2f * u, 0.08f * u, 0.8f * u, 0.92f * u)

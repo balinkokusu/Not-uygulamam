@@ -51,6 +51,11 @@ class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sen
 }
 
 /** Sayfadaki metin kutusu, çıkartma ya da resim; (x, y) nesnenin merkezidir, ölçüler sayfa birimindedir. */
+/** Şablonun sayfa başına koyduğu başlık / tarih satırı; silgi ve karalama bunu silmez, yalnız seçilip silinebilir. */
+fun PageItem.isTemplateHeader(): Boolean =
+    type == PageItem.TEXT && size == 30f && color == android.graphics.Color.rgb(120, 108, 110) &&
+        y < 80f && Math.abs((x - w / 2f) - 70f) < 2f
+
 class PageItem(var type: Int, var x: Float, var y: Float) {
     var w = 300f
     var h = 300f

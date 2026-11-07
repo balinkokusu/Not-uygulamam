@@ -1801,7 +1801,8 @@ class DrawView(context: Context) : View(context) {
                         holdHandler.removeCallbacks(holdRunnable)
                         holdHandler.postDelayed(holdRunnable, HOLD_MS)
                     }
-                    if (!hl) {
+                    if (!hl && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4)) {
+                        // yalnızca yuvarlak uçlu kalemlerde ilk dokunuş noktası hemen çizilir; diğerleri çizgi başlayınca kendi biçimleriyle çizilir
                         val r = s.width * widthFactor(s, s.ps[0]) * 0.5f
                         val c = baseCanvas
                         if (c != null) {
@@ -2097,7 +2098,7 @@ class DrawView(context: Context) : View(context) {
         if (eraseText) {
             for (k in page.items.indices.reversed()) {
                 val it = page.items[k]
-                if (it.type == PageItem.TEXT && marked(it.x, it.y)) itemVictims.add(Pair(k, it))
+                if (it.type == PageItem.TEXT && !it.isTemplateHeader() && marked(it.x, it.y)) itemVictims.add(Pair(k, it))
             }
         }
         if (victims.isEmpty() && itemVictims.isEmpty()) return false
@@ -2148,7 +2149,7 @@ class DrawView(context: Context) : View(context) {
                 PageItem.STICKER -> eraseSticker
                 else -> eraseImage
             }
-            if (allowed && itemNear(it, x, y, r)) {
+            if (allowed && !it.isTemplateHeader() && itemNear(it, x, y, r)) {
                 gestureRemovedItems.add(Pair(k, it))
                 page.items.removeAt(k)
                 if (selectedItem === it) setSel(null)
