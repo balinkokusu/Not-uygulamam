@@ -208,9 +208,10 @@ object CoverCache {
 
 /** Kapak şablonları; hepsi kodla çizilir, kullanıcı şablon ve rengi seçer. */
 object CoverArt {
-    const val STYLE_COUNT = 10
+    const val STYLE_COUNT = 13
     val names = arrayOf(
-        "Düz", "Geçişli", "Noktalı", "Çizgili", "Dalga", "Kareli", "Çiçek", "Gece", "Gün batımı", "Kraft"
+        "Düz", "Geçişli", "Noktalı", "Çizgili", "Dalga", "Kareli", "Çiçek", "Gece", "Gün batımı", "Kraft",
+        "Petek", "Deri", "Arı ve bal"
     )
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -261,12 +262,95 @@ object CoverArt {
                 paint.color = lighten(color, 0.55f)
                 c.drawRect(r, paint)
             }
+            11 -> {
+                paint.shader = LinearGradient(r.left, r.top, r.right, r.bottom, color, darken(color, 0.35f), Shader.TileMode.CLAMP)
+                c.drawRect(r, paint)
+                paint.shader = null
+            }
+            12 -> {
+                paint.color = lighten(color, 0.8f)
+                c.drawRect(r, paint)
+            }
             else -> {
                 paint.color = color
                 c.drawRect(r, paint)
             }
         }
         when (style) {
+            10 -> {
+                // petek deseni
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = w * 0.014f
+                paint.color = Color.argb(150, Color.red(light), Color.green(light), Color.blue(light))
+                val rad = w / 7f
+                var col = 0
+                var x = r.left
+                while (x < r.right + rad) {
+                    var y = r.top + (if (col % 2 == 0) 0f else rad * 0.87f)
+                    while (y < r.bottom + rad) {
+                        path.reset()
+                        for (i in 0..5) {
+                            val a = (60f * i) * PI.toFloat() / 180f
+                            val px = x + rad * cos(a)
+                            val py = y + rad * sin(a)
+                            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                        }
+                        path.close()
+                        c.drawPath(path, paint)
+                        y += rad * 1.74f
+                    }
+                    x += rad * 1.5f
+                    col++
+                }
+                paint.style = Paint.Style.FILL
+            }
+            11 -> {
+                // dikişli deri: kesikli dikiş ve altın köşeler
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = w * 0.012f
+                paint.color = Color.argb(210, 226, 190, 100)
+                paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(w * 0.04f, w * 0.03f), 0f)
+                val m = w * 0.07f
+                c.drawRoundRect(RectF(r.left + m, r.top + m, r.right - m, r.bottom - m), w * 0.03f, w * 0.03f, paint)
+                paint.pathEffect = null
+                paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(226, 178, 70)
+                val cs = w * 0.13f
+                path.reset()
+                path.moveTo(r.right - cs, r.top); path.lineTo(r.right, r.top); path.lineTo(r.right, r.top + cs)
+                path.lineTo(r.right - cs * 0.55f, r.top + cs * 0.55f); path.close()
+                c.drawPath(path, paint)
+                path.reset()
+                path.moveTo(r.right - cs, r.bottom); path.lineTo(r.right, r.bottom); path.lineTo(r.right, r.bottom - cs)
+                path.lineTo(r.right - cs * 0.55f, r.bottom - cs * 0.55f); path.close()
+                c.drawPath(path, paint)
+                paint.color = Color.argb(120, 0, 0, 0)
+                c.drawRect(r.left, r.top + h * 0.62f, r.right, r.top + h * 0.66f, paint)
+            }
+            12 -> {
+                // arı ve bal kavanozu
+                val cx = r.left + w * 0.55f
+                val cy = r.top + h * 0.38f
+                val u = w * 0.12f
+                paint.color = Color.argb(235, 255, 255, 255)
+                c.drawOval(RectF(cx - u * 1.5f, cy - u * 1.6f, cx - u * 0.1f, cy - u * 0.3f), paint)
+                c.drawOval(RectF(cx - u * 0.2f, cy - u * 1.9f, cx + u * 1.2f, cy - u * 0.5f), paint)
+                paint.color = Color.rgb(240, 180, 50)
+                c.drawOval(RectF(cx - u * 1.1f, cy - u * 0.6f, cx + u * 1.2f, cy + u * 0.7f), paint)
+                paint.color = Color.rgb(70, 45, 25)
+                for (k in -1..1) c.drawRect(cx + k * u * 0.5f - u * 0.1f, cy - u * 0.5f, cx + k * u * 0.5f + u * 0.1f, cy + u * 0.6f, paint)
+                paint.color = Color.rgb(250, 230, 160)
+                c.drawCircle(cx + u * 1.3f, cy - u * 0.1f, u * 0.38f, paint)
+                // kavanoz
+                val jx = r.left + w * 0.5f
+                val jy = r.top + h * 0.72f
+                paint.color = Color.rgb(126, 82, 40)
+                c.drawRoundRect(RectF(jx - u * 0.8f, jy - u * 1.2f, jx + u * 0.8f, jy - u * 0.8f), u * 0.1f, u * 0.1f, paint)
+                paint.color = Color.rgb(226, 150, 30)
+                c.drawRoundRect(RectF(jx - u * 1.1f, jy - u * 0.8f, jx + u * 1.1f, jy + u * 0.9f), u * 0.4f, u * 0.4f, paint)
+                paint.color = Color.argb(180, 255, 235, 150)
+                c.drawRoundRect(RectF(jx - u * 0.9f, jy - u * 0.7f, jx - u * 0.6f, jy + u * 0.5f), u * 0.15f, u * 0.15f, paint)
+            }
             2 -> {
                 paint.color = Color.argb(190, Color.red(light), Color.green(light), Color.blue(light))
                 val step = w / 8f
