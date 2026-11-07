@@ -731,8 +731,59 @@ class PageRenderer {
         return (h and 0xFFFF) / 65535f
     }
 
+    /** i. noktadaki kalınlık: son birkaç parçanın ortalaması; kalınlık noktadan noktaya sıçramaz, çizgi pürüzsüz kalınlaşır / incelir. */
+    private fun pointWidth(s: Stroke, i: Int): Float {
+        var sum = 0f
+        var cnt = 0
+        val hi = min(max(1, i), s.xs.size - 1)
+        for (j in max(1, i - 3)..hi) { sum += segmentWidth(s, j); cnt++ }
+        return if (cnt == 0) s.width else sum / cnt
+    }
+
+    /** Dolu, kalınlığı değişen çizgi parçası: iki uçta farklı yarıçaplı daire ve aradaki yamuk tek renkte birleşir; dikiş ve topak oluşmaz. */
+    private fun capsule(c: Canvas, x0: Float, y0: Float, r0: Float, x1: Float, y1: Float, r1: Float) {
+        c.drawCircle(x0, y0, r0, fillPaint)
+        c.drawCircle(x1, y1, r1, fillPaint)
+        val dx = x1 - x0
+        val dy = y1 - y0
+        val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        if (len < 0.01f) return
+        val nx = -dy / len
+        val ny = dx / len
+        path.reset()
+        path.moveTo(x0 + nx * r0, y0 + ny * r0)
+        path.lineTo(x1 + nx * r1, y1 + ny * r1)
+        path.lineTo(x1 - nx * r1, y1 - ny * r1)
+        path.lineTo(x0 - nx * r0, y0 - ny * r0)
+        path.close()
+        c.drawPath(path, fillPaint)
+    }
+
+    /** Çizginin başında ve (yeniden çizilirken) sonunda kalınlık çarpanı. */
+    private fun endTaper(s: Stroke, i: Int, last: Boolean): Float {
+        val n = s.xs.size
+        return when (s.kind) {
+            3 -> {
+                var t = min(1f, 0.25f + i / 10f)
+                if (last) t = min(t, 0.25f + (n - 1 - i) / 10f)
+                t
+            }
+            0 -> if (last) min(1f, 0.5f + (n - 1 - i) / 7f) else 1f
+            else -> 1f
+        }
+    }
+
     /** Kalem çizgisinin i. parçasını (i-1 ile i arası) türüne göre çizer. */
     fun drawPenSegment(c: Canvas, s: Stroke, i: Int, last: Boolean) {
+        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4)) {
+            fillPaint.style = Paint.Style.FILL
+            fillPaint.setColor(s.color)
+            fillPaint.alpha = 255
+            val r0 = pointWidth(s, i - 1) * endTaper(s, i - 1, last) / 2f
+            val r1 = pointWidth(s, i) * endTaper(s, i, last) / 2f
+            capsule(c, s.xs[i - 1], s.ys[i - 1], max(0.3f, r0), s.xs[i], s.ys[i], max(0.3f, r1))
+            return
+        }
         val x0 = s.xs[i - 1]
         val y0 = s.ys[i - 1]
         val x1 = s.xs[i]
