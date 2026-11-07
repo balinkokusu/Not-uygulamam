@@ -1100,7 +1100,13 @@ class PageRenderer {
                 if (b != null) {
                     val r = RectF(-it.w / 2f, -it.h / 2f, it.w / 2f, it.h / 2f)
                     if (it.kind == TAPE_KIND && it.text == "k") {
-                        // kalkmış bant tamamen görünmez olur; aynı yere dokununca yeniden kapanır
+                        // kalkmış bant: yalnız kesikli çerçevesi kalır, bant parçası görünmez; dokununca yeniden kapanır
+                        val dp = Paint(Paint.ANTI_ALIAS_FLAG)
+                        dp.style = Paint.Style.STROKE
+                        dp.strokeWidth = 3f
+                        dp.color = Color.argb(140, 120, 100, 100)
+                        dp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
+                        c.drawRect(r, dp)
                     } else {
                         c.drawBitmap(b, null, r, bmpPaint)
                     }

@@ -54,23 +54,45 @@ class DrawView(context: Context) : View(context) {
     /** Çizgi dengeleme (titremeyi azaltır): 0 kapalı, 100 en yüksek. */
     var stabilize = 0
 
+    private var rawX = 0f
+    private var rawY = 0f
+
+    /**
+     * Çizgi dengeleme (One Euro süzgeci): yavaş ve titrek çizerken noktalar güçlü biçimde yumuşatılır,
+     * hızlı ve bilerek yapılan hareketlerde neredeyse hiç gecikme olmaz; böylece harfin şekli bozulmaz, yalnız titreme gider.
+     */
     private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
         if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
-            // "ip" yöntemi: çizgi ucu, kalem ucuna bağlı uzunluğu sabit bir ipin ucunda sürüklenir.
-            // Küçük titremeler ipin boşluğunda kaybolur; 100'de ip yaklaşık 30 dp'dir.
+            if (s.xs.size == 1) { rawX = s.xs[0]; rawY = s.ys[0] }
             val t = stabilize.coerceIn(0, 100) / 100f
-            val rope = t * 30f * density / sc
+            val dt = 0.008f
+            val spd = hypot(x - rawX, y - rawY) / dt * sc / density
+            rawX = x
+            rawY = y
+            val fmin = 24f - 22f * t
+            val fc = fmin + (0.03f - 0.012f * t) * spd
+            val tau = 1f / (2f * Math.PI.toFloat() * fc)
+            val a = 1f / (1f + tau / dt)
             val lx = s.xs[s.xs.size - 1]
             val ly = s.ys[s.ys.size - 1]
-            val dx = x - lx
-            val dy = y - ly
-            val d = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-            if (d > rope && d > 0f) {
-                val k = (d - rope) / d
-                s.add(lx + dx * k, ly + dy * k, p)
-            }
+            s.add(lx + (x - lx) * a, ly + (y - ly) * a, p)
         } else {
             s.add(x, y, p)
+        }
+    }
+
+    /** Kalem kalkınca çizgiye hafif bir yumuşatma geçişi uygulanır; uç noktalar yerinde kalır. */
+    private fun smoothStroke(s: Stroke) {
+        val n = s.xs.size
+        if (n < 5 || stabilize < 15) return
+        val passes = 1 + stabilize / 40
+        for (pass in 0 until passes) {
+            val ox2 = ArrayList(s.xs)
+            val oy2 = ArrayList(s.ys)
+            for (i in 1 until n - 1) {
+                s.xs[i] = (ox2[i - 1] + 2f * ox2[i] + ox2[i + 1]) / 4f
+                s.ys[i] = (oy2[i - 1] + 2f * oy2[i] + oy2[i + 1]) / 4f
+            }
         }
     }
 
@@ -788,10 +810,21 @@ class DrawView(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w <= 0 || h <= 0) return
+        // araç çubuğu yüksekliği değişince (kalem ↔ silgi) yakınlaştırma ve konum korunur
+        val zoomed = oldw > 0 && oldh > 0 && sc > fitSc * 1.01f
+        val ratio = if (fitSc > 0f) sc / fitSc else 1f
+        val cxPage = if (zoomed) ((oldw + reserveL - reserveR) / 2f - ox) / sc else 0f
+        val cyPage = if (zoomed) (oldh / 2f - oy) / sc else 0f
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         base = bmp
         baseCanvas = Canvas(bmp)
         computeTransform()
+        if (zoomed) {
+            sc = (fitSc * ratio).coerceIn(fitSc, fitSc * 6f)
+            ox = (w + reserveL - reserveR) / 2f - cxPage * sc
+            oy = h / 2f - cyPage * sc
+            clampTransform()
+        }
         requestBg()
         rebuildBase()
     }
@@ -2010,6 +2043,7 @@ class DrawView(context: Context) : View(context) {
                             drawPenIncrement(s)
                         }
                     }
+                    if (s != null && stabilize > 0 && !straightLive && !shapeFrozen && !rulerSnap) smoothStroke(s)
                     if (s != null && scribbleErase && !s.highlighter && !straightLive && !shapeFrozen &&
                         isScribble(s) && eraseUnderScribble(s)
                     ) {
@@ -2017,7 +2051,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive || s.kind == 3 || s.kind == 8 || s.kind == 11 || s.kind == 12
+                        var needsBake = s.highlighter || straightLive || stabilize >= 15 || s.kind == 3 || s.kind == 8 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
