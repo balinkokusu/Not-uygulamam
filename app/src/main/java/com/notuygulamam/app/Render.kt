@@ -48,7 +48,7 @@ class PageRenderer {
         1 -> 0.7f
         2 -> 1.0f
         13 -> 1.25f
-        3 -> 1.9f
+        3 -> 1.35f
         4 -> 1.3f
         5 -> 1.5f
         6, 7 -> 1f
@@ -85,17 +85,17 @@ class PageRenderer {
             bl[y * n + x] = sum / 9f
         }
         val px = IntArray(n * n)
-        val cut = if (dark) 0.40f else 0.50f
+        val base = if (dark) 0.55f else 0.30f
+        val gain = if (dark) 0.45f else 0.55f
         for (i in 0 until n * n) {
-            // 0.5 çevresinde yoğunlaşan değerleri açarak kontrast artırılır
-            val v = ((bl[i] - 0.5f) * 3.2f + 0.5f).coerceIn(0f, 1f)
-            val a = if (v < cut) 20 + v * 120f else (if (dark) 200 else 150) + (v - cut) * 110f
-            px[i] = Color.argb(a.toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+            val v = ((bl[i] - 0.5f) * 2.6f + 0.5f).coerceIn(0f, 1f)
+            val a = ((base + gain * v) * 255f).toInt().coerceIn(0, 255)
+            px[i] = Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
         }
         val bm = Bitmap.createBitmap(px, n, n, Bitmap.Config.ARGB_8888)
         val sh = android.graphics.BitmapShader(bm, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT)
         val m = android.graphics.Matrix()
-        m.setScale(1.8f, 1.8f)
+        m.setScale(0.55f, 0.55f)
         m.postTranslate(pass * 37f, pass * 19f)
         sh.setLocalMatrix(m)
         grainCache[key] = sh
@@ -125,14 +125,17 @@ class PageRenderer {
                 // Kurşun kalem: kâğıt dokusuna sürtünen grafit; çizgi, benekli bir doku deseninden "boyanır", kenarlar hafif pürüzlü kalır
                 val dark = s.kind == 13
                 val graphite = mix(col, Color.rgb(55, 55, 60), if (dark) 0.35f else 0.5f)
-                line(w * 1.12f, graphite, 0f, 0f, if (dark) 50 else 30)
+                // yumuşak, bulanık kenar payı: grafit çizginin çevresine hafifçe yayılır
+                linePaint.maskFilter = android.graphics.BlurMaskFilter(max(1f, w * 0.35f), android.graphics.BlurMaskFilter.Blur.NORMAL)
+                line(w * 1.25f, graphite, 0f, 0f, if (dark) 46 else 26)
+                linePaint.maskFilter = null
                 grainPaint.style = Paint.Style.STROKE
                 grainPaint.strokeCap = Paint.Cap.ROUND
                 grainPaint.strokeJoin = Paint.Join.ROUND
                 grainPaint.isFilterBitmap = true
                 for (pass in 0..1) {
                     grainPaint.shader = grainShader(graphite, dark, pass)
-                    grainPaint.strokeWidth = if (pass == 0) w else w * 0.82f
+                    grainPaint.strokeWidth = if (pass == 0) w else w * 0.85f
                     if (path != null) c.drawPath(path, grainPaint) else c.drawLine(x0, y0, x1, y1, grainPaint)
                 }
                 grainPaint.shader = null

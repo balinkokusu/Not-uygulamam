@@ -1979,9 +1979,9 @@ class DrawView(context: Context) : View(context) {
                         holdHandler.removeCallbacks(holdRunnable)
                         holdHandler.postDelayed(holdRunnable, HOLD_MS)
                     }
-                    if (!hl && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4)) {
+                    if (!hl && (s.kind == 1 || s.kind == 4)) {
                         // yalnızca yuvarlak uçlu kalemlerde ilk dokunuş noktası hemen çizilir; diğerleri çizgi başlayınca kendi biçimleriyle çizilir
-                        val r = s.width * widthFactor(s, s.ps[0]) * 0.5f
+                        val r = s.width * widthFactor(s, min(s.ps[0], 0.5f)) * 0.5f
                         val c = baseCanvas
                         if (c != null) {
                             beginPage(c)

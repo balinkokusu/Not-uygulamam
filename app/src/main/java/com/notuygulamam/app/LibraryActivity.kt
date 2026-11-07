@@ -260,46 +260,161 @@ class LibraryActivity : Activity() {
         }
 
         root.addView(header)
-        val tabs = LinearLayout(this)
-        tabs.orientation = LinearLayout.HORIZONTAL
-        tabs.setPadding(dp(20f), 0, dp(20f), dp(4f))
-        fun tab(t: String, on: Boolean, click: () -> Unit) {
+        // sekme çubuğu: tek yuvarlak çerçevede dört sekme
+        val tabBar = LinearLayout(this)
+        tabBar.orientation = LinearLayout.HORIZONTAL
+        tabBar.gravity = Gravity.CENTER_VERTICAL
+        val tbg = GradientDrawable()
+        tbg.cornerRadius = dp(30f).toFloat()
+        tbg.setColor(Color.argb(160, 255, 252, 248))
+        tbg.setStroke(dp(1f), Look.hairline)
+        tabBar.background = tbg
+        tabBar.setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
+        tabViews.clear()
+        val names = arrayOf("Ana sayfa", "Defterler", "Flaş kartlar", "Klasörler")
+        for (i in names.indices) {
             val v = TextView(this)
-            v.text = t
+            v.text = names[i]
             v.textSize = 15f
-            v.setPadding(dp(18f), dp(8f), dp(18f), dp(8f))
-            v.setTextColor(if (on) Look.accent else Look.inkSoft)
-            val g = GradientDrawable()
-            g.cornerRadius = dp(16f).toFloat()
-            g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
-            g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
-            v.background = g
-            v.setOnClickListener { click() }
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.rightMargin = dp(8f)
-            tabs.addView(v, lp)
+            v.gravity = Gravity.CENTER
+            v.setPadding(dp(10f), dp(10f), dp(10f), dp(10f))
+            v.setTypeface(Typeface.SERIF, Typeface.NORMAL)
+            v.setOnClickListener {
+                if (i == 2) startActivity(Intent(this, FlashcardsActivity::class.java))
+                else { mode = i; if (i != 2) folderId = ""; refresh() }
+            }
+            tabViews.add(v)
+            tabBar.addView(v, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
-        tab("Notlar", true) {}
-        tab("Flaş kartlar", false) { startActivity(Intent(this, FlashcardsActivity::class.java)) }
-        root.addView(tabs)
+        val tbLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        tbLp.setMargins(dp(20f), dp(4f), dp(20f), dp(8f))
+        root.addView(tabBar, tbLp)
+
         board = ReminderBoard(this)
-        root.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        root.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        homeBox = LinearLayout(this)
+        homeBox.orientation = LinearLayout.VERTICAL
+        homeBox.setPadding(dp(20f), dp(4f), dp(20f), dp(24f))
+        homeScroll = ScrollView(this)
+        homeScroll.addView(homeBox)
+        val gridBox = LinearLayout(this)
+        gridBox.orientation = LinearLayout.VERTICAL
+        gridBox.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        gridHost = gridBox
+        val content = android.widget.FrameLayout(this)
+        content.addView(homeScroll, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        content.addView(gridBox, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        root.addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         refresh()
     }
 
     private lateinit var board: ReminderBoard
+    private lateinit var homeBox: LinearLayout
+    private lateinit var homeScroll: ScrollView
+    private lateinit var gridHost: View
+    private val tabViews = ArrayList<TextView>()
+
+    /** 0 ana sayfa, 1 defterler, 2 klasörler. */
+    private var mode = 0
+
+    private fun sectionTitle(txt: String, glyph: String, onAll: (() -> Unit)?) {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        val t = TextView(this)
+        t.text = glyph + "  " + txt
+        t.textSize = 22f
+        t.setTypeface(Typeface.SERIF, Typeface.BOLD)
+        t.setTextColor(Look.ink)
+        row.addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        if (onAll != null) {
+            val all = TextView(this)
+            all.text = "Tümünü gör  ›"
+            all.textSize = 14f
+            all.setTextColor(Look.inkSoft)
+            all.setPadding(dp(10f), dp(8f), dp(4f), dp(8f))
+            all.setOnClickListener { onAll() }
+            row.addView(all)
+        }
+        row.setPadding(0, dp(18f), 0, dp(8f))
+        homeBox.addView(row)
+    }
+
+    private fun hRow(): LinearLayout {
+        val hs = HorizontalScrollView(this)
+        hs.isHorizontalScrollBarEnabled = false
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        hs.addView(row)
+        homeBox.addView(hs)
+        return row
+    }
+
+    private fun addTile(row: LinearLayout, item: LibraryItem?, newAction: (() -> Unit)? = null) {
+        val sub = if (item == null) "" else if (item.isFolder) "${store.items.count { c -> c.parentId == item.id }} öğe" else dateFmt.format(Date(item.modified))
+        val v = TileView(this, item, coverDir, sub)
+        v.setOnClickListener { if (item == null) newAction?.invoke() else onTileClick(item) }
+        v.setOnLongClickListener { if (item != null) showItemMenu(item); item != null }
+        row.addView(v, LinearLayout.LayoutParams(dp(130f), LinearLayout.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(10f) })
+    }
+
+    /** Ana sayfa: son defterler, flaş kart setleri ve klasörler yatay şeritlerde. */
+    private fun buildHome() {
+        homeBox.removeAllViews()
+        homeBox.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val books = store.items.filter { !it.isFolder }.sortedByDescending { it.modified }
+        sectionTitle("Son defterler", "▤") { mode = 1; refresh() }
+        val r1 = hRow()
+        for (b in books.take(6)) addTile(r1, b)
+        addTile(r1, null) { showEditor(null, false) }
+
+        sectionTitle("Flaş kartlar", "❏") { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+        val fr = hRow()
+        val decks = FlashStore.load(this)
+        val tints = intArrayOf(Color.rgb(232, 224, 242), Color.rgb(236, 242, 222), Color.rgb(252, 240, 214), Color.rgb(250, 226, 226))
+        for ((i, dk) in decks.take(8).withIndex()) {
+            val c = TextView(this)
+            val due = FlashStore.dueCount(dk)
+            c.text = dk.name + "\n" + dk.cards.size + " kart" + if (due > 0) " · $due bugün" else ""
+            c.textSize = 15f
+            c.setTypeface(Typeface.SERIF, Typeface.NORMAL)
+            c.setTextColor(Look.ink)
+            c.gravity = Gravity.CENTER
+            c.setPadding(dp(10f), dp(10f), dp(10f), dp(10f))
+            val g = GradientDrawable()
+            g.cornerRadius = dp(14f).toFloat()
+            g.setColor(tints[i % tints.size])
+            c.background = g
+            c.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+            fr.addView(c, LinearLayout.LayoutParams(dp(130f), dp(110f)).apply { rightMargin = dp(10f) })
+        }
+        val nw = TextView(this)
+        nw.text = "+\nYeni kart seti"
+        nw.textSize = 14f
+        nw.gravity = Gravity.CENTER
+        nw.setTextColor(Look.accent)
+        val ng = GradientDrawable()
+        ng.cornerRadius = dp(14f).toFloat()
+        ng.setStroke(dp(2f), Look.gold, dp(8f).toFloat(), dp(6f).toFloat())
+        nw.background = ng
+        nw.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+        fr.addView(nw, LinearLayout.LayoutParams(dp(130f), dp(110f)))
+
+        sectionTitle("Klasörlerim", "▭") { mode = 2; refresh() }
+        val kr = hRow()
+        for (f in store.items.filter { it.isFolder }.take(8)) addTile(kr, f)
+        addTile(kr, null) { showEditor(null, true) }
+    }
 
     override fun onResume() {
         super.onResume()
-        if (::board.isInitialized) board.refresh()
         store.load()
         refresh()
+        if (::board.isInitialized) board.refresh()
     }
 
     override fun onBackPressed() {
-        if (folderId.isNotEmpty()) goUp() else super.onBackPressed()
+        if (folderId.isNotEmpty()) goUp() else if (mode != 0) { mode = 0; refresh() } else super.onBackPressed()
     }
 
     private fun showLibraryBackup() {
@@ -391,17 +506,36 @@ class LibraryActivity : Activity() {
     private fun refresh() {
         val list = ArrayList<LibraryItem?>()
         list.add(null)
-        list.addAll(store.children(folderId))
+        when (mode) {
+            1 -> list.addAll(store.items.filter { !it.isFolder }.sortedByDescending { it.modified })
+            2 -> list.addAll(if (folderId.isEmpty()) store.children("").filter { it.isFolder } else store.children(folderId))
+            else -> {}
+        }
         shown = list
         val f = store.find(folderId)
-        titleView.text = f?.title ?: "Defterlerim"
-        backBtn.visibility = if (folderId.isEmpty()) View.GONE else View.VISIBLE
+        titleView.text = when (mode) {
+            0 -> "Not Uygulamam"
+            1 -> "Defterlerim"
+            else -> f?.title ?: "Klasörlerim"
+        }
+        backBtn.visibility = if (mode == 2 && folderId.isNotEmpty()) View.VISIBLE else View.GONE
+        for ((i, v) in tabViews.withIndex()) {
+            val on = i == mode
+            v.setTextColor(if (on) Color.WHITE else Look.ink)
+            val g = GradientDrawable()
+            g.cornerRadius = dp(24f).toFloat()
+            g.setColor(if (on) Look.accent else Color.TRANSPARENT)
+            v.background = g
+        }
+        homeScroll.visibility = if (mode == 0) View.VISIBLE else View.GONE
+        gridHost.visibility = if (mode == 0) View.GONE else View.VISIBLE
+        if (mode == 0) buildHome()
         adapter.notifyDataSetChanged()
     }
 
     private fun onTileClick(item: LibraryItem?) {
         when {
-            item == null -> showNewMenu()
+            item == null -> if (mode == 1) showEditor(null, false) else showNewMenu()
             item.isFolder -> {
                 folderId = item.id
                 refresh()

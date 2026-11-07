@@ -44,7 +44,7 @@ class PreviewView(context: Context, private val draw: DrawView) : View(context) 
         fun penSens(kind: Int, ps: Float): Float = when (kind) {
             1 -> 0.04f
             2 -> 0.35f
-            3 -> 1f
+            3 -> 0.6f
             4 -> 0.3f
             5 -> 0.08f
             6, 7, 8, 9, 10, 11, 12 -> 0.04f
