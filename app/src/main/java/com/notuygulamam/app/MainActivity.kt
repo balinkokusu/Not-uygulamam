@@ -64,6 +64,7 @@ class MainActivity : Activity() {
     private var versionText = ""
     private var spread = false
     private lateinit var spreadBtn: IconButton
+    private lateinit var rulerBtn: IconButton
     private lateinit var presetRow: LinearLayout
     private lateinit var kindRow: LinearLayout
     private var kindScrollHost: View? = null
@@ -1149,7 +1150,6 @@ class MainActivity : Activity() {
         tapeRow.setTextColor(Look.accent)
         tapeRow.setPadding(dp(4f), dp(6f), dp(4f), dp(12f))
         tapeRow.setOnClickListener { dlg?.dismiss(); showTapeDialog() }
-        grid.addView(tapeRow)
         var row: LinearLayout? = null
         for (k in Stickers.names.indices) {
             if (k % 5 == 0) {
@@ -1424,6 +1424,7 @@ class MainActivity : Activity() {
             " ${nb.current + 1}–${nb.current + 2} / ${nb.pages.size} "
         else " ${nb.current + 1} / ${nb.pages.size} "
         spreadBtn.active = spread
+        rulerBtn.active = draw.rulerOn
         rebuildPresets()
         rebuildKinds()
         refreshItemBar()
@@ -1862,11 +1863,12 @@ class MainActivity : Activity() {
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         val groups = listOf(
-            "Sayfa" to listOf(1, 20, 7, 10, 11, 5, 6),
-            "Defter ve dosya" to listOf(0, 2, 3, 4),
+            "Sayfa" to listOf(7, 5, 6),
+            "Defter ve dosya" to listOf(0, 3, 4),
             "Ekle" to listOf(13, 14, 17, 15, 26),
             "Ayraçlar" to listOf(8, 16, 19),
-            "Araçlar ve görünüm" to listOf(24, 25, 22, 23, 9, 21, 12, 18)
+            "Araçlar ve görünüm" to listOf(9, 21, 25, 18)
+        )
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -2809,6 +2811,7 @@ class MainActivity : Activity() {
             return v
         }
         toolRow.addView(iconBtn(Icon.HOME, "Kütüphane") { finish() })
+        toolRow.addView(iconBtn(Icon.SAVE, "Kaydet") { saveWithMessage() })
         toolRow.addView(iconBtn(Icon.PAGES, "Sayfalar") { showPagesDialog() })
         lateinit var addBtn: IconButton
         addBtn = iconBtn(Icon.ADD, "Yeni sayfa (şablon seçerek)") { showNewPageMenu(addBtn) }
@@ -2861,6 +2864,14 @@ class MainActivity : Activity() {
         }
         toolButtons[Tool.TAPE] = tapeBtn
         toolRow.addView(tapeBtn)
+        rulerBtn = iconBtn(Icon.RULER, "Cetvel (aç / kapat)") {
+            val on = draw.toggleRuler()
+            if (on) Toast.makeText(this, "Cetvel: parmakla taşıyın, uçlarından döndürün. Kalemle yakınından çizerseniz çizgi cetvele oturur.", Toast.LENGTH_LONG).show()
+            refresh()
+        }
+        toolRow.addView(rulerBtn)
+        toolRow.addView(iconBtn(Icon.CALC, "Hesap makinesi") { toggleCalculator() })
+        toolRow.addView(iconBtn(Icon.TIMER, "Pomodoro zamanlayıcı") { togglePomodoro() })
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.PAPER, "Sayfa şablonu") { showPaperDialog() })
         toolRow.addView(iconBtn(Icon.TAB, "Ayraç ekle") { showTabDialog(null) })
@@ -2876,8 +2887,6 @@ class MainActivity : Activity() {
             refresh()
         }
         toolRow.addView(spreadBtn)
-        toolRow.addView(iconBtn(Icon.CALC, "Hesap makinesi") { toggleCalculator() })
-        toolRow.addView(iconBtn(Icon.TIMER, "Pomodoro zamanlayıcı") { togglePomodoro() })
         toolRow.addView(spacer())
         toolRow.addView(iconBtn(Icon.PREV, "Önceki sayfa") { gotoPage(nb.current - step()) })
         pageLabel.setTextColor(Look.ink)
