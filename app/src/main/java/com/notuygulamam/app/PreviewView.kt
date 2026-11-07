@@ -48,6 +48,7 @@ class PreviewView(context: Context, private val draw: DrawView) : View(context) 
             4 -> 0.3f
             5 -> 0.08f
             6, 7, 8, 9, 10, 11, 12 -> 0.04f
+            13 -> 0.4f
             else -> ps * 0.55f
         }
 

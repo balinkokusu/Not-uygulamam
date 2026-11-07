@@ -359,7 +359,7 @@ class MainActivity : Activity() {
         kindScrollHost?.visibility = View.VISIBLE
         if (st == Tool.PEN) {
             val order = listOf(
-                Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun", 2),
+                Pair("Dolma", 0), Pair("Tükenmez", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Fırça", 3), Pair("Kurşun HB", 2), Pair("Kurşun 2B", 13),
                 Pair("Kesikli", 6), Pair("Noktalı", 7), Pair("Dış çizgili", 8), Pair("Gölgeli", 9),
                 Pair("Gökkuşağı", 10), Pair("Boru", 11), Pair("Neon", 12)
             )

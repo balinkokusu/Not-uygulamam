@@ -1,6 +1,7 @@
 package com.notuygulamam.app
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -46,6 +47,7 @@ class PageRenderer {
     private fun kindScale(k: Int): Float = when (k) {
         1 -> 0.7f
         2 -> 1.0f
+        13 -> 1.25f
         3 -> 1.9f
         4 -> 1.3f
         5 -> 1.5f
@@ -65,7 +67,33 @@ class PageRenderer {
     )
 
     /** Birkaç katmandan oluşan kalemler (dış çizgili, boru, neon): katmanlar tek yol olarak çizilince birleşim yerleri temiz olur. */
-    private fun layeredPen(k: Int) = k == 2 || k == 8 || k == 9 || k == 11 || k == 12
+    private val grainPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val grainCache = HashMap<Long, android.graphics.BitmapShader>()
+
+    /** Kurşun için benekli doku: renge ve koyuluğa göre önbelleğe alınır; sayfa koordinatına bağlı olduğu için çizgi boyunca sabit durur. */
+    private fun grainShader(color: Int, dark: Boolean, pass: Int): android.graphics.BitmapShader {
+        val key = (color.toLong() and 0xFFFFFFFFL) * 4L + (if (dark) 2L else 0L) + pass
+        grainCache[key]?.let { return it }
+        val n = 128
+        val px = IntArray(n * n)
+        val speck = if (dark) 0.16f else 0.42f
+        for (y in 0 until n) for (x in 0 until n) {
+            val u = hash(x * 131 + y * 7 + pass * 977, 5)
+            val v = hash(y * 173 + x * 3 + pass * 31, 9)
+            val a = if (u < speck) 25 + v * 70 else (if (dark) 185 else 130) + v * 100
+            px[y * n + x] = Color.argb(a.toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+        }
+        val bm = Bitmap.createBitmap(px, n, n, Bitmap.Config.ARGB_8888)
+        val sh = android.graphics.BitmapShader(bm, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT)
+        val m = android.graphics.Matrix()
+        m.setScale(2.6f, 2.6f)
+        m.postTranslate(pass * 37f, pass * 19f)
+        sh.setLocalMatrix(m)
+        grainCache[key] = sh
+        return sh
+    }
+
+    private fun layeredPen(k: Int) = k == 2 || k == 13 || k == 8 || k == 9 || k == 11 || k == 12
 
     private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
         fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255) {
@@ -84,17 +112,20 @@ class PageRenderer {
                 line(w, col)
                 line(w * 0.52f, mix(col, Color.WHITE, 0.85f))
             }
-            2 -> {
-                // Kurşun kalem: tek yol olarak çizilen, yarı saydam gri katmanlar; üstte ince benekli grafit dokusu
-                val graphite = mix(col, Color.rgb(70, 70, 76), 0.45f)
-                line(w * 1.05f, graphite, 0f, 0f, 55)
-                line(w * 0.72f, graphite, 0f, 0f, 95)
-                line(w * 0.4f, graphite, w * 0.06f, -w * 0.05f, 120)
-                linePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(w * 0.5f + 1.5f, w * 0.35f + 1.5f), 0f)
-                linePaint.strokeCap = Paint.Cap.BUTT
-                line(w * 0.55f, mix(graphite, Color.BLACK, 0.3f), -w * 0.05f, w * 0.04f, 80)
-                linePaint.pathEffect = null
-                linePaint.strokeCap = Paint.Cap.ROUND
+            2, 13 -> {
+                // Kurşun kalem: kâğıt dokusuna sürtünen grafit; çizgi, benekli bir doku deseninden "boyanır", kenarlar hafif pürüzlü kalır
+                val dark = s.kind == 13
+                val graphite = mix(col, Color.rgb(55, 55, 60), if (dark) 0.35f else 0.5f)
+                line(w * 1.12f, graphite, 0f, 0f, if (dark) 50 else 30)
+                grainPaint.style = Paint.Style.STROKE
+                grainPaint.strokeCap = Paint.Cap.ROUND
+                grainPaint.strokeJoin = Paint.Join.ROUND
+                for (pass in 0..1) {
+                    grainPaint.shader = grainShader(graphite, dark, pass)
+                    grainPaint.strokeWidth = if (pass == 0) w else w * 0.82f
+                    if (path != null) c.drawPath(path, grainPaint) else c.drawLine(x0, y0, x1, y1, grainPaint)
+                }
+                grainPaint.shader = null
             }
             9 -> {
                 // Gölgeli: kayık yumuşak gölge (tek yol olarak çizilir, parçalar üst üste binip noktalanmaz) ve asıl çizgi
