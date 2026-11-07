@@ -147,6 +147,7 @@ class PageRenderer {
             Paper.MONTHLY -> drawMonthly(c, page)
             Paper.CORNELL -> drawCornell(c, page)
             Paper.YEAR -> drawYear(c, page)
+            Paper.COVER -> drawCover(c, page)
             Paper.WATER -> drawWater(c, page)
             Paper.HABIT -> drawHabit(c, page)
             Paper.MOOD -> drawMood(c, page)
@@ -593,6 +594,45 @@ class PageRenderer {
         c.drawLine(780f, DH - 58f, 1120f, DH - 58f, paperPaint)
     }
 
+    private val boxFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+
+    /** Planlayıcı kapağı: büyük renkli yıl rakamları, el yazısı başlık ve yumuşak dalgalar. */
+    private fun drawCover(c: Canvas, page: PageData) {
+        val year = if (page.calYear > 0) page.calYear else Calendar.getInstance().get(Calendar.YEAR)
+        val w = DW
+        // yumuşak arka plan dalgaları
+        boxFill.setColor(Color.argb(60, 240, 190, 190))
+        val wave = Path()
+        wave.moveTo(0f, 0f)
+        wave.lineTo(w * 0.62f, 0f)
+        wave.cubicTo(w * 0.40f, 300f, w * 0.78f, 520f, w * 0.30f, 900f)
+        wave.cubicTo(w * 0.18f, 1000f, w * 0.10f, 1100f, 0f, 1200f)
+        wave.close()
+        c.drawPath(wave, boxFill)
+        boxFill.setColor(Color.argb(45, 245, 215, 190))
+        val wave2 = Path()
+        wave2.moveTo(w, DH)
+        wave2.lineTo(w * 0.35f, DH)
+        wave2.cubicTo(w * 0.55f, DH - 260f, w * 0.85f, DH - 300f, w, DH - 560f)
+        wave2.close()
+        c.drawPath(wave2, boxFill)
+        val digits = year.toString().padStart(4, '0')
+        val cols = intArrayOf(Color.rgb(214, 70, 60), Color.rgb(224, 150, 110), Color.rgb(228, 168, 52), Color.rgb(104, 130, 150))
+        textPaint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        textPaint.textSize = 430f
+        textPaint.textAlign = Paint.Align.LEFT
+        for (i in 0 until 4) {
+            val row = i / 2
+            val col = i % 2
+            textPaint.setColor(cols[i])
+            c.drawText(digits[i].toString(), 250f + col * 270f, 700f + row * 400f, textPaint)
+        }
+        textPaint.typeface = Fonts.get(3, Typeface.BOLD)
+        textPaint.setColor(Color.rgb(70, 50, 60))
+        textPaint.textSize = 170f
+        c.drawText("Planlayıcı", 230f, 1660f, textPaint)
+    }
+
     private fun drawYear(c: Canvas, page: PageData) {
         val dated = page.calYear > 0
         label(c, if (dated) "YILLIK TAKVİM " + page.calYear else "YILLIK TAKVİM", 80f, 125f, 56f, ink, true)
@@ -600,7 +640,11 @@ class PageRenderer {
         for (m in 0 until 12) {
             val bx = 75f + (m % 3) * 350f
             val by = 200f + (m / 3) * 345f
-            label(c, Planner.MONTHS[m], bx + 4f, by + 34f, 30f, ink, true)
+            // her ayın başlığı kendi renginde yuvarlak bir şerit
+            boxFill.setColor(Planner.MONTH_COLORS[m])
+            rr.set(bx, by - 4f, bx + 335f, by + 44f)
+            c.drawRoundRect(rr, 12f, 12f, boxFill)
+            label(c, Planner.MONTHS[m], bx + 167f, by + 33f, 30f, Color.WHITE, true, Paint.Align.CENTER)
             for (i in 0 until 7) label(c, letters[i], bx + 25f + i * 50f, by + 76f, 20f, soft, false, Paint.Align.CENTER)
             if (dated) {
                 val (off, n) = monthShape(page.calYear, m + 1)

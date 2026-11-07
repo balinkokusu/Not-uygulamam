@@ -18,8 +18,20 @@ object Planner {
         Color.rgb(196, 208, 246), Color.rgb(212, 198, 244), Color.rgb(226, 196, 240)
     )
 
+    /** Yıllık takvimdeki ay başlık şeritlerinin renkleri (sıcak tonlardan serin tonlara). */
+    val MONTH_COLORS = intArrayOf(
+        Color.rgb(222, 120, 100), Color.rgb(226, 132, 110), Color.rgb(214, 144, 120),
+        Color.rgb(224, 158, 90), Color.rgb(220, 170, 80), Color.rgb(196, 170, 90),
+        Color.rgb(120, 150, 170), Color.rgb(104, 140, 168), Color.rgb(130, 150, 180),
+        Color.rgb(176, 130, 150), Color.rgb(190, 120, 130), Color.rgb(206, 116, 112)
+    )
+
     fun build(year: Int): Notebook {
         val nb = Notebook()
+        val cover = PageData(paper = Paper.COVER)
+        cover.calYear = year
+        nb.pages.add(cover)
+        nb.tabs.add(Tab("Kapak", Color.rgb(240, 200, 190), cover, false, 2))
         val yearPage = PageData(paper = Paper.YEAR)
         yearPage.calYear = year
         nb.pages.add(yearPage)
