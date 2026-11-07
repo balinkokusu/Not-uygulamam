@@ -12,6 +12,7 @@ import android.graphics.pdf.PdfDocument
 import java.io.File
 import java.io.OutputStream
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Kağıdı ve çizgileri bir tuvale çizer. Ekranda ve PDF dışa aktarmada aynı kod kullanılır.
@@ -44,7 +45,7 @@ class PageRenderer {
 
     private fun kindScale(k: Int): Float = when (k) {
         1 -> 0.7f
-        2 -> 0.9f
+        2 -> 1.0f
         3 -> 1.9f
         4 -> 1.3f
         5 -> 1.5f
@@ -64,7 +65,7 @@ class PageRenderer {
     )
 
     /** Birkaç katmandan oluşan kalemler (dış çizgili, boru, neon): katmanlar tek yol olarak çizilince birleşim yerleri temiz olur. */
-    private fun layeredPen(k: Int) = k == 8 || k == 9 || k == 11 || k == 12
+    private fun layeredPen(k: Int) = k == 2 || k == 8 || k == 9 || k == 11 || k == 12
 
     private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
         fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255) {
@@ -82,6 +83,18 @@ class PageRenderer {
             8 -> {
                 line(w, col)
                 line(w * 0.52f, mix(col, Color.WHITE, 0.85f))
+            }
+            2 -> {
+                // Kurşun kalem: tek yol olarak çizilen, yarı saydam gri katmanlar; üstte ince benekli grafit dokusu
+                val graphite = mix(col, Color.rgb(70, 70, 76), 0.45f)
+                line(w * 1.05f, graphite, 0f, 0f, 55)
+                line(w * 0.72f, graphite, 0f, 0f, 95)
+                line(w * 0.4f, graphite, w * 0.06f, -w * 0.05f, 120)
+                linePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(w * 0.5f + 1.5f, w * 0.35f + 1.5f), 0f)
+                linePaint.strokeCap = Paint.Cap.BUTT
+                line(w * 0.55f, mix(graphite, Color.BLACK, 0.3f), -w * 0.05f, w * 0.04f, 80)
+                linePaint.pathEffect = null
+                linePaint.strokeCap = Paint.Cap.ROUND
             }
             9 -> {
                 // Gölgeli: kayık yumuşak gölge (tek yol olarak çizilir, parçalar üst üste binip noktalanmaz) ve asıl çizgi
@@ -125,12 +138,13 @@ class PageRenderer {
         var w = s.width * widthFactor(s, p) * kindScale(s.kind)
         when (s.kind) {
             0 -> {
-                // Dolma kalem: uç açısı yüzünden çizginin yönüne göre kalınlık değişir
-                val dx = s.xs[i] - s.xs[i - 1]
-                val dy = s.ys[i] - s.ys[i - 1]
+                // Dolma kalem: uç açısı yüzünden çizginin yönüne göre kalınlık değişir; yön, birkaç nokta geriden ölçülür ki kalınlık parçadan parçaya sıçramasın
+                val j = max(0, i - 5)
+                val dx = s.xs[i] - s.xs[j]
+                val dy = s.ys[i] - s.ys[j]
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
-                    w *= (0.4 + 0.6 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 1.25f
+                    w *= (0.62 + 0.38 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 1.1f
                 }
             }
             3 -> w *= speedFactor(s, i)
@@ -728,28 +742,7 @@ class PageRenderer {
         linePaint.alpha = 255
         linePaint.strokeCap = Paint.Cap.ROUND
         when (s.kind) {
-            2 -> {
-                // Kurşun kalem: kâğıda sürtünen grafit; birkaç ince, farklı koyulukta şerit yan yana
-                val p = (s.ps[i] + s.ps[i - 1]) / 2f
-                val base = s.width * 0.8f * (0.8f + 0.4f * p)
-                val dx = x1 - x0
-                val dy = y1 - y0
-                val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
-                val nx = if (len > 0f) -dy / len else 0f
-                val ny = if (len > 0f) dx / len else 0f
-                val graphite = mix(s.color, Color.rgb(60, 60, 64), 0.45f)
-                for (k in -1..1) {
-                    val h = hash(i * 7 + k, 21)
-                    val o = k * base * 0.3f + (h - 0.5f) * base * 0.12f
-                    linePaint.setColor(graphite)
-                    linePaint.alpha = (70 + 70 * h + 60 * p).toInt().coerceIn(50, 215)
-                    linePaint.strokeWidth = base * (0.42f + 0.16f * hash(i * 7 + k, 22))
-                    linePaint.strokeCap = Paint.Cap.BUTT
-                    c.drawLine(x0 + nx * o, y0 + ny * o, x1 + nx * o, y1 + ny * o, linePaint)
-                }
-                linePaint.alpha = 255
-                linePaint.strokeCap = Paint.Cap.ROUND
-            }
+            2 -> drawLayered(c, s, null, x0, y0, x1, y1, w)
             5 -> {
                 // Kaligrafi: sabit açılı, düz ve geniş uç. Uç 40 derece yukarı bakar; çizgi uca paralelken incelir, dik giderken kalınlaşır.
                 val half = s.width * 1.5f
@@ -837,6 +830,15 @@ class PageRenderer {
                 c.drawLine(x0 + off, y0 + off, x1 + off, y1 + off, linePaint)
                 linePaint.setColor(s.color)
                 linePaint.alpha = 255
+                linePaint.strokeWidth = w
+                c.drawLine(x0, y0, x1, y1, linePaint)
+            }
+            0 -> {
+                // Dolma: çizginin sonunda mürekkep topağı bırakmadan incelir
+                if (last) {
+                    val n = s.xs.size
+                    w *= min(1f, 0.45f + (n - 1 - i) / 7f)
+                }
                 linePaint.strokeWidth = w
                 c.drawLine(x0, y0, x1, y1, linePaint)
             }

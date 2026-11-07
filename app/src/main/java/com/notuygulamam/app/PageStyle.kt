@@ -327,3 +327,77 @@ class PageThumb(context: Context, private val page: PageData) : View(context) {
         c.drawRect(4f * d, 2f * d, 4f * d + w, 2f * d + h, p)
     }
 }
+
+
+/** Sayfa görünümü ve cilt seçeneklerinin küçük önizlemesi: 0 tek sayfa, 1 çift sayfa, 2 gölge, 3 dikiş, 4 spiral, 5 boyut/renk. */
+class MiniView(context: Context, private val kind: Int, private val on: Boolean) : View(context) {
+    private val d = resources.displayMetrics.density
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onMeasure(w: Int, h: Int) {
+        setMeasuredDimension((72f * d).toInt(), (54f * d).toInt())
+    }
+
+    override fun onDraw(c: Canvas) {
+        val line = if (on) Look.accent else Look.inkSoft
+        fun page(l: Float, t: Float, r: Float, b: Float) {
+            p.style = Paint.Style.FILL
+            p.color = Color.WHITE
+            c.drawRoundRect(l, t, r, b, 3f * d, 3f * d, p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = (if (on) 2f else 1.2f) * d
+            p.color = line
+            c.drawRoundRect(l, t, r, b, 3f * d, 3f * d, p)
+            // satır çizgileri
+            p.strokeWidth = 1f * d
+            p.color = Color.argb(70, 120, 124, 140)
+            var y = t + 9f * d
+            while (y < b - 5f * d) { c.drawLine(l + 5f * d, y, r - 5f * d, y, p); y += 6f * d }
+        }
+        val w = width.toFloat()
+        val h = height.toFloat()
+        when (kind) {
+            0 -> page(w * 0.30f, 4f * d, w * 0.70f, h - 4f * d)
+            5 -> {
+                page(w * 0.24f, 6f * d, w * 0.66f, h - 8f * d)
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = 1.6f * d
+                p.color = line
+                c.drawLine(w * 0.74f, 8f * d, w * 0.74f, h - 10f * d, p)
+                c.drawLine(w * 0.74f, 8f * d, w * 0.70f, 14f * d, p)
+                c.drawLine(w * 0.74f, 8f * d, w * 0.78f, 14f * d, p)
+                c.drawLine(w * 0.74f, h - 10f * d, w * 0.70f, h - 16f * d, p)
+                c.drawLine(w * 0.74f, h - 10f * d, w * 0.78f, h - 16f * d, p)
+            }
+            else -> {
+                val mid = w / 2f
+                page(6f * d, 4f * d, mid - 0.5f * d, h - 4f * d)
+                page(mid + 0.5f * d, 4f * d, w - 6f * d, h - 4f * d)
+                when (kind) {
+                    2 -> {
+                        p.style = Paint.Style.FILL
+                        val g = android.graphics.LinearGradient(mid - 7f * d, 0f, mid + 7f * d, 0f,
+                            intArrayOf(Color.argb(0, 0, 0, 0), Color.argb(90, 0, 0, 0), Color.argb(0, 0, 0, 0)), null, android.graphics.Shader.TileMode.CLAMP)
+                        p.shader = g
+                        c.drawRect(mid - 7f * d, 4f * d, mid + 7f * d, h - 4f * d, p)
+                        p.shader = null
+                    }
+                    3 -> {
+                        p.style = Paint.Style.STROKE
+                        p.strokeWidth = 1.4f * d
+                        p.color = Color.argb(200, 150, 100, 90)
+                        var y = 8f * d
+                        while (y < h - 6f * d) { c.drawLine(mid, y, mid, y + 3.2f * d, p); y += 6f * d }
+                    }
+                    4 -> {
+                        p.style = Paint.Style.STROKE
+                        p.strokeWidth = 1.8f * d
+                        p.color = Color.argb(230, 90, 94, 104)
+                        var y = 9f * d
+                        while (y < h - 6f * d) { c.drawArc(mid - 3.5f * d, y - 3f * d, mid + 3.5f * d, y + 3f * d, 0f, 360f, false, p); y += 8f * d }
+                    }
+                }
+            }
+        }
+    }
+}

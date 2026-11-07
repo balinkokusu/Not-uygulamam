@@ -252,6 +252,7 @@ class MainActivity : Activity() {
     private var popScribble: View? = null
     private var popStab: View? = null
     private var popDTap: View? = null
+    private var popEraseBtns: View? = null
     private var popPalm: View? = null
     private var popSliderRow: View? = null
 
@@ -807,29 +808,167 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /** Yeni sayfa: hazır şablonlar ve tüm kâğıt türleri önizlemeli (görsel ve yazı) gösterilir. */
     private fun showNewPageMenu(anchor: View) {
-        val m = android.widget.PopupMenu(this, anchor)
-        m.menu.add(0, 1000, 0, "Aynı sayfa gibi yeni sayfa")
+        var dlg: AlertDialog? = null
         val all = builtinTemplates() + customTemplates()
-        for ((i, t) in all.withIndex()) m.menu.add(0, 2000 + i, 1 + i, t.name + "  ·  " + t.paper.label)
-        m.menu.add(0, 1005, 0, "Şablonlar ekranı (önizleme, renk, sol/sağ ayrı)…")
-        m.menu.add(0, 1004, 99, "Açık sayfayı şablonla değiştir (sol/sağ ayrı)…")
-        m.menu.add(0, 1001, 100, "Kâğıt şablonlarını gör…")
-        m.menu.add(0, 1002, 101, "Şablonlarım: yeni oluştur / sil…")
-        m.menu.add(0, 1003, 102, "Planlayıcıyı bu deftere ekle…")
-        m.setOnMenuItemClickListener { mi ->
-            when {
-                mi.itemId == 1000 -> addPage()
-                mi.itemId == 1001 -> showTemplatePageDialog()
-                mi.itemId == 1004 -> showApplyTemplateDialog()
-                mi.itemId == 1005 -> showTemplateScreen()
-                mi.itemId == 1002 -> showTemplateManager()
-                mi.itemId == 1003 -> showAddPlannerDialog()
-                mi.itemId >= 2000 -> all.getOrNull(mi.itemId - 2000)?.let { addTemplatePage(it) }
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(16f), dp(6f), dp(16f), dp(6f))
+        fun head(txt: String) {
+            val t = TextView(this)
+            t.text = txt
+            t.textSize = 15f
+            t.setTextColor(Look.ink)
+            t.setTypeface(null, android.graphics.Typeface.BOLD)
+            t.setPadding(0, dp(12f), 0, dp(6f))
+            box.addView(t)
+        }
+        fun link(txt: String, act: () -> Unit) {
+            val t = TextView(this)
+            t.text = txt + "  ›"
+            t.textSize = 14f
+            t.setTextColor(Look.accent)
+            t.setPadding(dp(2f), dp(9f), dp(2f), dp(9f))
+            t.setOnClickListener { dlg?.dismiss(); act() }
+            box.addView(t)
+        }
+        link("Aynı sayfa gibi yeni sayfa") { addPage() }
+        head("Hazır şablonlar")
+        box.addView(PaperGrid(this, all.map { Pair(it.name, it.paper) }, -1, draw.page.paperColor) { i ->
+            dlg?.dismiss()
+            addTemplatePage(all[i])
+        })
+        head("Tüm kâğıt türleri")
+        val papers = Paper.values().toList()
+        box.addView(PaperGrid(this, papers.map { Pair(it.label, it) }, -1, draw.page.paperColor) { i ->
+            dlg?.dismiss()
+            val cur = draw.page
+            val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, papers[i]) else PageData(1200f, 1697f, papers[i])
+            if (cur.pdfName == null) pg.paperColor = cur.paperColor
+            askPlacement { m -> insertNewPage(cur, pg, m) }
+        })
+        head("Diğer")
+        link("Şablonlar ekranı (renk, sol/sağ ayrı uygulama)") { showTemplateScreen() }
+        link("Açık sayfayı şablonla değiştir") { showApplyTemplateDialog() }
+        link("Şablonlarım: yeni oluştur / sil") { showTemplateManager() }
+        link("Planlayıcıyı bu deftere ekle") { showAddPlannerDialog() }
+        val sv = ScrollView(this)
+        sv.addView(box)
+        dlg = AlertDialog.Builder(this)
+            .setTitle("Yeni sayfa")
+            .setView(sv)
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    /** Sayfa görünümü, cilt ve sayfa boyutu/rengi tek pencerede, önizlemeli seçenekler olarak. */
+    private fun showViewDialog() {
+        var dlg: AlertDialog? = null
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(16f), dp(6f), dp(16f), dp(6f))
+        fun head(txt: String) {
+            val t = TextView(this)
+            t.text = txt
+            t.textSize = 15f
+            t.setTextColor(Look.ink)
+            t.setTypeface(null, android.graphics.Typeface.BOLD)
+            t.setPadding(0, dp(12f), 0, dp(4f))
+            box.addView(t)
+        }
+        fun row(kind: Int, title: String, sub: String, on: Boolean, click: () -> Unit) {
+            val r = LinearLayout(this)
+            r.orientation = LinearLayout.HORIZONTAL
+            r.gravity = Gravity.CENTER_VERTICAL
+            r.setPadding(dp(8f), dp(6f), dp(8f), dp(6f))
+            val g = GradientDrawable()
+            g.cornerRadius = dp(14f).toFloat()
+            g.setColor(if (on) Look.accentSoft else Color.TRANSPARENT)
+            g.setStroke(dp(1f), if (on) Look.accent else Look.hairline)
+            r.background = g
+            r.addView(MiniView(this, kind, on))
+            val tx = LinearLayout(this)
+            tx.orientation = LinearLayout.VERTICAL
+            tx.setPadding(dp(14f), 0, 0, 0)
+            val t1 = TextView(this)
+            t1.text = title
+            t1.textSize = 15f
+            t1.setTextColor(if (on) Look.accent else Look.ink)
+            val t2 = TextView(this)
+            t2.text = sub
+            t2.textSize = 12f
+            t2.setTextColor(Look.inkSoft)
+            tx.addView(t1)
+            tx.addView(t2)
+            r.addView(tx)
+            r.setOnClickListener { dlg?.dismiss(); click() }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.bottomMargin = dp(8f)
+            box.addView(r, lp)
+        }
+        val sp = getSharedPreferences("ayar", MODE_PRIVATE)
+        head("Sayfa görünümü")
+        row(0, "Tek sayfa", "Her seferinde bir sayfa", !spread) {
+            spread = false
+            sp.edit().putBoolean("cift_$itemId", false).apply()
+            showCurrent(); refresh()
+        }
+        row(1, "Çift sayfa", "Açık defter gibi iki sayfa yan yana", spread) {
+            spread = true
+            sp.edit().putBoolean("cift_$itemId", true).apply()
+            showCurrent(); refresh()
+        }
+        head("Cilt")
+        val bn = arrayOf(
+            Triple(2, "Yalnız gölge", "Ortada yumuşak bir katlanma gölgesi"),
+            Triple(3, "Düz dikiş", "Ortada kesikli dikiş çizgisi"),
+            Triple(4, "Tel spiral", "Ortada spiral tel halkalar")
+        )
+        for ((i, e) in bn.withIndex()) {
+            row(e.first, e.second, e.third, draw.binding == i) {
+                draw.binding = i
+                sp.edit().putInt("cilt_$itemId", i).apply()
+                draw.invalidate()
+            }
+        }
+        head("Sayfa")
+        row(5, "Sayfa boyutu ve kâğıt rengi", "A4, A5 gibi boyutlar ve kâğıt rengi", false) { showPageStyleDialog() }
+        val sv = ScrollView(this)
+        sv.addView(box)
+        dlg = AlertDialog.Builder(this)
+            .setTitle("Sayfa görünümü")
+            .setView(sv)
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    /** Ayraç işlemleri: yeni ayraç, otomatik tarih ayracı, toplu düzenleme, gün ayraçlarını süzme. */
+    private fun showTabMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        val sp = getSharedPreferences("ayar", MODE_PRIVATE)
+        val filt = sp.getBoolean("ayraç_süz_$itemId", true)
+        pm.menu.add(0, 1, 1, "Yeni ayraç")
+        pm.menu.add(0, 2, 2, "Ayraçları toplu düzenle…")
+        pm.menu.add(0, 3, 3, (if (autoTabs) "✓ " else "") + "Otomatik tarih ayracı")
+        pm.menu.add(0, 4, 4, (if (filt) "✓ " else "") + "Gün ayraçlarını aya göre süz")
+        pm.setOnMenuItemClickListener { mi ->
+            when (mi.itemId) {
+                1 -> showTabDialog(null)
+                2 -> showTabManager()
+                3 -> {
+                    autoTabs = !autoTabs
+                    sp.edit().putBoolean("otoayrac_$itemId", autoTabs).apply()
+                    Toast.makeText(this, if (autoTabs) "Gün ayraçları otomatik atanacak" else "Otomatik ayraç kapatıldı", Toast.LENGTH_SHORT).show()
+                }
+                4 -> {
+                    sp.edit().putBoolean("ayraç_süz_$itemId", !filt).apply()
+                    rebuildTabs()
+                }
             }
             true
         }
-        m.show()
+        pm.show()
     }
 
     private fun showAddPlannerDialog() {
@@ -1265,7 +1404,6 @@ class MainActivity : Activity() {
         dlg = AlertDialog.Builder(this)
             .setTitle("Çıkartmalar")
             .setView(sv)
-            .setNeutralButton("Galeriden resim ekle") { _, _ -> pickImage() }
             .setPositiveButton("Seç ve taşı") { _, _ ->
                 draw.tool = Tool.OBJECT
                 refresh()
@@ -1451,6 +1589,7 @@ class MainActivity : Activity() {
         popHold?.visibility = if (st == Tool.PEN || st == Tool.HIGHLIGHTER) View.VISIBLE else View.GONE
         popScribble?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
         popStab?.visibility = if (st == Tool.PEN) View.VISIBLE else View.GONE
+        popEraseBtns?.visibility = if (st == Tool.ERASER) View.VISIBLE else View.GONE
         popDTap?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
         popPalm?.visibility = if (st == Tool.PEN || st == Tool.ERASER) View.VISIBLE else View.GONE
         // silginin boyutu ve ön izlemesi araç çubuğunda zaten var; pencerede yalnız karalama seçeneği kalır
@@ -1885,10 +2024,8 @@ class MainActivity : Activity() {
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         val groups = listOf(
-            "Sayfa" to listOf(7, 5, 6),
             "Defter ve dosya" to listOf(0, 3, 4),
-            "Ekle" to listOf(13, 14, 15, 26),
-            "Ayraçlar" to listOf(8, 16, 19)
+            "Ekle" to listOf(13, 14, 15, 26)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -2880,7 +3017,8 @@ class MainActivity : Activity() {
             toolButtons[t] = b
             toolRow.addView(b)
         }
-        val stickerBtn = iconBtn(Icon.STICKER, "Çıkartma ve resim") { showStickerDialog() }
+        toolRow.addView(iconBtn(Icon.IMAGE, "Galeriden resim ekle") { pickImage() })
+        val stickerBtn = iconBtn(Icon.STICKER, "Çıkartma") { showStickerDialog() }
         toolButtons[Tool.OBJECT] = stickerBtn
         toolRow.addView(stickerBtn)
         val tapeBtn = iconBtn(Icon.TAPE, "Bant kalemi: çizgi çekerek washi bant koy") {
@@ -2898,38 +3036,15 @@ class MainActivity : Activity() {
         toolRow.addView(iconBtn(Icon.TIMER, "Pomodoro zamanlayıcı") { togglePomodoro() })
         toolRow.addView(separator())
         toolRow.addView(iconBtn(Icon.PAPER, "Sayfa şablonu") { showPaperDialog() })
-        toolRow.addView(iconBtn(Icon.TAB, "Ayraç ekle") { showTabDialog(null) })
+        lateinit var tabBtn: IconButton
+        tabBtn = iconBtn(Icon.TAB, "Ayraçlar") { showTabMenu(tabBtn) }
+        toolRow.addView(tabBtn)
         fingerBtn = iconBtn(Icon.FINGER, "Parmakla çizim") {
             draw.fingerDraw = !draw.fingerDraw
             refresh()
         }
         toolRow.addView(fingerBtn)
-        spreadBtn = iconBtn(Icon.SPREAD, "Sayfa görünümü ve cilt") { }
-        spreadBtn.setOnClickListener {
-            val pm = android.widget.PopupMenu(this, spreadBtn)
-            pm.menu.add(0, 1, 1, (if (!spread) "✓ " else "") + "Tek sayfa")
-            pm.menu.add(0, 2, 2, (if (spread) "✓ " else "") + "Çift sayfa (ajanda gibi)")
-            val bn = arrayOf("yalnız gölge", "düz dikiş", "tel spiral")
-            for (i in 0..2) pm.menu.add(0, 10 + i, 10 + i, (if (draw.binding == i) "✓ " else "") + "Cilt: " + bn[i])
-            pm.setOnMenuItemClickListener { mi ->
-                val sp = getSharedPreferences("ayar", MODE_PRIVATE)
-                when (mi.itemId) {
-                    1, 2 -> {
-                        spread = mi.itemId == 2
-                        sp.edit().putBoolean("cift_$itemId", spread).apply()
-                        showCurrent()
-                        refresh()
-                    }
-                    else -> {
-                        draw.binding = mi.itemId - 10
-                        sp.edit().putInt("cilt_$itemId", draw.binding).apply()
-                        draw.invalidate()
-                    }
-                }
-                true
-            }
-            pm.show()
-        }
+        spreadBtn = iconBtn(Icon.SPREAD, "Sayfa görünümü, cilt, sayfa boyutu") { showViewDialog() }
         toolRow.addView(spreadBtn)
         toolRow.addView(spacer())
         toolRow.addView(iconBtn(Icon.PREV, "Önceki sayfa") { gotoPage(nb.current - step()) })
@@ -3076,6 +3191,34 @@ class MainActivity : Activity() {
         stabRow.addView(stabSeek, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(stabRow)
         popStab = stabRow
+
+        fun popBtn(txt: String, act: () -> Unit): TextView {
+            val t = TextView(this)
+            t.text = txt
+            t.textSize = 14f
+            t.setTextColor(Look.accent)
+            t.setPadding(dp(14f), dp(9f), dp(14f), dp(9f))
+            val g = GradientDrawable()
+            g.cornerRadius = dp(16f).toFloat()
+            g.setStroke(dp(1f), Look.accent)
+            t.background = g
+            t.setOnClickListener { settingsPopup?.dismiss(); act() }
+            return t
+        }
+        val eraseBtns = LinearLayout(this)
+        eraseBtns.orientation = LinearLayout.HORIZONTAL
+        eraseBtns.setPadding(dp(4f), dp(10f), dp(4f), dp(4f))
+        eraseBtns.addView(popBtn("Sayfadaki çizimleri temizle") {
+            AlertDialog.Builder(this)
+                .setTitle("Bu sayfadaki çizimler temizlensin mi?")
+                .setPositiveButton("Temizle") { _, _ -> draw.clearAll() }
+                .setNegativeButton("Vazgeç", null).show()
+        })
+        val sp2 = View(this)
+        eraseBtns.addView(sp2, LinearLayout.LayoutParams(dp(10f), 1))
+        eraseBtns.addView(popBtn("Bu sayfayı sil") { confirmDeletePage() })
+        panel.addView(eraseBtns)
+        popEraseBtns = eraseBtns
 
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(bar(dp(20f).toFloat()))

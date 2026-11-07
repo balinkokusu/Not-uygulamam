@@ -93,8 +93,10 @@ class DrawView(context: Context) : View(context) {
     private fun smoothStroke(s: Stroke) {
         val n = s.xs.size
         val es = effStab(s.kind)
-        if (n < 4 || es < 5) return
-        val sigma = 0.6f + es / 100f * 8.4f
+        if (n < 4 || es < 3) return
+        val tt = es / 100f
+        // yumuşatma genişliği ekrandaki dp cinsinden; yakınlaştırma düzeyinden bağımsız aynı his
+        val sigma = (0.8f + 11.2f * Math.pow(tt.toDouble(), 1.3).toFloat()) * density / sc
         val step = max(1f, sigma / 3f)
         // yay uzunluğuna göre eşit aralıklı örnekleme
         val px = ArrayList<Float>(); val py = ArrayList<Float>(); val pp = ArrayList<Float>()
@@ -164,32 +166,48 @@ class DrawView(context: Context) : View(context) {
         tapeBmp = b; tapePng = png; tapeHide = hide
     }
 
+    private var tapeLastMoveMs = 0L
+    private var tapeLastGx = 0f
+    private var tapeLastGy = 0f
+
+    /** Bant, kalemin bittiği yere kadar serbest uzanır; kendiliğinden düzeltilmez (bekleyerek düzeltme: bkz. ACTION_UP). */
     private fun tapeEnd(gx: Float, gy: Float) {
-        var ex = gx
-        var ey = gy
-        val dx = gx - tapeX0
-        val dy = gy - tapeY0
+        tapeX1 = gx; tapeY1 = gy
+    }
+
+    /** Kalem durup bekledikten sonra kalkarsa, yatay/dikeye yakın bant tam hizaya oturur. */
+    private fun tapeHoldSnap() {
+        val dx = tapeX1 - tapeX0
+        val dy = tapeY1 - tapeY0
+        val len = hypot(dx, dy)
+        if (len < 1f) return
         val ang = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
-        val m = ((ang % 90f) + 90f) % 90f
-        if (min(m, 90f - m) < 4f) {
-            // yatay ve dikeye yaklaşınca tam hizaya oturur
-            val len = hypot(dx, dy)
-            val a = Math.toRadians((Math.round(ang / 90f) * 90f).toDouble())
-            ex = tapeX0 + len * Math.cos(a).toFloat()
-            ey = tapeY0 + len * Math.sin(a).toFloat()
+        val q = Math.round(ang / 90f) * 90f
+        if (abs(ang - q) < 14f) {
+            val rr = Math.toRadians(q.toDouble())
+            tapeX1 = tapeX0 + len * Math.cos(rr).toFloat()
+            tapeY1 = tapeY0 + len * Math.sin(rr).toFloat()
         }
-        tapeX1 = ex; tapeY1 = ey
     }
 
     private fun handleTapeTouch(e: MotionEvent): Boolean {
         val gx = pageX(e.x)
         val gy = pageY(e.y)
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { tapeX0 = gx; tapeY0 = gy; tapeX1 = gx; tapeY1 = gy; tapeDown = true }
-            MotionEvent.ACTION_MOVE -> if (tapeDown) tapeEnd(gx, gy)
+            MotionEvent.ACTION_DOWN -> {
+                tapeX0 = gx; tapeY0 = gy; tapeX1 = gx; tapeY1 = gy; tapeDown = true
+                tapeLastMoveMs = e.eventTime; tapeLastGx = gx; tapeLastGy = gy
+            }
+            MotionEvent.ACTION_MOVE -> if (tapeDown) {
+                tapeEnd(gx, gy)
+                if (hypot(gx - tapeLastGx, gy - tapeLastGy) * sc > 8f * density) {
+                    tapeLastGx = gx; tapeLastGy = gy; tapeLastMoveMs = e.eventTime
+                }
+            }
             MotionEvent.ACTION_UP -> {
                 if (tapeDown) {
                     tapeEnd(gx, gy)
+                    if (e.eventTime - tapeLastMoveMs > 450L) tapeHoldSnap()
                     tapeDown = false
                     val b = tapeBmp
                     val len = hypot(tapeX1 - tapeX0, tapeY1 - tapeY0)
@@ -1490,7 +1508,7 @@ class DrawView(context: Context) : View(context) {
         var i = drawnUpTo + 1
         while (i < n) {
             renderer.drawPenSegment(c, s, i, false)
-            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], maxOf(segmentWidth(s, i) * 1.3f, if (s.kind == 5 || s.kind == 9 || s.kind == 11 || s.kind == 12) s.width * 4f else 0f))
+            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], maxOf(segmentWidth(s, i) * 1.3f, if (s.kind == 2 || s.kind == 5 || s.kind == 9 || s.kind == 11 || s.kind == 12) s.width * 4f else 0f))
             i++
         }
         c.restore()
@@ -2018,6 +2036,21 @@ class DrawView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 holdHandler.removeCallbacks(holdRunnable)
                 strokeActive = false
+                // kalemle bandın üstüne kısa bir dokunuş: bant kalkar / yeniden kapanır (nokta bırakmaz)
+                if (e.actionMasked == MotionEvent.ACTION_UP && isStylus && !gestureErasing && !straightLive &&
+                    (e.eventTime - e.downTime) < 300L && hypot(e.x - downX, e.y - downY) < 9f * density
+                ) {
+                    val tx = pageX(e.x)
+                    val ty = pageY(e.y)
+                    val tp = page.items.lastOrNull { it.type == PageItem.IMAGE && it.kind == TAPE_KIND && itemHit(it, tx, ty) }
+                    if (tp != null) {
+                        current = null
+                        lastTapTime = 0L
+                        lastTapStroke = null
+                        toggleTape(tp)
+                        return true
+                    }
+                }
                 val isTap = e.actionMasked == MotionEvent.ACTION_UP && isStylus && penDoubleTap &&
                     (e.eventTime - e.downTime) < 220L && hypot(e.x - downX, e.y - downY) < 7f * density
                 val twice = isTap && e.eventTime - lastTapTime < 320L &&
@@ -2098,7 +2131,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 3 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
+                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 0 || s.kind == 2 || s.kind == 3 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
