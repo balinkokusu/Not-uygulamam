@@ -289,8 +289,9 @@ class LibraryActivity : Activity() {
             v.setPadding(dp(10f), dp(10f), dp(10f), dp(10f))
             v.setTypeface(Typeface.SERIF, Typeface.NORMAL)
             v.setOnClickListener {
-                if (i == 2) startActivity(Intent(this, FlashcardsActivity::class.java))
-                else { mode = if (i == 3) 2 else i; folderId = ""; refresh() }
+                mode = if (i == 3) 2 else if (i == 2) 3 else i
+                folderId = ""
+                refresh()
             }
             tabViews.add(v)
             tabBar.addView(v, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -312,6 +313,12 @@ class LibraryActivity : Activity() {
         val content = android.widget.FrameLayout(this)
         content.addView(homeScroll, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         content.addView(gridBox, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        flashBox = LinearLayout(this)
+        flashBox.orientation = LinearLayout.VERTICAL
+        flashBox.setPadding(dp(24f), dp(8f), dp(24f), dp(24f))
+        flashScroll = ScrollView(this)
+        flashScroll.addView(flashBox)
+        content.addView(flashScroll, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         root.addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         refresh()
@@ -321,6 +328,69 @@ class LibraryActivity : Activity() {
     private lateinit var homeBox: LinearLayout
     private lateinit var homeScroll: ScrollView
     private lateinit var gridHost: View
+    private lateinit var flashScroll: ScrollView
+    private lateinit var flashBox: LinearLayout
+
+    /** Flaş kart desteleri, defterler ve klasörler gibi kütüphanenin içinde listelenir. */
+    private fun buildFlash() {
+        flashBox.removeAllViews()
+        val decks = FlashStore.load(this)
+        val tints = intArrayOf(Color.rgb(232, 224, 242), Color.rgb(236, 242, 222), Color.rgb(252, 240, 214), Color.rgb(250, 226, 226))
+        fun row(title: String, sub: String, tint: Int, dashed: Boolean, click: () -> Unit) {
+            val r = LinearLayout(this)
+            r.orientation = LinearLayout.VERTICAL
+            r.setPadding(dp(18f), dp(14f), dp(18f), dp(14f))
+            val g = GradientDrawable()
+            g.cornerRadius = dp(14f).toFloat()
+            if (dashed) g.setStroke(dp(2f), Look.gold, dp(8f).toFloat(), dp(6f).toFloat()) else g.setColor(tint)
+            r.background = g
+            val t = TextView(this)
+            t.text = title
+            t.textSize = 18f
+            t.setTypeface(Typeface.SERIF, Typeface.NORMAL)
+            t.setTextColor(if (dashed) Look.accent else Look.ink)
+            r.addView(t)
+            if (sub.isNotEmpty()) {
+                val s = TextView(this)
+                s.text = sub
+                s.textSize = 13f
+                s.setTextColor(Look.inkSoft)
+                r.addView(s)
+            }
+            r.setOnClickListener { click() }
+            flashBox.addView(r, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10f) })
+        }
+        row("+  Yeni deste", "", 0, true) {
+            val e = EditText(this)
+            e.hint = "Deste adı"
+            e.setSingleLine(true)
+            val box = LinearLayout(this)
+            box.setPadding(dp(22f), dp(10f), dp(22f), dp(4f))
+            box.addView(e, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            AlertDialog.Builder(this).setTitle("Yeni deste").setView(box)
+                .setPositiveButton("Oluştur") { _, _ ->
+                    val n = e.text.toString().trim().ifEmpty { "Adsız deste" }
+                    decks.add(Deck(System.currentTimeMillis().toString(), n))
+                    FlashStore.save(this, decks)
+                    refresh()
+                }.setNegativeButton("Vazgeç", null).show()
+        }
+        for ((i, dk) in decks.withIndex()) {
+            val due = FlashStore.dueCount(dk)
+            row(dk.name, dk.cards.size.toString() + " kart" + if (due > 0) " · bugün sırada: $due" else "", tints[i % tints.size], false) {
+                val intent = Intent(this, FlashcardsActivity::class.java)
+                intent.putExtra("deste", dk.id)
+                startActivity(intent)
+            }
+        }
+        if (decks.isEmpty()) {
+            val h = TextView(this)
+            h.text = "Henüz deste yok. Çalışırken bildiğiniz kartlar daha seyrek, bilemedikleriniz daha sık karşınıza çıkar."
+            h.textSize = 14f
+            h.setTextColor(Look.inkSoft)
+            flashBox.addView(h)
+        }
+    }
     private val tabViews = ArrayList<TextView>()
 
     /** 0 ana sayfa, 1 defterler, 2 klasörler. */
@@ -377,7 +447,7 @@ class LibraryActivity : Activity() {
         for (b in books.take(6)) addTile(r1, b)
         addTile(r1, null) { showEditor(null, false) }
 
-        sectionTitle("Flaş kartlar", "❏") { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+        sectionTitle("Flaş kartlar", "❏") { mode = 3; refresh() }
         val fr = hRow()
         val decks = FlashStore.load(this)
         val tints = intArrayOf(Color.rgb(232, 224, 242), Color.rgb(236, 242, 222), Color.rgb(252, 240, 214), Color.rgb(250, 226, 226))
@@ -394,7 +464,7 @@ class LibraryActivity : Activity() {
             g.cornerRadius = dp(14f).toFloat()
             g.setColor(tints[i % tints.size])
             c.background = g
-            c.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+            c.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java).putExtra("deste", dk.id)) }
             fr.addView(c, LinearLayout.LayoutParams(dp(130f), dp(110f)).apply { rightMargin = dp(10f) })
         }
         val nw = TextView(this)
@@ -406,7 +476,7 @@ class LibraryActivity : Activity() {
         ng.cornerRadius = dp(14f).toFloat()
         ng.setStroke(dp(2f), Look.gold, dp(8f).toFloat(), dp(6f).toFloat())
         nw.background = ng
-        nw.setOnClickListener { startActivity(Intent(this, FlashcardsActivity::class.java)) }
+        nw.setOnClickListener { mode = 3; refresh() }
         fr.addView(nw, LinearLayout.LayoutParams(dp(130f), dp(110f)))
 
         sectionTitle("Klasörlerim", "▭") { mode = 2; refresh() }
@@ -560,11 +630,12 @@ class LibraryActivity : Activity() {
         titleView.text = when (mode) {
             0 -> "Not Uygulamam"
             1 -> "Defterlerim"
+            3 -> "Flaş kartlar"
             else -> f?.title ?: "Klasörlerim"
         }
         backBtn.visibility = if (mode == 2 && folderId.isNotEmpty()) View.VISIBLE else View.GONE
         for ((i, v) in tabViews.withIndex()) {
-            val on = (if (i == 3) 2 else i) == mode
+            val on = (if (i == 3) 2 else if (i == 2) 3 else i) == mode
             v.setTextColor(if (on) Color.WHITE else Look.ink)
             val g = GradientDrawable()
             g.cornerRadius = dp(24f).toFloat()
@@ -572,8 +643,10 @@ class LibraryActivity : Activity() {
             v.background = g
         }
         homeScroll.visibility = if (mode == 0) View.VISIBLE else View.GONE
-        gridHost.visibility = if (mode == 0) View.GONE else View.VISIBLE
+        gridHost.visibility = if (mode == 0 || mode == 3) View.GONE else View.VISIBLE
+        flashScroll.visibility = if (mode == 3) View.VISIBLE else View.GONE
         if (mode == 0) buildHome()
+        if (mode == 3) buildFlash()
         adapter.notifyDataSetChanged()
     }
 

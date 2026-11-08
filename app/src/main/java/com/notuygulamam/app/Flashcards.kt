@@ -126,8 +126,13 @@ class FlashcardsActivity : Activity() {
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(Look.libraryBg)
         setContentView(root)
-        showDecks()
+        directId = intent.getStringExtra("deste")
+        val first = directId?.let { id -> decks.firstOrNull { it.id == id } }
+        if (directId != null && first == null) { finish(); return }
+        if (first != null) { root.removeAllViews(); deckMenu(first) } else showDecks()
     }
+
+    private var directId: String? = null
 
     override fun onBackPressed() {
         if (studying != null) { studying = null; showDecks() } else super.onBackPressed()
@@ -168,6 +173,11 @@ class FlashcardsActivity : Activity() {
 
     private fun showDecks() {
         studying = null
+        if (directId != null) {
+            val dk = decks.firstOrNull { it.id == directId }
+            if (dk == null) finish() else { root.removeAllViews(); deckMenu(dk) }
+            return
+        }
         root.removeAllViews()
         val head = LinearLayout(this)
         head.orientation = LinearLayout.HORIZONTAL
@@ -246,7 +256,8 @@ class FlashcardsActivity : Activity() {
                         .setPositiveButton("Sil") { _, _ -> deck.cards.forEach { FlashStore.dropImages(this, it) }; decks.remove(deck); save(); showDecks() }
                         .setNegativeButton("Vazgeç", null).show()
                 }
-            }.setNegativeButton("Kapat", null).show()
+            }.setNegativeButton("Kapat") { _, _ -> if (directId != null) finish() }
+            .setOnCancelListener { if (directId != null) finish() }.show()
     }
 
     private fun rename(deck: Deck) {
