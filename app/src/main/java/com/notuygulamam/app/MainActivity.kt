@@ -964,13 +964,19 @@ class MainActivity : Activity() {
             val cur = draw.page
             val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, papers[i]) else PageData(1200f, 1697f, papers[i])
             if (cur.pdfName == null) pg.paperColor = cur.paperColor
-            askPlacement { m -> insertNewPage(cur, pg, m) }
+            if (pg.paper == Paper.YEAR || pg.paper == Paper.MONTHLY || pg.paper == Paper.COVER) askCalendar(listOf(pg)) { askPlacement { m -> insertNewPage(cur, pg, m) } }
+            else askPlacement { m -> insertNewPage(cur, pg, m) }
         })
         head("Diğer")
         link("Şablonlar ekranı (renk, sol/sağ ayrı uygulama)") { showTemplateScreen() }
         link("Açık sayfayı şablonla değiştir") { showApplyTemplateDialog() }
         link("Şablonlarım: yeni oluştur / sil") { showTemplateManager() }
         link("Planlayıcıyı bu deftere ekle") { showAddPlannerDialog() }
+        link("Açık sayfanın takvim yılını/ayını seç (yıllık, aylık, kapak)") {
+            val p = draw.page
+            if (p.paper == Paper.YEAR || p.paper == Paper.MONTHLY || p.paper == Paper.COVER) askCalendar(listOf(p)) {}
+            else Toast.makeText(this, "Bu sayfa yıllık, aylık takvim ya da kapak değil", Toast.LENGTH_LONG).show()
+        }
         val sv = ScrollView(this)
         sv.addView(box)
         dlg = AlertDialog.Builder(this)
@@ -2916,13 +2922,41 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /** Yıllık, aylık takvim ve kapak sayfaları için yıl (ve ay) seçtirir. */
+    private fun askCalendar(targets: List<PageData>, done: () -> Unit) {
+        val first = targets[0]
+        val nowY = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val years = (nowY - 2..nowY + 5).toList()
+        AlertDialog.Builder(this)
+            .setTitle("Hangi yıl?")
+            .setItems(years.map { it.toString() }.toTypedArray()) { _, w ->
+                val y = years[w]
+                fun apply(m: Int) {
+                    for (t in targets) { t.calYear = y; if (m > 0) t.calMonth = m }
+                    if (nb.pages.contains(first)) draw.setPaperFor(targets, first.paper)
+                    refresh()
+                    done()
+                }
+                if (first.paper == Paper.MONTHLY) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Hangi ay?")
+                        .setItems(Planner.MONTHS) { _, m -> apply(m + 1) }
+                        .show()
+                } else apply(0)
+            }
+            .setNegativeButton("Bugünkü tarih", null)
+            .show()
+    }
+
     private fun showPaperGrid(targets: List<PageData>, title: String) {
         var dlg: AlertDialog? = null
         val entries = Paper.values().map { Pair(it.label, it) }
         val grid = PaperGrid(this, entries, targets[0].paper.ordinal, targets[0].paperColor) { which ->
-            draw.setPaperFor(targets, Paper.values()[which])
+            val chosen = Paper.values()[which]
+            draw.setPaperFor(targets, chosen)
             refresh()
             dlg?.dismiss()
+            if (chosen == Paper.YEAR || chosen == Paper.MONTHLY || chosen == Paper.COVER) askCalendar(targets) {}
         }
         val sv = android.widget.ScrollView(this)
         sv.addView(grid)

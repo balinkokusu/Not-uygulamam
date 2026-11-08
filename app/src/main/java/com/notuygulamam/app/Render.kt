@@ -746,7 +746,7 @@ class PageRenderer {
         textPaint.typeface = Fonts.get(3, Typeface.BOLD)
         textPaint.setColor(Color.rgb(70, 50, 60))
         textPaint.textSize = 170f
-        c.drawText("Planlayıcı", 230f, 1660f, textPaint)
+        c.drawText("Planlayıcı", 230f, 1500f, textPaint)
     }
 
     private fun drawYear(c: Canvas, page: PageData) {
