@@ -1923,6 +1923,21 @@ class MainActivity : Activity() {
             gotoPage(idx + 1)
             return
         }
+        // Seçilen taraf açık ikilide zaten boş bir sayfaysa, yeni ikili eklemek yerine o sayfa doldurulur
+        if ((mode == 0 || mode == 1) && pg.dateKey == 0 && pg.pdfName == null) {
+            val base = idx - idx % 2
+            val tgtIdx = base + mode
+            val tgt = nb.pages.getOrNull(tgtIdx)
+            if (tgt != null && tgt.pdfName == null && tgt.strokes.isEmpty() && tgt.items.isEmpty() && tgt.dateKey == 0) {
+                tgt.paper = pg.paper
+                tgt.paperColor = pg.paperColor
+                tgt.calYear = pg.calYear
+                tgt.calMonth = pg.calMonth
+                for (x in pg.items) tgt.items.add(x)
+                gotoPage(base)
+                return
+            }
+        }
         val at = idx - idx % 2 + 2
         val plain = if (cur.pdfName == null) cur.paper else Paper.BLANK
         val mate = PageData(pg.width, pg.height, if (mode == 2) pg.paper else plain)
