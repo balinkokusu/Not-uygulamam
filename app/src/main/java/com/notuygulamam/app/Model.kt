@@ -34,6 +34,7 @@ class Stroke(val color: Int, val width: Float, val highlighter: Boolean, val sen
 
     private var cum = FloatArray(64)
     private var cumN = 0
+    fun resetArc() { cumN = 0 }
 
     /** i. noktaya kadar çizginin yay uzunluğu (kesikli ve noktalı kalemler için); önbellekli. */
     fun arc(i: Int): Float {

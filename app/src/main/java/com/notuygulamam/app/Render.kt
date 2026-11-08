@@ -46,8 +46,9 @@ class PageRenderer {
 
     private fun kindScale(k: Int): Float = when (k) {
         1 -> 0.7f
-        2 -> 0.85f
-        13 -> 1.05f
+        2 -> 0.7f
+        13 -> 1.0f
+        14 -> 0.45f
         3 -> 1.35f
         4 -> 1.3f
         5 -> 1.5f
@@ -102,7 +103,7 @@ class PageRenderer {
         return sh
     }
 
-    private fun layeredPen(k: Int) = k == 2 || k == 13 || k == 8 || k == 9 || k == 11 || k == 12
+    private fun layeredPen(k: Int) = k == 8 || k == 9 || k == 11 || k == 12
 
     private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
         fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255) {
@@ -810,21 +811,29 @@ class PageRenderer {
 
     /** Çizginin başında ve (yeniden çizilirken) sonunda kalınlık çarpanı. */
     private fun endTaper(s: Stroke, i: Int, last: Boolean): Float {
-        val n = s.xs.size
-        return when (s.kind) {
-            3 -> {
-                var t = min(1f, 0.25f + i / 10f)
-                if (last) t = min(t, 0.25f + (n - 1 - i) / 10f)
-                t
-            }
-            0 -> if (last) min(1f, 0.5f + (n - 1 - i) / 7f) else 1f
-            else -> 1f
+        // başlangıç uzunluğu (kalem kalınlığının katı), başlangıç oranı, bitiş uzunluğu, bitiş oranı
+        val p: FloatArray = when (s.kind) {
+            0 -> floatArrayOf(4f, 0.45f, 6f, 0.2f)
+            1 -> floatArrayOf(1f, 0.8f, 2f, 0.6f)
+            2 -> floatArrayOf(5f, 0.25f, 8f, 0.15f)
+            13 -> floatArrayOf(8f, 0.2f, 8f, 0.15f)
+            3 -> floatArrayOf(6f, 0.15f, 14f, 0.05f)
+            4 -> floatArrayOf(1f, 0.85f, 3f, 0.55f)
+            14 -> floatArrayOf(1.5f, 0.7f, 3f, 0.4f)
+            else -> return 1f
         }
+        val w = max(1f, s.width)
+        var t = min(1f, p[1] + (1f - p[1]) * s.arc(i) / (p[0] * w))
+        if (last) {
+            val rest = s.arc(s.xs.size - 1) - s.arc(i)
+            t = min(t, p[3] + (1f - p[3]) * rest / (p[2] * w))
+        }
+        return t
     }
 
     /** Kalem çizgisinin i. parçasını (i-1 ile i arası) türüne göre çizer. */
     fun drawPenSegment(c: Canvas, s: Stroke, i: Int, last: Boolean) {
-        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4)) {
+        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 2 || s.kind == 3 || s.kind == 4 || s.kind == 5 || s.kind == 13 || s.kind == 14)) {
             fillPaint.style = Paint.Style.FILL
             fillPaint.setColor(s.color)
             fillPaint.alpha = 255
