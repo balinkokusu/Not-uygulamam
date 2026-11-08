@@ -46,8 +46,8 @@ class PageRenderer {
 
     private fun kindScale(k: Int): Float = when (k) {
         1 -> 0.7f
-        2 -> 0.7f
-        13 -> 1.0f
+        2 -> 1.0f
+        13 -> 1.4f
         14 -> 0.45f
         3 -> 1.35f
         4 -> 1.3f
@@ -89,7 +89,7 @@ class PageRenderer {
         val base = if (dark) 0.55f else 0.30f
         val gain = if (dark) 0.45f else 0.55f
         for (i in 0 until n * n) {
-            val v = ((bl[i] - 0.5f) * 2.6f + 0.5f).coerceIn(0f, 1f)
+            val v = ((bl[i] - 0.5f) * 3.2f + 0.5f).coerceIn(0f, 1f)
             val a = ((base + gain * v) * 255f).toInt().coerceIn(0, 255)
             px[i] = Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
         }
@@ -103,7 +103,58 @@ class PageRenderer {
         return sh
     }
 
-    private fun layeredPen(k: Int) = k == 8 || k == 9 || k == 11 || k == 12
+    /**
+     * Kurşun kalem: grafit, basınca göre üç katman halinde birikir (hafif, orta, sert).
+     * Her katman kâğıt lifini andıran sabit bir doku desenidir; desen sayfa koordinatına bağlıdır,
+     * bu yüzden aynı çizgi yeniden çizilince birebir aynı görünür. Üst üste geçilen yerde alfa birikir.
+     */
+    private fun pencilLayers(c: Canvas, s: Stroke, i0: Int, i1: Int, segmentOnly: Boolean) {
+        val dark = s.kind == 13
+        val graphite = mix(s.color, Color.rgb(50, 50, 55), if (dark) 0.3f else 0.45f)
+        val wBase = s.width * kindScale(s.kind)
+        val thr = floatArrayOf(0f, if (dark) 0.3f else 0.4f, if (dark) 0.6f else 0.72f)
+        val wid = if (dark) floatArrayOf(0.7f, 0.95f, 1.2f) else floatArrayOf(0.5f, 0.75f, 0.95f)
+        val alp = if (dark) intArrayOf(150, 150, 170) else intArrayOf(120, 120, 140)
+        grainPaint.style = Paint.Style.STROKE
+        grainPaint.strokeCap = Paint.Cap.ROUND
+        grainPaint.strokeJoin = Paint.Join.ROUND
+        grainPaint.isFilterBitmap = true
+        for (L in 0..2) {
+            path.reset()
+            var open = false
+            for (i in i0..i1) {
+                val lo = max(0, i - 2)
+                val hi = min(s.xs.size - 1, i + 2)
+                var q = 0f
+                for (j in lo..hi) q += s.ps[j]
+                q /= (hi - lo + 1)
+                val on = q >= thr[L]
+                if (on) {
+                    if (!open) { path.moveTo(s.xs[i], s.ys[i]); open = true } else path.lineTo(s.xs[i], s.ys[i])
+                } else open = false
+            }
+            if (segmentOnly) {
+                // canlı çizimde yalnızca son parça
+                path.reset()
+                val q = (s.ps[i1] + s.ps[max(0, i1 - 1)]) / 2f
+                if (q < thr[L]) continue
+                path.moveTo(s.xs[max(0, i1 - 1)], s.ys[max(0, i1 - 1)])
+                path.lineTo(s.xs[i1], s.ys[i1])
+            }
+            grainPaint.strokeWidth = max(1.2f, wBase * wid[L])
+            grainPaint.alpha = alp[L]
+            for (pass in 0..1) {
+                if (pass == 1 && L != 0) continue
+                grainPaint.shader = grainShader(graphite, dark, pass)
+                grainPaint.alpha = if (pass == 0) alp[L] else alp[L] / 2
+                c.drawPath(path, grainPaint)
+            }
+        }
+        grainPaint.shader = null
+        grainPaint.alpha = 255
+    }
+
+    private fun layeredPen(k: Int) = k == 2 || k == 13 || k == 8 || k == 9 || k == 11 || k == 12
 
     private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
         fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255) {
@@ -833,7 +884,11 @@ class PageRenderer {
 
     /** Kalem çizgisinin i. parçasını (i-1 ile i arası) türüne göre çizer. */
     fun drawPenSegment(c: Canvas, s: Stroke, i: Int, last: Boolean) {
-        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 2 || s.kind == 3 || s.kind == 4 || s.kind == 5 || s.kind == 13 || s.kind == 14)) {
+        if (!s.highlighter && (s.kind == 2 || s.kind == 13)) {
+            pencilLayers(c, s, i, i, true)
+            return
+        }
+        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4 || s.kind == 5 || s.kind == 14)) {
             fillPaint.style = Paint.Style.FILL
             fillPaint.setColor(s.color)
             fillPaint.alpha = 255
@@ -1070,6 +1125,10 @@ class PageRenderer {
             }
             fillPaint.setColor(s.color)
             c.drawCircle(s.xs[0], s.ys[0], s.width * widthFactor(s, s.ps[0]) * 0.5f, fillPaint)
+            return
+        }
+        if (s.kind == 2 || s.kind == 13) {
+            pencilLayers(c, s, 0, n - 1, false)
             return
         }
         if (layeredPen(s.kind)) {
