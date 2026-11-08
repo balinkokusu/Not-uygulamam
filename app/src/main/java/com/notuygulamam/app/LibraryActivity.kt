@@ -281,7 +281,7 @@ class LibraryActivity : Activity() {
             v.setTypeface(Typeface.SERIF, Typeface.NORMAL)
             v.setOnClickListener {
                 if (i == 2) startActivity(Intent(this, FlashcardsActivity::class.java))
-                else { mode = i; if (i != 2) folderId = ""; refresh() }
+                else { mode = if (i == 3) 2 else i; folderId = ""; refresh() }
             }
             tabViews.add(v)
             tabBar.addView(v, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -520,7 +520,7 @@ class LibraryActivity : Activity() {
         }
         backBtn.visibility = if (mode == 2 && folderId.isNotEmpty()) View.VISIBLE else View.GONE
         for ((i, v) in tabViews.withIndex()) {
-            val on = i == mode
+            val on = (if (i == 3) 2 else i) == mode
             v.setTextColor(if (on) Color.WHITE else Look.ink)
             val g = GradientDrawable()
             g.cornerRadius = dp(24f).toFloat()

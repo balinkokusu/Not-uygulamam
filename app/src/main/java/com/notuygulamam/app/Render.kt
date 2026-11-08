@@ -887,7 +887,7 @@ class PageRenderer {
             pencilLayers(c, s, i, i, true)
             return
         }
-        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4 || s.kind == 5 || s.kind == 14)) {
+        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4 || s.kind == 14)) {
             fillPaint.style = Paint.Style.FILL
             fillPaint.setColor(s.color)
             fillPaint.alpha = 255
@@ -908,7 +908,7 @@ class PageRenderer {
             2 -> drawLayered(c, s, null, x0, y0, x1, y1, w)
             5 -> {
                 // Kaligrafi: sabit açılı, düz ve geniş uç. Uç 40 derece yukarı bakar; çizgi uca paralelken incelir, dik giderken kalınlaşır.
-                val half = s.width * 1.0f
+                val half = s.width * 0.8f
                 val a = -0.7f
                 val ux = Math.cos(a.toDouble()).toFloat() * half
                 val uy = Math.sin(a.toDouble()).toFloat() * half
