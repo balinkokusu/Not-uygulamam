@@ -357,6 +357,24 @@ object Storage {
         return n
     }
 
+    class BackupInfo(val file: File, val target: File, val strokes: Int, val pages: Int, val items: Int)
+
+    /** Kurtarma ekranı için: defter dosyalarının yanındaki okunabilen tüm yedekler. */
+    fun listBackups(dir: File): List<BackupInfo> {
+        val out = ArrayList<BackupInfo>()
+        val all = dir.listFiles() ?: return out
+        for (c in all) {
+            if (!c.isFile) continue
+            val ix = c.name.indexOf(".bin.")
+            if (!c.name.startsWith("nb_") || ix < 0) continue
+            val suffix = c.name.substring(ix + 5)
+            if (!(suffix.startsWith("bozuk") || suffix.startsWith("gun") || suffix.startsWith("yedek_bos"))) continue
+            val nb = loadInner(c) ?: continue
+            out.add(BackupInfo(c, File(dir, c.name.substring(0, ix + 4)), nb.pages.sumOf { it.strokes.size }, nb.pages.size, nb.pages.sumOf { it.items.size }))
+        }
+        return out
+    }
+
     fun load(file: File): Notebook? {
         val r = loadInner(file)
         if (r == null) quarantine(file)

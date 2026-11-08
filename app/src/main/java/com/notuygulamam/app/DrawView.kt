@@ -559,7 +559,18 @@ class DrawView(context: Context) : View(context) {
         for (s in tabSides) s.clear()
         for (t in list) tabSides[t.side.coerceIn(0, 3)].add(t)
         if (had != gutterKey()) {
+            // yazarken ayraç eklenip kenar boşluğu değişince yakınlaştırma sıfırlanmasın
+            val zoomed = width > 0 && height > 0 && sc > fitSc * 1.01f
+            val ratio = if (fitSc > 0f) sc / fitSc else 1f
+            val cxPage = if (zoomed) ((width + reserveL - reserveR) / 2f - ox) / sc else 0f
+            val cyPage = if (zoomed) (height / 2f - oy) / sc else 0f
             computeTransform()
+            if (zoomed) {
+                sc = (fitSc * ratio).coerceIn(fitSc, fitSc * 6f)
+                ox = (width + reserveL - reserveR) / 2f - cxPage * sc
+                oy = height / 2f - cyPage * sc
+                clampTransform()
+            }
             requestBg()
             rebuildBase()
         } else {
@@ -1079,7 +1090,7 @@ class DrawView(context: Context) : View(context) {
         c.drawBitmap(b, 0f, 0f, null)
         drawTabs(c)
         val s = current
-        if (s != null && (s.highlighter || straightLive)) {
+        if (s != null && (s.highlighter || straightLive || (!s.highlighter && (s.kind == 2 || s.kind == 13)))) {
             beginPage(c)
             drawStroke(c, s)
             c.restore()
@@ -2039,6 +2050,11 @@ class DrawView(context: Context) : View(context) {
                                 val from = max(0, before - 1)
                                 for (i in from + 1 until s.xs.size) {
                                     invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width)
+                                }
+                            } else if (s.kind == 2 || s.kind == 13) {
+                                val from = max(0, before - 1)
+                                for (i in from + 1 until s.xs.size) {
+                                    invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width * 4f)
                                 }
                             } else {
                                 drawPenIncrement(s)

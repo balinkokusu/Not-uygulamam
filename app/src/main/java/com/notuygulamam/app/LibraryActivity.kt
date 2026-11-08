@@ -426,11 +426,46 @@ class LibraryActivity : Activity() {
         if (folderId.isNotEmpty()) goUp() else if (mode != 0) { mode = 0; refresh() } else super.onBackPressed()
     }
 
+    private fun showAutoBackups() {
+        val list = Storage.listBackups(File(filesDir, "library")).filter { it.strokes + it.items > 0 }
+            .sortedWith(compareBy({ it.target.name }, { -it.strokes }))
+        if (list.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("Otomatik yedekler")
+                .setMessage("İçinde yazı ya da çizim bulunan otomatik yedek bulunamadı.")
+                .setPositiveButton("Tamam", null).show()
+            return
+        }
+        val fmt = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale("tr"))
+        val labels = list.map {
+            val id = it.target.name.removePrefix("nb_").removeSuffix(".bin")
+            val title = store.find(id)?.title?.ifEmpty { "Adsız defter" } ?: "Defter"
+            title + "  ·  " + fmt.format(java.util.Date(it.file.lastModified())) + "  ·  " +
+                it.pages + " sayfa, " + it.strokes + " çizgi, " + it.items + " nesne"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Hangi yedeği geri getireyim?")
+            .setItems(labels) { _, w ->
+                val b = list[w]
+                try {
+                    if (b.target.exists() && b.target.length() > 0L) b.target.copyTo(File(b.target.parentFile, b.target.name + ".yedek_bos"), true)
+                    b.file.copyTo(b.target, true)
+                    Toast.makeText(this, "Defter yedekten geri getirildi", Toast.LENGTH_LONG).show()
+                    store.load(); refresh()
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Geri getirilemedi", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
     private fun showLibraryBackup() {
         AlertDialog.Builder(this)
             .setTitle("Tüm kütüphane yedeği")
-            .setItems(arrayOf("Yedek dosyası oluştur (yeri siz seçersiniz)", "Yedek dosyasından geri yükle")) { _, which ->
-                if (which == 0) {
+            .setItems(arrayOf("Yedek dosyası oluştur (yeri siz seçersiniz)", "Yedek dosyasından geri yükle", "Otomatik yedeklerden defter kurtar")) { _, which ->
+                if (which == 2) {
+                    showAutoBackups()
+                } else if (which == 0) {
                     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
                     intent.addCategory(Intent.CATEGORY_OPENABLE)
                     intent.type = "application/zip"
