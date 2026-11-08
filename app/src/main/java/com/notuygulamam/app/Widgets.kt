@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE, RULER, HAND, IMAGE, MIC
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE, RULER, HAND, IMAGE, MIC, SELECT
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -173,6 +173,14 @@ class IconButton(
                 p.pathEffect = null
                 line(c, u, 0.4f, 0.68f, 0.3f, 0.9f)
                 c.drawCircle(0.3f * u, 0.9f * u, 0.04f * u, p)
+            }
+            Icon.SELECT -> {
+                // nesne seçme: kesik çizgili çerçeve ve içinde ok imleci
+                p.pathEffect = android.graphics.DashPathEffect(floatArrayOf(0.1f * u, 0.08f * u), 0f)
+                rect.set(0.12f * u, 0.14f * u, 0.8f * u, 0.76f * u)
+                c.drawRoundRect(rect, 0.05f * u, 0.05f * u, p)
+                p.pathEffect = null
+                poly(c, u, true, 0.42f, 0.4f, 0.42f, 0.88f, 0.54f, 0.76f, 0.64f, 0.94f, 0.72f, 0.9f, 0.62f, 0.72f, 0.78f, 0.7f)
             }
             Icon.LASER -> {
                 line(c, u, 0.2f, 0.8f, 0.55f, 0.45f)

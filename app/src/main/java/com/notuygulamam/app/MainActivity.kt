@@ -2344,6 +2344,7 @@ class MainActivity : Activity() {
         )
         val groups = listOf(
             "Defter ve dosya" to listOf(0, 3, 4, 26),
+            "Diğer araçlar" to listOf(32, 33),
             "Yardım" to listOf(30, 31)
         )
         for ((gi, g) in groups.withIndex()) {
@@ -2354,6 +2355,8 @@ class MainActivity : Activity() {
                     24 -> "Sayfa görünümü: " + (if (spread) "çift sayfa" else "tek sayfa") + " (değiştirmek için dokunun)"
                     25 -> "Avuç içi reddi: " + (if (draw.palmReject) "açık" else "kapalı") + " (kalem yakındayken parmak dokunuşunu yok sayar)"
                     26 -> "Sayfadan flaş kart yap (ön ve arka yüzü sayfadan seçin)"
+                    32 -> "Lazer işaretçi (iz bırakmadan göstermek için)"
+                    33 -> "El aracı (sayfayı kaydırır, cetvel ve bandı tutar)"
                     30 -> "Simgeler ve ne işe yaradıkları (i)"
                     31 -> "Konuşmayı yazıya çevir (metin kutusu olarak ekler)"
                     22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
@@ -2380,6 +2383,8 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "Avuç içi reddi " + (if (draw.palmReject) "açık" else "kapalı"), Toast.LENGTH_SHORT).show()
                 }
                 26 -> startCardCapture()
+                32 -> { draw.tool = Tool.LASER; settingsPopup?.dismiss(); refresh(); Toast.makeText(this, "Lazer işaretçi: sayfada parmağınızla ya da kalemle gösterin, iz kalmaz. Başka araç seçince kapanır.", Toast.LENGTH_LONG).show() }
+                33 -> { draw.tool = Tool.HAND; settingsPopup?.dismiss(); refresh() }
                 30 -> Help.show(this, { dp(it) }, getSharedPreferences("ayar", MODE_PRIVATE))
                 31 -> startSpeech()
                 22 -> toggleCalculator()
@@ -3200,22 +3205,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // 144 Hz gibi yüksek yenileme hızını destekleyen ekranlarda en yüksek hız istenir
-        try {
-            val lp = window.attributes
-            lp.preferredRefreshRate = 144f
-            if (Build.VERSION.SDK_INT >= 23) {
-                @Suppress("DEPRECATION")
-                val disp = windowManager.defaultDisplay
-                val cur = disp.mode
-                val best = disp.supportedModes
-                    .filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight }
-                    .maxByOrNull { it.refreshRate }
-                if (best != null) lp.preferredDisplayModeId = best.modeId
-            }
-            window.attributes = lp
-        } catch (e: Exception) {
-        }
         draw = DrawView(this)
         draw.pdfDir = pdfDir()
         preview = PreviewView(this, draw)
@@ -3356,8 +3345,7 @@ class MainActivity : Activity() {
             Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık"),
             Triple(Tool.TEXT, Icon.TEXT, "Metin kutusu (klavyeyle yazı)"),
             Triple(Tool.LASSO, Icon.LASSO, "Lasso: çevreleyerek seç, taşı, sil, çoğalt"),
-            Triple(Tool.LASER, Icon.LASER, "Lazer işaretçi (iz bırakmaz)"),
-            Triple(Tool.HAND, Icon.HAND, "El aracı: sayfayı kaydırır, cetveli ve bandı kalemle de tutar")
+            Triple(Tool.OBJECT, Icon.SELECT, "Nesne seç ve taşı: resim, yazı, çıkartma ve tabloları taşır, boyutlandırır, siler")
         )
         for ((t, ic, lb) in toolIcons) {
             val b = iconBtn(ic, lb) {
@@ -3382,6 +3370,9 @@ class MainActivity : Activity() {
                     if (t == Tool.HAND) {
                         Toast.makeText(this, "El aracı: yakınlaştırılmışken sayfayı kaydırır; cetvelin uçlarını ve gövdesini kalemle tutabilirsiniz, gizleme bandına dokununca kalkar", Toast.LENGTH_LONG).show()
                     }
+                    if (t == Tool.OBJECT) {
+                        Toast.makeText(this, "Nesne seçme: resim, yazı ya da çıkartmaya dokunun; sürükleyerek taşıyın, sağ alt köşeden boyutlandırın. Başka araca geçince nesneler yerinde kilitli kalır.", Toast.LENGTH_LONG).show()
+                    }
                     if (t == Tool.TEXT) {
                         Toast.makeText(this, "Yazı yazmak için sayfada bir yere dokunun (kalemle ya da parmakla)", Toast.LENGTH_LONG).show()
                     }
@@ -3393,7 +3384,6 @@ class MainActivity : Activity() {
         toolRow.addView(iconBtn(Icon.IMAGE, "Galeriden resim ekle") { pickImage() })
         toolRow.addView(iconBtn(Icon.MIC, "Ses kaydı") { showAudioDialog() })
         val stickerBtn = iconBtn(Icon.STICKER, "Çıkartma") { showStickerDialog() }
-        toolButtons[Tool.OBJECT] = stickerBtn
         toolRow.addView(stickerBtn)
         val tapeBtn = iconBtn(Icon.TAPE, "Bant kalemi: çizgi çekerek washi bant koy") {
             if (draw.tapeBmp == null) showTapeDialog() else { draw.tool = Tool.TAPE; refresh() }

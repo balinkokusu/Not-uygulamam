@@ -11,8 +11,8 @@ android {
         applicationId = "com.notuygulamam.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 103
-        versionName = "1.03"
+        versionCode = 104
+        versionName = "1.04"
     }
 
     // Her derlemede aynı anahtarla imzalanır; böylece yeni sürüm eskisinin üstüne güncelleme olarak kurulur.
