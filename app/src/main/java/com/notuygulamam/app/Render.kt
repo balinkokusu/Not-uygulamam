@@ -116,7 +116,8 @@ class PageRenderer {
         val wid = if (dark) floatArrayOf(1.08f, 1.0f, 0.94f) else floatArrayOf(0.92f, 0.96f, 1.0f)
         val alp = if (dark) intArrayOf(120, 150, 210) else intArrayOf(120, 110, 130)
         grainPaint.style = Paint.Style.STROKE
-        grainPaint.strokeCap = Paint.Cap.ROUND
+        // canlı çizimde yuvarlak uçlar parça eklerinde üst üste binip koyu leke yapıyordu; düz uç kullanılır
+        grainPaint.strokeCap = if (segmentOnly) Paint.Cap.BUTT else Paint.Cap.ROUND
         grainPaint.strokeJoin = Paint.Join.ROUND
         grainPaint.isFilterBitmap = true
         for (L in 0..2) {
