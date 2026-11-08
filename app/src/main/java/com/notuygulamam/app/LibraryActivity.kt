@@ -213,6 +213,15 @@ class LibraryActivity : Activity() {
         coverDir = File(filesDir, "covers")
         store.load()
         migrate()
+        try {
+            val flag = File(filesDir, "kurtarma_v094")
+            if (!flag.exists()) {
+                val k = Storage.recover(File(filesDir, "library"))
+                flag.createNewFile()
+                if (k > 0) Toast.makeText(this, k.toString() + " defterin içeriği yedekten geri getirildi", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+        }
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL

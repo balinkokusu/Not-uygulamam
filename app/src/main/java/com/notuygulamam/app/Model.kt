@@ -321,6 +321,42 @@ object Storage {
         }
     }
 
+    private fun score(nb: Notebook): Int = nb.pages.sumOf { it.strokes.size + it.items.size }
+
+    /**
+     * Okuma hatası yüzünden boş açılıp üzerine yazılan defterleri, yanındaki .bozuk / .gun yedeklerinden geri getirir.
+     * Yalnızca daha dolu bir yedek varsa değiştirir; eski dosya ".yedek_bos" olarak saklanır. Döner: kurtarılan defter sayısı.
+     */
+    fun recover(dir: File): Int {
+        var n = 0
+        val files = dir.listFiles { f -> f.isFile && f.name.startsWith("nb_") && f.name.endsWith(".bin") } ?: return 0
+        for (f in files) {
+            try {
+                val cur = loadInner(f)
+                val curScore = if (cur == null) -1 else score(cur)
+                val curPages = cur?.pages?.size ?: 0
+                var best: File? = null
+                var bestScore = curScore
+                var bestPages = curPages
+                val cands = dir.listFiles { c -> c.isFile && (c.name.startsWith(f.name + ".bozuk") || c.name.startsWith(f.name + ".gun")) } ?: emptyArray()
+                for (c in cands) {
+                    val nb = loadInner(c) ?: continue
+                    val sc = score(nb)
+                    if (sc > bestScore || (sc == bestScore && sc > 0 && nb.pages.size > bestPages)) {
+                        best = c; bestScore = sc; bestPages = nb.pages.size
+                    }
+                }
+                if (best != null && bestScore > curScore) {
+                    if (f.exists() && f.length() > 0L) f.copyTo(File(dir, f.name + ".yedek_bos"), true)
+                    best.copyTo(f, true)
+                    n++
+                }
+            } catch (e: Exception) {
+            }
+        }
+        return n
+    }
+
     fun load(file: File): Notebook? {
         val r = loadInner(file)
         if (r == null) quarantine(file)
@@ -359,9 +395,11 @@ object Storage {
                         val hl = i.readBoolean()
                         val sens = i.readFloat()
                         val kind = if (ver >= 6) i.readInt() else 0
+                        // kayıt sırası: tür, (sürüm 10+) zaman, nokta sayısı
+                        val tm = if (ver >= 10) i.readLong() else 0L
                         val n = i.readInt()
                         val s = Stroke(color, sw, hl, sens, kind)
-                        if (ver >= 10) s.t = i.readLong()
+                        if (ver >= 10) s.t = tm
                         for (q in 0 until n) {
                             val x = i.readFloat()
                             val y = i.readFloat()
