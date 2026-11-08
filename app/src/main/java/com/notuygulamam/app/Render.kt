@@ -46,8 +46,8 @@ class PageRenderer {
 
     private fun kindScale(k: Int): Float = when (k) {
         1 -> 0.7f
-        2 -> 1.0f
-        13 -> 1.25f
+        2 -> 0.85f
+        13 -> 1.05f
         3 -> 1.35f
         4 -> 1.3f
         5 -> 1.5f
@@ -188,7 +188,7 @@ class PageRenderer {
                 val dy = s.ys[i] - s.ys[j]
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
-                    w *= (0.42 + 0.58 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 1.1f
+                    w *= (0.42 + 0.58 * Math.abs(Math.sin(ang + 0.7))).toFloat() * 0.85f
                 }
             }
             3 -> w *= speedFactor(s, i)
@@ -845,7 +845,7 @@ class PageRenderer {
             2 -> drawLayered(c, s, null, x0, y0, x1, y1, w)
             5 -> {
                 // Kaligrafi: sabit açılı, düz ve geniş uç. Uç 40 derece yukarı bakar; çizgi uca paralelken incelir, dik giderken kalınlaşır.
-                val half = s.width * 1.5f
+                val half = s.width * 1.0f
                 val a = -0.7f
                 val ux = Math.cos(a.toDouble()).toFloat() * half
                 val uy = Math.sin(a.toDouble()).toFloat() * half
@@ -855,6 +855,10 @@ class PageRenderer {
                 c.drawLine(x0, y0, x1, y1, linePaint)
                 fillPaint.setColor(s.color)
                 fillPaint.alpha = 255
+                // parçalar arası ince çizgilenme olmasın diye kenarlar hafifçe taşırılır
+                fillPaint.style = Paint.Style.FILL_AND_STROKE
+                fillPaint.strokeWidth = 1.4f
+                fillPaint.strokeJoin = Paint.Join.ROUND
                 path.reset()
                 path.moveTo(x0 - ux, y0 - uy)
                 path.lineTo(x0 + ux, y0 + uy)
@@ -862,6 +866,7 @@ class PageRenderer {
                 path.lineTo(x1 - ux, y1 - uy)
                 path.close()
                 c.drawPath(path, fillPaint)
+                fillPaint.style = Paint.Style.FILL
             }
             10 -> {
                 // Gökkuşağı: yay uzunluğuna göre renk döner
