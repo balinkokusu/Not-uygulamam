@@ -71,9 +71,9 @@ object Backup {
     }
 }
 
-/** Tüm kütüphaneyi (defterler, klasörler, kapaklar, PDF'ler) tek zip dosyasına yedekler; yeniden kurulumda geri yüklemek içindir. */
+/** Tüm kütüphaneyi (defterler, klasörler, kapaklar, PDF'ler, ses kayıtları, yazı tipleri, özel çıkartmalar) tek zip dosyasına yedekler; yeniden kurulumda geri yüklemek içindir. */
 object LibraryBackup {
-    private val ROOTS = arrayOf("library", "covers", "pdfs")
+    private val ROOTS = arrayOf("library", "covers", "pdfs", "audio", "fonts", "ozel_cikartma")
 
     fun write(filesDir: File, out: OutputStream) {
         ZipOutputStream(BufferedOutputStream(out)).use { z ->
@@ -122,7 +122,7 @@ object LibraryBackup {
         old.deleteRecursively()
         if (lib.exists()) lib.renameTo(old)
         File(staging, "library").renameTo(lib)
-        for (root in arrayOf("covers", "pdfs")) {
+        for (root in arrayOf("covers", "pdfs", "audio", "fonts", "ozel_cikartma")) {
             val src = File(staging, root)
             if (!src.exists()) continue
             val dst = File(filesDir, root)

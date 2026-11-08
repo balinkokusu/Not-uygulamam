@@ -1940,6 +1940,19 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
+        if (requestCode == REQ_SPEECH) {
+            val said = data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!said.isNullOrBlank()) {
+                val it = PageItem(PageItem.TEXT, 60f, 120f)
+                it.text = said
+                it.size = 30f
+                it.color = Look.ink
+                PageRenderer().fitText(it, minOf(640f, draw.page.width - 90f).coerceAtLeast(300f))
+                draw.addItem(it, true)
+                scheduleSave()
+            }
+            return
+        }
         val uri = data?.data ?: return
         when (requestCode) {
             REQ_PDF -> importPdfFrom(uri)
@@ -1948,6 +1961,18 @@ class MainActivity : Activity() {
             REQ_RESTORE -> restoreFrom(uri)
             REQ_IMAGE -> addImageFrom(uri)
             REQ_FONT -> addFontFrom(uri)
+        }
+    }
+
+    private fun startSpeech() {
+        val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().toLanguageTag())
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Konuşun")
+        try {
+            startActivityForResult(intent, REQ_SPEECH)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Bu cihazda konuşmayı yazıya çeviren bir hizmet bulunamadı (Google ses tanıma gerekir)", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -2278,7 +2303,8 @@ class MainActivity : Activity() {
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         val groups = listOf(
-            "Defter ve dosya" to listOf(0, 3, 4, 26)
+            "Defter ve dosya" to listOf(0, 3, 4, 26),
+            "Yardım" to listOf(30, 31)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -2288,6 +2314,8 @@ class MainActivity : Activity() {
                     24 -> "Sayfa görünümü: " + (if (spread) "çift sayfa" else "tek sayfa") + " (değiştirmek için dokunun)"
                     25 -> "Avuç içi reddi: " + (if (draw.palmReject) "açık" else "kapalı") + " (kalem yakındayken parmak dokunuşunu yok sayar)"
                     26 -> "Sayfadan flaş kart yap (ön ve arka yüzü sayfadan seçin)"
+                    30 -> "Simgeler ve ne işe yaradıkları (i)"
+                    31 -> "Konuşmayı yazıya çevir (metin kutusu olarak ekler)"
                     22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
                     23 -> "Pomodoro zamanlayıcı (durum satırında, aç / kapat)"
                     21 -> "Çizgi dengeleme: " + (if (draw.stabilize == 0) "kapalı" else "%" + draw.stabilize) + " (ayarlamak için dokunun)"
@@ -2312,6 +2340,8 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "Avuç içi reddi " + (if (draw.palmReject) "açık" else "kapalı"), Toast.LENGTH_SHORT).show()
                 }
                 26 -> startCardCapture()
+                30 -> Help.show(this, { dp(it) }, getSharedPreferences("ayar", MODE_PRIVATE))
+                31 -> startSpeech()
                 22 -> toggleCalculator()
                 23 -> togglePomodoro()
                 21 -> {
@@ -3584,5 +3614,6 @@ class MainActivity : Activity() {
         private const val REQ_RESTORE = 104
         private const val REQ_IMAGE = 105
         private const val REQ_FONT = 106
+        private const val REQ_SPEECH = 107
     }
 }

@@ -1090,7 +1090,7 @@ class DrawView(context: Context) : View(context) {
         c.drawBitmap(b, 0f, 0f, null)
         drawTabs(c)
         val s = current
-        if (s != null && (s.highlighter || straightLive || (!s.highlighter && (s.kind == 2 || s.kind == 13)))) {
+        if (s != null && (s.highlighter || straightLive || (!s.highlighter && renderer.wholeStrokePen(s.kind)))) {
             beginPage(c)
             drawStroke(c, s)
             c.restore()
@@ -2051,7 +2051,7 @@ class DrawView(context: Context) : View(context) {
                                 for (i in from + 1 until s.xs.size) {
                                     invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width)
                                 }
-                            } else if (s.kind == 2 || s.kind == 13) {
+                            } else if (renderer.wholeStrokePen(s.kind)) {
                                 val from = max(0, before - 1)
                                 for (i in from + 1 until s.xs.size) {
                                     invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], s.width * 4f)

@@ -53,10 +53,10 @@ class PageRenderer {
         4 -> 0.9f
         5 -> 2.0f
         6, 7 -> 1f
-        8 -> 1.8f
+        8 -> 1.15f
         9 -> 1f
         10 -> 1.3f
-        11 -> 1.9f
+        11 -> 1.15f
         12 -> 0.8f
         else -> 1f
     }
@@ -156,6 +156,9 @@ class PageRenderer {
     }
 
     private fun layeredPen(k: Int) = k == 2 || k == 13 || k == 8 || k == 9 || k == 11 || k == 12
+
+    /** Birden çok katmandan oluşan kalemler: canlı çizimde de çizginin tamamı bitmiş haliyle çizilir; böylece kalem kalkınca görünüm değişmez. */
+    fun wholeStrokePen(k: Int) = layeredPen(k)
 
     private fun drawLayered(c: Canvas, s: Stroke, path: Path?, x0: Float, y0: Float, x1: Float, y1: Float, w: Float) {
         fun line(width: Float, color: Int, dx: Float = 0f, dy: Float = 0f, alpha: Int = 255) {
