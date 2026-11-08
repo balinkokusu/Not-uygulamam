@@ -113,8 +113,8 @@ class PageRenderer {
         val graphite = mix(s.color, Color.rgb(50, 50, 55), if (dark) 0.1f else 0.45f)
         val wBase = s.width * kindScale(s.kind)
         val thr = floatArrayOf(0f, if (dark) 0.12f else 0.4f, if (dark) 0.35f else 0.72f)
-        val wid = if (dark) floatArrayOf(1.45f, 1.05f, 0.8f) else floatArrayOf(0.5f, 0.75f, 0.95f)
-        val alp = if (dark) intArrayOf(95, 170, 235) else intArrayOf(120, 120, 140)
+        val wid = if (dark) floatArrayOf(1.08f, 1.0f, 0.94f) else floatArrayOf(0.92f, 0.96f, 1.0f)
+        val alp = if (dark) intArrayOf(120, 150, 210) else intArrayOf(120, 110, 130)
         grainPaint.style = Paint.Style.STROKE
         grainPaint.strokeCap = Paint.Cap.ROUND
         grainPaint.strokeJoin = Paint.Join.ROUND
