@@ -875,10 +875,7 @@ class PageRenderer {
         }
         val w = max(1f, s.width)
         var t = min(1f, p[1] + (1f - p[1]) * s.arc(i) / (p[0] * w))
-        if (last) {
-            val rest = s.arc(s.xs.size - 1) - s.arc(i)
-            t = min(t, p[3] + (1f - p[3]) * rest / (p[2] * w))
-        }
+        // Bitiş inceltmesi bilerek yok: kalem kalkınca çizgi değişmesin; incelme basınç düşüşünden gelir
         return t
     }
 

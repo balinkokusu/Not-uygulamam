@@ -1984,7 +1984,7 @@ class DrawView(context: Context) : View(context) {
                         holdHandler.removeCallbacks(holdRunnable)
                         holdHandler.postDelayed(holdRunnable, HOLD_MS)
                     }
-                    if (!hl && (s.kind == 1 || s.kind == 4)) {
+                    if (false) {
                         // yalnızca yuvarlak uçlu kalemlerde ilk dokunuş noktası hemen çizilir; diğerleri çizgi başlayınca kendi biçimleriyle çizilir
                         val r = s.width * widthFactor(s, min(s.ps[0], 0.5f)) * 0.5f
                         val c = baseCanvas
@@ -2136,7 +2136,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind <= 5 || s.kind == 13 || s.kind == 14 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
+                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 2 || s.kind == 13 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
