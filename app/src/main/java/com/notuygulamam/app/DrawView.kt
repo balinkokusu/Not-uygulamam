@@ -190,13 +190,15 @@ class DrawView(context: Context) : View(context) {
         }
     }
 
+    private var tapeDownMs = 0L
+
     private fun handleTapeTouch(e: MotionEvent): Boolean {
         val gx = pageX(e.x)
         val gy = pageY(e.y)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 tapeX0 = gx; tapeY0 = gy; tapeX1 = gx; tapeY1 = gy; tapeDown = true
-                tapeLastMoveMs = e.eventTime; tapeLastGx = gx; tapeLastGy = gy
+                tapeLastMoveMs = e.eventTime; tapeLastGx = gx; tapeLastGy = gy; tapeDownMs = e.eventTime
             }
             MotionEvent.ACTION_MOVE -> if (tapeDown) {
                 tapeEnd(gx, gy)
@@ -205,6 +207,14 @@ class DrawView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP -> {
+                if (tapeDown && e.eventTime - tapeDownMs < 450L && hypot(gx - tapeX0, gy - tapeY0) * sc < 16f * density) {
+                    // kısa dokunuş: altında gizleme bandı varsa kalkar / yeniden kapanır
+                    tapeDown = false
+                    val tp = page.items.lastOrNull { it.type == PageItem.IMAGE && it.kind == TAPE_KIND && itemHit(it, gx, gy) }
+                    if (tp != null) toggleTape(tp)
+                    invalidate()
+                    return true
+                }
                 if (tapeDown) {
                     tapeEnd(gx, gy)
                     if (e.eventTime - tapeLastMoveMs > 450L) tapeHoldSnap()

@@ -1268,25 +1268,52 @@ class MainActivity : Activity() {
                 t.background = g
             }
         }
-        for (i in Fonts.names.indices) {
-            val t = TextView(this)
-            t.text = "Aa Ğş\n" + Fonts.names[i]
-            t.gravity = Gravity.CENTER
-            t.textSize = 15f
-            t.typeface = Fonts.get(i, android.graphics.Typeface.NORMAL)
-            t.setTextColor(Look.ink)
-            t.setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.setMargins(dp(3f), dp(8f), dp(3f), dp(4f))
-            t.layoutParams = lp
-            t.setOnClickListener {
-                fontIdx = i
-                paintFonts()
+        fun fillFonts() {
+            fontRow.removeAllViews()
+            fontChips.clear()
+            val all = Fonts.allNames()
+            for (i in all.indices) {
+                val t = TextView(this)
+                t.text = "Aa Ğş\n" + all[i]
+                t.gravity = Gravity.CENTER
+                t.textSize = 15f
+                t.typeface = Fonts.get(i, android.graphics.Typeface.NORMAL)
+                t.setTextColor(Look.ink)
+                t.setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.setMargins(dp(3f), dp(8f), dp(3f), dp(4f))
+                t.layoutParams = lp
+                t.setOnClickListener {
+                    fontIdx = i
+                    paintFonts()
+                }
+                fontChips.add(t)
+                fontRow.addView(t)
             }
-            fontChips.add(t)
-            fontRow.addView(t)
+            val add = TextView(this)
+            add.text = "+\nYazı tipi ekle"
+            add.gravity = Gravity.CENTER
+            add.textSize = 14f
+            add.setTextColor(Look.accent)
+            add.setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
+            val alp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            alp.setMargins(dp(3f), dp(8f), dp(3f), dp(4f))
+            add.layoutParams = alp
+            val ag = GradientDrawable()
+            ag.cornerRadius = dp(10f).toFloat()
+            ag.setStroke(dp(1f), Look.accent, dp(6f).toFloat(), dp(4f).toFloat())
+            add.background = ag
+            add.setOnClickListener {
+                onFontAdded = { fillFonts(); paintFonts() }
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                intent.addCategory(Intent.CATEGORY_OPENABLE)
+                intent.type = "*/*"
+                startActivityForResult(intent, REQ_FONT)
+            }
+            fontRow.addView(add)
+            paintFonts()
         }
-        paintFonts()
+        fillFonts()
         val fhs = HorizontalScrollView(this)
         fhs.addView(fontRow)
         box.addView(fhs)
@@ -1466,7 +1493,7 @@ class MainActivity : Activity() {
         tapeRow.setOnClickListener { dlg?.dismiss(); showTapeDialog() }
         var row: LinearLayout? = null
         for (k in Stickers.names.indices) {
-            if (k % 5 == 0) {
+            if (k % 4 == 0) {
                 row = LinearLayout(this)
                 row.orientation = LinearLayout.HORIZONTAL
                 grid.addView(row)
@@ -1535,7 +1562,7 @@ class MainActivity : Activity() {
             grid.addView(hint)
             var crow: LinearLayout? = null
             for ((ci, f) in mine.withIndex()) {
-                if (ci % 5 == 0) {
+                if (ci % 4 == 0) {
                     crow = LinearLayout(this)
                     crow.orientation = LinearLayout.HORIZONTAL
                     grid.addView(crow)
@@ -1591,7 +1618,6 @@ class MainActivity : Activity() {
         sideBtn("Yapışkan not ekle") { showStickyDialog() }
         sideBtn("Washi bantlar") { showTapeDialog() }
         sideBtn("Galeriden resim") { pickImage() }
-        sideBtn("Sayfadan flaş kart yap") { startCardCapture() }
         sideBtn("Hatırlatıcılarım") {
             val bd = ReminderBoard(this)
             AlertDialog.Builder(this).setTitle("Hatırlatıcılarım").setView(bd)
@@ -1921,7 +1947,35 @@ class MainActivity : Activity() {
             REQ_BACKUP -> backupTo(uri)
             REQ_RESTORE -> restoreFrom(uri)
             REQ_IMAGE -> addImageFrom(uri)
+            REQ_FONT -> addFontFrom(uri)
         }
+    }
+
+    private var onFontAdded: (() -> Unit)? = null
+
+    private fun addFontFrom(uri: Uri) {
+        Thread {
+            var ok = false
+            try {
+                var name = "yazi_tipi"
+                contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    val ix = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (ix >= 0 && c.moveToFirst()) name = c.getString(ix) ?: name
+                }
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null && bytes.size < 30_000_000) ok = Fonts.addFont(File(filesDir, "fonts"), name, bytes)
+            } catch (e: Exception) {
+                ok = false
+            }
+            runOnUiThread {
+                if (ok) {
+                    Toast.makeText(this, "Yazı tipi eklendi", Toast.LENGTH_SHORT).show()
+                    onFontAdded?.invoke()
+                } else {
+                    Toast.makeText(this, "Bu dosya yazı tipi olarak açılamadı (.ttf ya da .otf olmalı)", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun importPdfFrom(uri: Uri) {
@@ -2224,8 +2278,7 @@ class MainActivity : Activity() {
             "Gün ayraçlarını aya göre süz: " + (if (getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("ayraç_süz_$itemId", true)) "açık" else "kapalı")
         )
         val groups = listOf(
-            "Defter ve dosya" to listOf(0, 3, 4),
-            "Ekle" to listOf(13, 14, 15, 26)
+            "Defter ve dosya" to listOf(0, 3, 4, 26)
         )
         for ((gi, g) in groups.withIndex()) {
             val sub = m.menu.addSubMenu(0, 100 + gi, gi, g.first)
@@ -3048,7 +3101,7 @@ class MainActivity : Activity() {
         itemId = intent.getStringExtra("id") ?: ""
         spread = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("cift_$itemId", false)
         d = resources.displayMetrics.density
-        Fonts.init(assets)
+        Fonts.init(assets, File(filesDir, "fonts"))
         versionText = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: ""
         } catch (e: Exception) {
@@ -3530,5 +3583,6 @@ class MainActivity : Activity() {
         private const val REQ_BACKUP = 103
         private const val REQ_RESTORE = 104
         private const val REQ_IMAGE = 105
+        private const val REQ_FONT = 106
     }
 }
