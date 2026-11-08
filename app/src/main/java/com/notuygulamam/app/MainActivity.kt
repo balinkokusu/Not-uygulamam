@@ -110,6 +110,39 @@ class MainActivity : Activity() {
         }
     }
 
+    private lateinit var audioChip: TextView
+    private val chipTick = object : Runnable {
+        override fun run() {
+            updateAudioChip()
+            if (recorder != null || player != null) tick.postDelayed(this, 500)
+        }
+    }
+
+    private fun mmss(ms: Long): String {
+        val s = ms / 1000
+        return String.format("%02d:%02d", s / 60, s % 60)
+    }
+
+    private fun updateAudioChip() {
+        if (!::audioChip.isInitialized) return
+        val g = android.graphics.drawable.GradientDrawable()
+        g.cornerRadius = dp(16f).toFloat()
+        val r = recorder
+        val p = player
+        if (r != null) {
+            g.setColor(Color.rgb(200, 50, 50))
+            audioChip.text = "● Kayıt  " + mmss(System.currentTimeMillis() - recStart) + "  · bitirmek için dokunun"
+        } else if (p != null) {
+            g.setColor(Look.accent)
+            audioChip.text = "▶ Oynatılıyor  " + mmss(p.currentPosition.toLong()) + "  · durdurmak için dokunun"
+        } else {
+            audioChip.visibility = View.GONE
+            return
+        }
+        audioChip.background = g
+        audioChip.visibility = View.VISIBLE
+    }
+
     private var recorder: android.media.MediaRecorder? = null
     private var recStart = 0L
     private var recFile: File? = null
@@ -174,7 +207,8 @@ class MainActivity : Activity() {
             recorder = r
             recStart = start
             recFile = f
-            Toast.makeText(this, "Kayıt başladı; bitirmek için mikrofon düğmesine yeniden dokunun", Toast.LENGTH_LONG).show()
+            chipTick.run()
+            Toast.makeText(this, "Kayıt başladı. Sağ üstteki kırmızı çubuğa ya da mikrofon düğmesine dokunarak bitirebilirsiniz", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             recorder = null
             Toast.makeText(this, "Kayıt başlatılamadı", Toast.LENGTH_LONG).show()
@@ -186,7 +220,8 @@ class MainActivity : Activity() {
         try { r.stop() } catch (e: Exception) { recFile?.delete() }
         r.release()
         recorder = null
-        Toast.makeText(this, "Kayıt kaydedildi", Toast.LENGTH_SHORT).show()
+        updateAudioChip()
+        Toast.makeText(this, "Kayıt kaydedildi. Dinlemek için mikrofon düğmesine dokunup listeden seçin; kayıttan sonra yazdıklarınız sesle birlikte belirir", Toast.LENGTH_LONG).show()
     }
 
     private fun startPlayback(f: File) {
@@ -207,6 +242,7 @@ class MainActivity : Activity() {
                 }
             }
             tick.post(step)
+            chipTick.run()
             Toast.makeText(this, "Oynatılıyor: kayıttan sonra yazılan çizgiler sesle birlikte belirir", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Kayıt oynatılamadı", Toast.LENGTH_LONG).show()
@@ -218,6 +254,7 @@ class MainActivity : Activity() {
         player?.let { try { it.stop() } catch (e: Exception) {}; it.release() }
         player = null
         draw.setPlayClock(0L)
+        updateAudioChip()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -1525,9 +1562,48 @@ class MainActivity : Activity() {
         }
         val sv = ScrollView(this)
         sv.addView(grid)
+        val side = LinearLayout(this)
+        side.orientation = LinearLayout.VERTICAL
+        side.setPadding(dp(8f), dp(8f), dp(14f), dp(8f))
+        val sideHead = TextView(this)
+        sideHead.text = "Diğer eklentiler"
+        sideHead.textSize = 13f
+        sideHead.setTextColor(Look.inkSoft)
+        sideHead.setPadding(dp(4f), 0, 0, dp(8f))
+        side.addView(sideHead)
+        fun sideBtn(label: String, act: () -> Unit) {
+            val b = TextView(this)
+            b.text = label
+            b.textSize = 15f
+            b.setTextColor(Look.ink)
+            b.gravity = Gravity.CENTER_VERTICAL
+            b.setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
+            val g = android.graphics.drawable.GradientDrawable()
+            g.cornerRadius = dp(14f).toFloat()
+            g.setColor(Look.accentSoft)
+            b.background = g
+            b.setOnClickListener { dlg?.dismiss(); act() }
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.bottomMargin = dp(8f)
+            side.addView(b, lp)
+        }
+        sideBtn("Tablo ekle") { showTableDialog() }
+        sideBtn("Yapışkan not ekle") { showStickyDialog() }
+        sideBtn("Washi bantlar") { showTapeDialog() }
+        sideBtn("Galeriden resim") { pickImage() }
+        sideBtn("Sayfadan flaş kart yap") { startCardCapture() }
+        sideBtn("Hatırlatıcılarım") {
+            val bd = ReminderBoard(this)
+            AlertDialog.Builder(this).setTitle("Hatırlatıcılarım").setView(bd)
+                .setPositiveButton("Kapat", null).show()
+        }
+        val wrap = LinearLayout(this)
+        wrap.orientation = LinearLayout.HORIZONTAL
+        wrap.addView(sv, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        wrap.addView(side, LinearLayout.LayoutParams(dp(230f), LinearLayout.LayoutParams.WRAP_CONTENT))
         dlg = AlertDialog.Builder(this)
-            .setTitle("Çıkartmalar")
-            .setView(sv)
+            .setTitle("Çıkartmalar ve eklentiler")
+            .setView(wrap)
             .setPositiveButton("Seç ve taşı") { _, _ ->
                 draw.tool = Tool.OBJECT
                 refresh()
@@ -3399,6 +3475,13 @@ class MainActivity : Activity() {
         info.setTextColor(Look.inkSoft)
         info.textSize = 11f
         statusRow.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        audioChip = TextView(this)
+        audioChip.textSize = 13f
+        audioChip.setTextColor(Color.WHITE)
+        audioChip.setPadding(dp(12f), dp(5f), dp(12f), dp(5f))
+        audioChip.visibility = View.GONE
+        audioChip.setOnClickListener { showAudioDialog() }
+        statusRow.addView(audioChip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(10f) })
         pomoStrip = PomodoroStrip(this)
         pomoStrip!!.visibility = View.GONE
         statusRow.addView(pomoStrip!!, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(8f), 0, dp(8f), 0) })
