@@ -7,6 +7,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -378,6 +379,7 @@ class MainActivity : Activity() {
             chip("Yazı", draw.eraseText) { draw.eraseText = !draw.eraseText }
             chip("Çıkartma", draw.eraseSticker) { draw.eraseSticker = !draw.eraseSticker }
             chip("Resim", draw.eraseImage) { draw.eraseImage = !draw.eraseImage }
+            chip("Çizgiyi bütün sil", draw.eraseWhole) { draw.eraseWhole = !draw.eraseWhole }
         fun action(name: String, act: () -> Unit) {
             val t = TextView(this)
             t.text = name
@@ -3198,6 +3200,22 @@ class MainActivity : Activity() {
             }
         }
 
+        // 144 Hz gibi yüksek yenileme hızını destekleyen ekranlarda en yüksek hız istenir
+        try {
+            val lp = window.attributes
+            lp.preferredRefreshRate = 144f
+            if (Build.VERSION.SDK_INT >= 23) {
+                @Suppress("DEPRECATION")
+                val disp = windowManager.defaultDisplay
+                val cur = disp.mode
+                val best = disp.supportedModes
+                    .filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight }
+                    .maxByOrNull { it.refreshRate }
+                if (best != null) lp.preferredDisplayModeId = best.modeId
+            }
+            window.attributes = lp
+        } catch (e: Exception) {
+        }
         draw = DrawView(this)
         draw.pdfDir = pdfDir()
         preview = PreviewView(this, draw)

@@ -572,6 +572,9 @@ class DrawView(context: Context) : View(context) {
     var eraseSticker = true
     var eraseImage = true
 
+    /** true ise silgi çizgiye değince çizginin tamamı silinir (varsayılan: yalnız değilen kısım). */
+    var eraseWhole = false
+
     private var base: Bitmap? = null
     private var baseCanvas: Canvas? = null
     private var drawnUpTo = 0
@@ -2473,7 +2476,7 @@ class DrawView(context: Context) : View(context) {
                 val s = strokes[i]
                 val rr = r + s.width / 2f
                 if (hits(s, x, y, rr)) {
-                    val pieces = cutStroke(s, x, y, rr)
+                    val pieces = if (eraseWhole) emptyList() else cutStroke(s, x, y, rr)
                     if (pieces != null) {
                         strokes.removeAt(i)
                         // bu hareketin kendi parçasıysa özgün çizgi sayılmaz
