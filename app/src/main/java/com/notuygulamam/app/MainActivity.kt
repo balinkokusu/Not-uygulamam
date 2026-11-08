@@ -378,6 +378,29 @@ class MainActivity : Activity() {
             chip("Yazı", draw.eraseText) { draw.eraseText = !draw.eraseText }
             chip("Çıkartma", draw.eraseSticker) { draw.eraseSticker = !draw.eraseSticker }
             chip("Resim", draw.eraseImage) { draw.eraseImage = !draw.eraseImage }
+        fun action(name: String, act: () -> Unit) {
+            val t = TextView(this)
+            t.text = name
+            t.textSize = 13f
+            t.setPadding(dp(12f), dp(7f), dp(12f), dp(7f))
+            t.setTextColor(Look.accent)
+            val g = GradientDrawable()
+            g.cornerRadius = dp(12f).toFloat()
+            g.setStroke(dp(1f), Look.accent)
+            t.background = g
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.setMargins(dp(8f), dp(4f), dp(3f), dp(6f))
+            t.layoutParams = lp
+            t.setOnClickListener { act() }
+            swatchRow.addView(t)
+        }
+        action("Sayfadaki çizimleri temizle") {
+            AlertDialog.Builder(this)
+                .setTitle("Bu sayfadaki çizimler temizlensin mi?")
+                .setPositiveButton("Temizle") { _, _ -> draw.clearAll() }
+                .setNegativeButton("Vazgeç", null).show()
+        }
+        action("Bu sayfayı sil") { confirmDeletePage() }
         // silgi boyutu da burada: ayrı bir pencereye gitmeden ayarlanır
         val sizeLbl = TextView(this)
         sizeLbl.text = "Boyut " + draw.eraserRadiusDp.toInt()
@@ -3529,8 +3552,6 @@ class MainActivity : Activity() {
         val sp2 = View(this)
         eraseBtns.addView(sp2, LinearLayout.LayoutParams(dp(10f), 1))
         eraseBtns.addView(popBtn("Bu sayfayı sil") { confirmDeletePage() })
-        panel.addView(eraseBtns)
-        popEraseBtns = eraseBtns
 
         val popup = PopupWindow(panel, dp(480f), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(bar(dp(20f).toFloat()))
