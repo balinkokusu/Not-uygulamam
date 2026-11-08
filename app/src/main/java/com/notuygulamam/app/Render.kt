@@ -51,7 +51,7 @@ class PageRenderer {
         14 -> 0.45f
         3 -> 0.85f
         4 -> 0.9f
-        5 -> 0.8f
+        5 -> 2.0f
         6, 7 -> 1f
         8 -> 1.8f
         9 -> 1f
@@ -247,11 +247,13 @@ class PageRenderer {
             4 -> w *= 0.85f + 0.3f * (1f - speedFactor(s, i))
             5 -> {
                 // Modern kaligrafi: sabit açılı geniş uç; yatay vuruş kalın, 45 derece dikey ince
-                val dx = s.xs[i] - s.xs[i - 1]
-                val dy = s.ys[i] - s.ys[i - 1]
+                // yön, birkaç nokta geriden ölçülür: tek tek noktalardaki titreşim kalınlığı ortalamaya çekmesin
+                val j = max(0, i - 7)
+                val dx = s.xs[i] - s.xs[j]
+                val dy = s.ys[i] - s.ys[j]
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
-                    w *= (0.18 + 0.82 * Math.abs(Math.sin(ang - 0.785))).toFloat()
+                    w *= (0.07 + 0.93 * Math.abs(Math.sin(ang - 0.785))).toFloat()
                 }
             }
         }
