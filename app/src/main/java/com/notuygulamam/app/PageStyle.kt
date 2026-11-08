@@ -1,6 +1,7 @@
 package com.notuygulamam.app
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -286,6 +287,10 @@ class PageStyleChooser(
 }
 
 /** Sayfa listesi için bir sayfanın küçük resmi. */
+class ThumbEntry(val bmp: Bitmap, val sig: Long)
+
+private val cache = android.util.LruCache<Int, ThumbEntry>(80)
+
 class PageThumb(context: Context, private val page: PageData) : View(context) {
     private val d = resources.displayMetrics.density
     private val renderer = PageRenderer()
@@ -296,6 +301,17 @@ class PageThumb(context: Context, private val page: PageData) : View(context) {
         val w = 62f
         val h = (w * page.height / page.width).coerceIn(44f, 100f)
         setMeasuredDimension((w * d).toInt() + (8 * d).toInt(), (h * d).toInt() + (4 * d).toInt())
+    }
+
+    private fun signature(): Long {
+        var h = page.strokes.size.toLong()
+        h = h * 31 + page.items.size
+        h = h * 31 + page.paper.ordinal
+        h = h * 31 + page.calYear
+        h = h * 31 + page.calMonth
+        h = h * 31 + page.paperColor
+        h = h * 31 + (page.strokes.lastOrNull()?.xs?.size ?: 0)
+        return h
     }
 
     override fun onDraw(c: Canvas) {
@@ -311,14 +327,28 @@ class PageThumb(context: Context, private val page: PageData) : View(context) {
             txt.textSize = 11f * d
             c.drawText("PDF", w / 2f, h / 2f, txt)
         } else {
-            val k = w / page.width
-            c.save()
-            c.scale(k, k)
-            renderer.drawPaper(c, page)
-            renderer.drawItems(c, page, false)
-            for (s in page.strokes) renderer.drawStroke(c, s)
-            renderer.drawItems(c, page, true)
-            c.restore()
+            // küçük resim bir kez çizilip önbelleğe alınır; liste her yenilendiğinde sayfalar baştan çizilmez
+            val sig = signature()
+            val key = System.identityHashCode(page)
+            var hit = cache.get(key)
+            if (hit == null || hit.sig != sig || hit.bmp.width != w.toInt().coerceAtLeast(1)) {
+                val bw = w.toInt().coerceAtLeast(1)
+                val bh = h.toInt().coerceAtLeast(1)
+                val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+                val bc = Canvas(bmp)
+                bc.drawColor(page.paperColor)
+                val k = bw / page.width
+                bc.scale(k, k)
+                renderer.drawPaper(bc, page)
+                renderer.drawItems(bc, page, false)
+                // çok çizgili sayfalarda küçük resim için tüm çizgiler gerekmez; ilk 400'ü yeter
+                val ss = page.strokes
+                for (i in 0 until minOf(ss.size, 400)) renderer.drawStroke(bc, ss[i])
+                renderer.drawItems(bc, page, true)
+                hit = ThumbEntry(bmp, sig)
+                cache.put(key, hit)
+            }
+            c.drawBitmap(hit.bmp, 0f, 0f, null)
         }
         c.restore()
         p.style = Paint.Style.STROKE

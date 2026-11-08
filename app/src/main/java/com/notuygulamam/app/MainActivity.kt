@@ -3126,7 +3126,13 @@ class MainActivity : Activity() {
                         .show()
                 } else apply(0)
             }
-            .setNegativeButton("Bugünkü tarih", null)
+            .setNegativeButton("Bugünkü tarih") { _, _ ->
+                val now = java.util.Calendar.getInstance()
+                for (t in targets) { t.calYear = now.get(java.util.Calendar.YEAR); if (first.paper == Paper.MONTHLY) t.calMonth = now.get(java.util.Calendar.MONTH) + 1 }
+                if (nb.pages.contains(first)) draw.setPaperFor(targets, first.paper)
+                refresh()
+                done()
+            }
             .show()
     }
 
