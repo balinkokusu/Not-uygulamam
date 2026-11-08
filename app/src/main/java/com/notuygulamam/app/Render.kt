@@ -47,7 +47,7 @@ class PageRenderer {
     private fun kindScale(k: Int): Float = when (k) {
         1 -> 0.7f
         2 -> 1.0f
-        13 -> 1.4f
+        13 -> 1.5f
         14 -> 0.45f
         3 -> 1.35f
         4 -> 1.3f
@@ -86,8 +86,8 @@ class PageRenderer {
             bl[y * n + x] = sum / 9f
         }
         val px = IntArray(n * n)
-        val base = if (dark) 0.55f else 0.30f
-        val gain = if (dark) 0.45f else 0.55f
+        val base = if (dark) 0.68f else 0.30f
+        val gain = if (dark) 0.32f else 0.55f
         for (i in 0 until n * n) {
             val v = ((bl[i] - 0.5f) * 3.2f + 0.5f).coerceIn(0f, 1f)
             val a = ((base + gain * v) * 255f).toInt().coerceIn(0, 255)
@@ -110,11 +110,11 @@ class PageRenderer {
      */
     private fun pencilLayers(c: Canvas, s: Stroke, i0: Int, i1: Int, segmentOnly: Boolean) {
         val dark = s.kind == 13
-        val graphite = mix(s.color, Color.rgb(50, 50, 55), if (dark) 0.3f else 0.45f)
+        val graphite = mix(s.color, Color.rgb(50, 50, 55), if (dark) 0.1f else 0.45f)
         val wBase = s.width * kindScale(s.kind)
-        val thr = floatArrayOf(0f, if (dark) 0.3f else 0.4f, if (dark) 0.6f else 0.72f)
-        val wid = if (dark) floatArrayOf(0.7f, 0.95f, 1.2f) else floatArrayOf(0.5f, 0.75f, 0.95f)
-        val alp = if (dark) intArrayOf(150, 150, 170) else intArrayOf(120, 120, 140)
+        val thr = floatArrayOf(0f, if (dark) 0.12f else 0.4f, if (dark) 0.35f else 0.72f)
+        val wid = if (dark) floatArrayOf(1.45f, 1.05f, 0.8f) else floatArrayOf(0.5f, 0.75f, 0.95f)
+        val alp = if (dark) intArrayOf(95, 170, 235) else intArrayOf(120, 120, 140)
         grainPaint.style = Paint.Style.STROKE
         grainPaint.strokeCap = Paint.Cap.ROUND
         grainPaint.strokeJoin = Paint.Join.ROUND

@@ -514,7 +514,7 @@ class MainActivity : Activity() {
         kindScrollHost?.visibility = View.VISIBLE
         if (st == Tool.PEN) {
             val order = listOf(
-                Pair("Klasik dolma", 0), Pair("Düz çizgi", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Gradyan hattı", 3), Pair("Çizim kalemi", 2), Pair("Yazı kalemi", 13), Pair("Ekstra ince uç", 14),
+                Pair("Klasik dolma", 0), Pair("Düz çizgi", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Gradyan hattı", 3), Pair("Çizim kalemi", 2), Pair("Yumuşak kalem", 13), Pair("Ekstra ince uç", 14),
                 Pair("Kesikli", 6), Pair("Noktalı", 7), Pair("Dış çizgili", 8), Pair("Gölgeli", 9),
                 Pair("Gökkuşağı", 10), Pair("Boru", 11), Pair("Neon", 12)
             )
