@@ -539,7 +539,7 @@ class MainActivity : Activity() {
         kindScrollHost?.visibility = View.VISIBLE
         if (st == Tool.PEN) {
             val order = listOf(
-                Pair("Klasik dolma", 0), Pair("Düz çizgi", 1), Pair("Kaligrafi", 5), Pair("Keçeli", 4), Pair("Gradyan hattı", 3), Pair("Çizim kalemi", 2), Pair("Yumuşak kalem", 13), Pair("Ekstra ince uç", 14),
+                Pair("Klasik dolma", 0), Pair("Düz çizgi", 1), Pair("Kaligrafi", 5), Pair("Kaligrafi (geniş uç)", 15), Pair("Keçeli", 4), Pair("Gradyan hattı", 3), Pair("Çizim kalemi", 2), Pair("Yumuşak kalem", 13), Pair("Ekstra ince uç", 14),
                 Pair("Kesikli", 6), Pair("Noktalı", 7), Pair("Dış çizgili", 8), Pair("Gölgeli", 9),
                 Pair("Gökkuşağı", 10), Pair("Boru", 11), Pair("Neon", 12)
             )
@@ -2344,7 +2344,6 @@ class MainActivity : Activity() {
         )
         val groups = listOf(
             "Defter ve dosya" to listOf(0, 3, 4, 26),
-            "Diğer araçlar" to listOf(32, 33),
             "Yardım" to listOf(30, 31)
         )
         for ((gi, g) in groups.withIndex()) {
@@ -2356,7 +2355,6 @@ class MainActivity : Activity() {
                     25 -> "Avuç içi reddi: " + (if (draw.palmReject) "açık" else "kapalı") + " (kalem yakındayken parmak dokunuşunu yok sayar)"
                     26 -> "Sayfadan flaş kart yap (ön ve arka yüzü sayfadan seçin)"
                     32 -> "Lazer işaretçi (iz bırakmadan göstermek için)"
-                    33 -> "El aracı (sayfayı kaydırır, cetvel ve bandı tutar)"
                     30 -> "Simgeler ve ne işe yaradıkları (i)"
                     31 -> "Konuşmayı yazıya çevir (metin kutusu olarak ekler)"
                     22 -> "Hesap makinesi (sürüklenir, aç / kapat)"
@@ -2384,7 +2382,6 @@ class MainActivity : Activity() {
                 }
                 26 -> startCardCapture()
                 32 -> { draw.tool = Tool.LASER; settingsPopup?.dismiss(); refresh(); Toast.makeText(this, "Lazer işaretçi: sayfada parmağınızla ya da kalemle gösterin, iz kalmaz. Başka araç seçince kapanır.", Toast.LENGTH_LONG).show() }
-                33 -> { draw.tool = Tool.HAND; settingsPopup?.dismiss(); refresh() }
                 30 -> Help.show(this, { dp(it) }, getSharedPreferences("ayar", MODE_PRIVATE))
                 31 -> startSpeech()
                 22 -> toggleCalculator()
@@ -3345,6 +3342,7 @@ class MainActivity : Activity() {
             Triple(Tool.ERASER, Icon.ERASER, "Silgi"), Triple(Tool.PICKER, Icon.PICKER, "Damlalık"),
             Triple(Tool.TEXT, Icon.TEXT, "Metin kutusu (klavyeyle yazı)"),
             Triple(Tool.LASSO, Icon.LASSO, "Lasso: çevreleyerek seç, taşı, sil, çoğalt"),
+            Triple(Tool.LASER, Icon.LASER, "Lazer işaretçi (iz bırakmaz)"),
             Triple(Tool.OBJECT, Icon.SELECT, "Nesne seç ve taşı: resim, yazı, çıkartma ve tabloları taşır, boyutlandırır, siler")
         )
         for ((t, ic, lb) in toolIcons) {

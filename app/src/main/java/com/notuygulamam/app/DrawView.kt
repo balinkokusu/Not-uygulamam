@@ -83,7 +83,7 @@ class DrawView(context: Context) : View(context) {
     }
 
     /** Kaligrafi ucunda kalın-ince farkı yön değişiminden doğar; fazla yumuşatma bu farkı eritir, bu yüzden etkisi azaltılır. */
-    private fun effStab(kind: Int): Int = if (kind == 5) stabilize * 50 / 100 else stabilize
+    private fun effStab(kind: Int): Int = if (kind == 5 || kind == 15) stabilize * 50 / 100 else stabilize
 
     /**
      * Kalem kalkınca çizgi yay uzunluğuna göre yeniden örneklenir ve Gauss ağırlıklı ortalamayla yumuşatılır.
@@ -1658,7 +1658,7 @@ class DrawView(context: Context) : View(context) {
         var i = drawnUpTo + 1
         while (i < n) {
             renderer.drawPenSegment(c, s, i, false)
-            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], maxOf(segmentWidth(s, i) * 1.3f, if (s.kind == 2 || s.kind == 13 || s.kind == 14 || s.kind == 5 || s.kind == 9 || s.kind == 11 || s.kind == 12) s.width * 4f else 0f))
+            invalidateSegment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], maxOf(segmentWidth(s, i) * 1.3f, if (s.kind == 2 || s.kind == 13 || s.kind == 14 || s.kind == 5 || s.kind == 15 || s.kind == 9 || s.kind == 11 || s.kind == 12) s.width * 4f else 0f))
             i++
         }
         c.restore()

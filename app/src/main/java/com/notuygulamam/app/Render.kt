@@ -51,7 +51,8 @@ class PageRenderer {
         14 -> 0.45f
         3 -> 0.85f
         4 -> 0.9f
-        5 -> 2.0f
+        5 -> 1.9f
+        15 -> 1f
         6, 7 -> 1f
         8 -> 1.15f
         9 -> 1f
@@ -250,14 +251,15 @@ class PageRenderer {
             3 -> w *= speedFactor(s, i)
             4 -> w *= 0.85f + 0.3f * (1f - speedFactor(s, i))
             5 -> {
-                // Modern kaligrafi: sabit açılı geniş uç; yatay vuruş kalın, 45 derece dikey ince
-                // yön, birkaç nokta geriden ölçülür: tek tek noktalardaki titreşim kalınlığı ortalamaya çekmesin
-                val j = max(0, i - 7)
+                // Sivri uçlu kaligrafi: aşağı inen vuruş kalın, yukarı çıkan ve yatay vuruş kıl gibi ince.
+                // yön, birkaç nokta geriden ölçülür: titreşim kalınlığı sıçratmasın
+                val j = max(0, i - 6)
                 val dx = s.xs[i] - s.xs[j]
                 val dy = s.ys[i] - s.ys[j]
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
-                    w *= (0.07 + 0.93 * Math.abs(Math.sin(ang - 0.785))).toFloat()
+                    val down = Math.max(0.0, Math.sin(ang))
+                    w *= (0.10 + 0.90 * Math.pow(down, 1.4)).toFloat()
                 }
             }
         }
@@ -877,6 +879,7 @@ class PageRenderer {
             3 -> floatArrayOf(6f, 0.15f, 14f, 0.05f)
             4 -> floatArrayOf(1f, 0.85f, 3f, 0.55f)
             14 -> floatArrayOf(1.5f, 0.7f, 3f, 0.4f)
+            5 -> floatArrayOf(3f, 0.4f, 6f, 0.2f)
             else -> return 1f
         }
         val w = max(1f, s.width)
@@ -891,7 +894,7 @@ class PageRenderer {
             pencilLayers(c, s, i, i, true)
             return
         }
-        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4 || s.kind == 14)) {
+        if (!s.highlighter && (s.kind == 0 || s.kind == 1 || s.kind == 3 || s.kind == 4 || s.kind == 5 || s.kind == 14)) {
             fillPaint.style = Paint.Style.FILL
             fillPaint.setColor(s.color)
             fillPaint.alpha = 255
@@ -910,15 +913,15 @@ class PageRenderer {
         linePaint.strokeCap = Paint.Cap.ROUND
         when (s.kind) {
             2 -> drawLayered(c, s, null, x0, y0, x1, y1, w)
-            5 -> {
-                // Kaligrafi: sabit açılı, düz ve geniş uç. Uç 40 derece yukarı bakar; çizgi uca paralelken incelir, dik giderken kalınlaşır.
-                val half = s.width * 1.35f
-                val a = -0.62f
+            15 -> {
+                // Geniş uçlu kaligrafi: sabit açılı, düz uç; çizgi uca paralelken incelir, dik giderken kalınlaşır.
+                val half = s.width * 1.0f
+                val a = -0.7f
                 val ux = Math.cos(a.toDouble()).toFloat() * half
                 val uy = Math.sin(a.toDouble()).toFloat() * half
                 // uç çizgiye paralelken çizgi tamamen kaybolmasın diye ince bir taban çizgi
                 linePaint.setColor(s.color)
-                linePaint.strokeWidth = s.width * 0.035f
+                linePaint.strokeWidth = s.width * 0.05f
                 c.drawLine(x0, y0, x1, y1, linePaint)
                 fillPaint.setColor(s.color)
                 fillPaint.alpha = 255
@@ -1116,7 +1119,7 @@ class PageRenderer {
         linePaint.alpha = 255
         linePaint.strokeCap = Paint.Cap.ROUND
         if (n == 1) {
-            if (s.kind == 5) {
+            if (s.kind == 15) {
                 val half = s.width * 1.5f
                 linePaint.setColor(s.color)
                 linePaint.strokeWidth = s.width * 0.3f
