@@ -191,6 +191,107 @@ class DrawView(context: Context) : View(context) {
     }
 
     private var tapeDownMs = 0L
+    private val tapePts = ArrayList<Float>()
+
+    /** Çizilen yol düz değilse true: bant yolu izleyerek kıvrılır. */
+    private fun tapeCurved(): Boolean {
+        if (tapePts.size < 8) return false
+        val x0 = tapePts[0]; val y0 = tapePts[1]
+        val x1 = tapePts[tapePts.size - 2]; val y1 = tapePts[tapePts.size - 1]
+        val len = hypot(x1 - x0, y1 - y0)
+        var worst = 0f
+        var i = 0
+        while (i < tapePts.size) {
+            val px = tapePts[i]; val py = tapePts[i + 1]
+            val dev = if (len < 1f) hypot(px - x0, py - y0)
+            else abs((x1 - x0) * (y0 - py) - (x0 - px) * (y1 - y0)) / len
+            if (dev > worst) worst = dev
+            i += 2
+        }
+        return worst > maxOf(22f, 0.07f * len)
+    }
+
+    private fun tapeSmooth(): List<Pair<Float, Float>> {
+        val raw = ArrayList<Pair<Float, Float>>()
+        var i = 0
+        while (i < tapePts.size) { raw.add(Pair(tapePts[i], tapePts[i + 1])); i += 2 }
+        val sm = ArrayList<Pair<Float, Float>>()
+        for (k in raw.indices) {
+            var sx = 0f; var sy = 0f; var n = 0
+            for (j in maxOf(0, k - 3)..minOf(raw.size - 1, k + 3)) { sx += raw[j].first; sy += raw[j].second; n++ }
+            sm.add(Pair(sx / n, sy / n))
+        }
+        // ilk ve son nokta olduğu gibi kalsın
+        if (raw.isNotEmpty()) { sm[0] = raw[0]; sm[sm.size - 1] = raw[raw.size - 1] }
+        return sm
+    }
+
+    /** Bandı yol boyunca küçük dilimler hâlinde çizer; doku yol boyunca tekrarlanır. */
+    private fun drawTapeAlong(c: Canvas, pts: List<Pair<Float, Float>>, b: Bitmap, h: Float, alpha: Int) {
+        val pt = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        pt.alpha = alpha
+        val tile = h * 6.5f
+        var s = 0f
+        val src = android.graphics.Rect()
+        val dst = RectF()
+        for (k in 0 until pts.size - 1) {
+            val ax = pts[k].first; val ay = pts[k].second
+            val bx = pts[k + 1].first; val by = pts[k + 1].second
+            val seg = hypot(bx - ax, by - ay)
+            if (seg < 0.5f) continue
+            val ang = Math.toDegrees(Math.atan2((by - ay).toDouble(), (bx - ax).toDouble())).toFloat()
+            var t = 0f
+            while (t < seg) {
+                val step = minOf(3f, seg - t)
+                val px = ax + (bx - ax) * t / seg
+                val py = ay + (by - ay) * t / seg
+                val u0 = ((s + t) % tile) / tile
+                val sx0 = (u0 * b.width).toInt().coerceIn(0, b.width - 1)
+                val sx1 = (sx0 + maxOf(1f, step / tile * b.width).toInt()).coerceIn(sx0 + 1, b.width)
+                src.set(sx0, 0, sx1, b.height)
+                dst.set(0f, -h / 2f, step + 1.5f, h / 2f)
+                c.save()
+                c.translate(px, py)
+                c.rotate(ang)
+                c.drawBitmap(b, src, dst, pt)
+                c.restore()
+                t += step
+            }
+            s += seg
+        }
+    }
+
+    private fun bakeCurvedTape(): PageItem? {
+        val b = tapeBmp ?: return null
+        val pts = tapeSmooth()
+        if (pts.size < 2) return null
+        var plen = 0f
+        for (k in 0 until pts.size - 1) plen += hypot(pts[k + 1].first - pts[k].first, pts[k + 1].second - pts[k].second)
+        if (plen < 60f) return null
+        val h = (plen / 6.5f).coerceIn(44f, 84f)
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+        for (p in pts) { minX = minOf(minX, p.first); minY = minOf(minY, p.second); maxX = maxOf(maxX, p.first); maxY = maxOf(maxY, p.second) }
+        val pad = h * 0.6f
+        minX -= pad; minY -= pad; maxX += pad; maxY += pad
+        val bw = (maxX - minX).toInt().coerceAtLeast(2)
+        val bh = (maxY - minY).toInt().coerceAtLeast(2)
+        val k = minOf(1f, 1400f / maxOf(bw, bh))
+        val out = Bitmap.createBitmap((bw * k).toInt().coerceAtLeast(2), (bh * k).toInt().coerceAtLeast(2), Bitmap.Config.ARGB_8888)
+        val oc = Canvas(out)
+        oc.scale(k, k)
+        oc.translate(-minX, -minY)
+        drawTapeAlong(oc, pts, b, h, 255)
+        val it = PageItem(PageItem.IMAGE, (minX + maxX) / 2f, (minY + maxY) / 2f)
+        it.w = bw.toFloat()
+        it.h = bh.toFloat()
+        it.rot = 0f
+        it.bmp = out
+        val bos = java.io.ByteArrayOutputStream()
+        out.compress(Bitmap.CompressFormat.PNG, 100, bos)
+        it.data = bos.toByteArray()
+        if (tapeHide) it.kind = TAPE_KIND
+        return it
+    }
 
     private fun handleTapeTouch(e: MotionEvent): Boolean {
         val gx = pageX(e.x)
@@ -198,10 +299,12 @@ class DrawView(context: Context) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 tapeX0 = gx; tapeY0 = gy; tapeX1 = gx; tapeY1 = gy; tapeDown = true
+                tapePts.clear(); tapePts.add(gx); tapePts.add(gy)
                 tapeLastMoveMs = e.eventTime; tapeLastGx = gx; tapeLastGy = gy; tapeDownMs = e.eventTime
             }
             MotionEvent.ACTION_MOVE -> if (tapeDown) {
                 tapeEnd(gx, gy)
+                if (tapePts.size < 6000 && hypot(gx - tapePts[tapePts.size - 2], gy - tapePts[tapePts.size - 1]) > 4f) { tapePts.add(gx); tapePts.add(gy) }
                 if (hypot(gx - tapeLastGx, gy - tapeLastGy) * sc > 8f * density) {
                     tapeLastGx = gx; tapeLastGy = gy; tapeLastMoveMs = e.eventTime
                 }
@@ -217,8 +320,16 @@ class DrawView(context: Context) : View(context) {
                 }
                 if (tapeDown) {
                     tapeEnd(gx, gy)
-                    if (e.eventTime - tapeLastMoveMs > 450L) tapeHoldSnap()
+                    val held = e.eventTime - tapeLastMoveMs > 450L
+                    if (held) tapeHoldSnap()
+                    else if (tapePts.size < 2 || hypot(gx - tapePts[tapePts.size - 2], gy - tapePts[tapePts.size - 1]) > 0.5f) { tapePts.add(gx); tapePts.add(gy) }
                     tapeDown = false
+                    if (!held && tapeCurved()) {
+                        val baked = bakeCurvedTape()
+                        if (baked != null) addItem(baked)
+                        invalidate()
+                        return true
+                    }
                     val b = tapeBmp
                     val len = hypot(tapeX1 - tapeX0, tapeY1 - tapeY0)
                     if (b != null && len > 60f) {
@@ -244,6 +355,17 @@ class DrawView(context: Context) : View(context) {
         if (tool != Tool.TAPE || !tapeDown) return
         val len = hypot(tapeX1 - tapeX0, tapeY1 - tapeY0)
         if (len < 4f) return
+        if (tapeCurved()) {
+            val pts = tapeSmooth()
+            var plen = 0f
+            for (k in 0 until pts.size - 1) plen += hypot(pts[k + 1].first - pts[k].first, pts[k + 1].second - pts[k].second)
+            c.save()
+            c.translate(ox + offX * sc, oy)
+            c.scale(sc, sc)
+            drawTapeAlong(c, pts, b, (plen / 6.5f).coerceIn(44f, 84f), 190)
+            c.restore()
+            return
+        }
         val h = (len / 6.5f).coerceIn(44f, 84f)
         c.save()
         c.translate(ox + offX * sc, oy)
