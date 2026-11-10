@@ -21,8 +21,27 @@ object Transcribe {
     const val MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip"
 
     private fun root(ctx: Context) = File(ctx.filesDir, "vosk").also { it.mkdirs() }
-    fun modelDir(ctx: Context) = File(root(ctx), MODEL_NAME)
-    fun hasModel(ctx: Context) = File(modelDir(ctx), "am").isDirectory && File(modelDir(ctx), "conf").isDirectory
+    /** Model klasörü: içinde "am" klasörü bulunan ilk klasör (zip'in iç düzeni sürüme göre değişebilir). */
+    private fun findModel(dir: File, depth: Int): File? {
+        if (File(dir, "am").isDirectory) return dir
+        if (depth <= 0) return null
+        for (c in dir.listFiles() ?: return null) if (c.isDirectory) findModel(c, depth - 1)?.let { return it }
+        return null
+    }
+    fun modelDir(ctx: Context): File = findModel(root(ctx), 3) ?: File(root(ctx), MODEL_NAME)
+    fun hasModel(ctx: Context) = findModel(root(ctx), 3) != null
+
+    private fun listing(dir: File, depth: Int): String {
+        val sb = StringBuilder()
+        fun walk(d: File, pre: String, lv: Int) {
+            for (c in (d.listFiles() ?: return).sortedBy { it.name }.take(12)) {
+                sb.append(pre).append(c.name).append(if (c.isDirectory) "/" else "").append('\n')
+                if (c.isDirectory && lv > 0) walk(c, "$pre  ", lv - 1)
+            }
+        }
+        walk(dir, "", depth)
+        return sb.toString()
+    }
     fun textFileOf(rec: File) = File(rec.parentFile, rec.name.removeSuffix(".m4a") + ".txt")
 
     /** Modeli indirip açar. Başarılıysa null, değilse hata iletisi döner. İş parçacığında çağrılmalıdır. */
@@ -64,7 +83,7 @@ object Transcribe {
                 }
             }
             zip.delete()
-            return if (hasModel(ctx)) null else "Model dosyaları eksik çıktı"
+            return if (hasModel(ctx)) null else "Model dosyaları beklenen düzende değil. Açılan içerik:\n" + listing(root(ctx), 2)
         } catch (e: Exception) {
             zip.delete()
             return e.message ?: e.javaClass.simpleName
