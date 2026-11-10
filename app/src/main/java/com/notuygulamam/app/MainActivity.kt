@@ -1909,12 +1909,9 @@ class MainActivity : Activity() {
 
     /** Çift sayfa görünümünde yeni ikili (sayfa çevirmiş gibi) açık ikilinin arkasına eklenir; hangi tarafın şablonlu olacağı sorulur. 0: yalnız sol, 1: yalnız sağ, 2: ikisi de. Tek sayfa görünümünde -1. */
     private fun askPlacement(onPick: (Int) -> Unit) {
-        if (!spread) { onPick(-1); return }
-        AlertDialog.Builder(this)
-            .setTitle("Yeni sayfa hangi tarafa eklensin?")
-            .setItems(arrayOf("Yalnız sol sayfa", "Yalnız sağ sayfa", "İki sayfa da")) { _, w -> onPick(w) }
-            .setNegativeButton("Vazgeç", null)
-            .show()
+        // Çift sayfa görünümünde taraf sorulmaz: seçilen şablonla iki sayfa birlikte eklenir.
+        // Tek tek değiştirmek için "+" menüsündeki "Açık sayfayı şablonla değiştir" kullanılır.
+        onPick(if (spread) 2 else -1)
     }
 
     /** Yeni ikiliyi açık ikilinin hemen arkasına koyar. Seçilmeyen taraf, mevcut sayfanın kâğıt stiliyle gelir ve sonradan "+" menüsündeki "Açık sayfayı şablonla değiştir" ile ayrı ayrı düzenlenebilir. */
