@@ -11,8 +11,8 @@ android {
         applicationId = "com.notuygulamam.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 109
-        versionName = "1.09"
+        versionCode = 110
+        versionName = "1.10"
     }
 
     // Her derlemede aynı anahtarla imzalanır; böylece yeni sürüm eskisinin üstüne güncelleme olarak kurulur.
@@ -32,4 +32,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    // Ses kaydını cihazda yazıya çevirmek için (Vosk); model ilk kullanımda indirilir
+    implementation("com.alphacephei:vosk-android:0.3.32+")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 }

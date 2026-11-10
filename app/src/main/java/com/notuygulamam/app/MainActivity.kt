@@ -162,30 +162,94 @@ class MainActivity : Activity() {
     private fun showAudioDialog() {
         val rec = recorder != null
         val items = ArrayList<String>()
-        if (player != null) items.add("Oynatmayı durdur")
-        else if (rec) items.add("Kaydı bitir")
-        else items.add("Yeni ses kaydı başlat")
+        val acts = ArrayList<() -> Unit>()
+        if (player != null) { items.add("Oynatmayı durdur"); acts.add { stopPlayback() } }
+        else if (rec) { items.add("Kaydı bitir"); acts.add { stopRecording() } }
+        else { items.add("Yeni ses kaydı başlat"); acts.add { startRecording() } }
         val files = recordings()
         val fmt = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale("tr"))
-        if (!rec && player == null) for (f in files) items.add("Oynat: " + fmt.format(java.util.Date(recStartOf(f))))
-        if (!rec && player == null && files.isNotEmpty()) items.add("Kayıtları sil")
+        if (!rec && player == null) {
+            for (f in files) { items.add("Oynat: " + fmt.format(java.util.Date(recStartOf(f)))); acts.add { startPlayback(f) } }
+            for (f in files) {
+                val has = Transcribe.textFileOf(f).exists()
+                items.add((if (has) "Metni göster: " else "Yazıya çevir: ") + fmt.format(java.util.Date(recStartOf(f))))
+                acts.add { if (has) showTranscript(f, Transcribe.textFileOf(f).readText()) else transcribeFlow(f) }
+            }
+            if (files.isNotEmpty()) {
+                items.add("Kayıtları sil")
+                acts.add {
+                    for (f in files) { f.delete(); Transcribe.textFileOf(f).delete() }
+                    Toast.makeText(this, "Bu defterin ses kayıtları silindi", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
         android.app.AlertDialog.Builder(this)
             .setTitle("Ses kaydı")
-            .setItems(items.toTypedArray()) { _, w ->
-                val label = items[w]
-                when {
-                    label == "Oynatmayı durdur" -> stopPlayback()
-                    label == "Kaydı bitir" -> stopRecording()
-                    label == "Yeni ses kaydı başlat" -> startRecording()
-                    label == "Kayıtları sil" -> {
-                        for (f in files) f.delete()
-                        Toast.makeText(this, "Bu defterin ses kayıtları silindi", Toast.LENGTH_SHORT).show()
-                    }
-                    else -> startPlayback(files[w - 1])
+            .setItems(items.toTypedArray()) { _, w -> acts[w]() }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun progressDialog(title: String): android.app.AlertDialog {
+        val d = android.app.AlertDialog.Builder(this).setTitle(title).setMessage("Başlıyor…").setCancelable(false).create()
+        d.show()
+        return d
+    }
+
+    private fun transcribeFlow(f: File) {
+        if (!Transcribe.hasModel(this)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Konuşma modeli indirilsin mi?")
+                .setMessage("Ses kaydını yazıya çevirmek için Türkçe konuşma modeli (yaklaşık 35 MB) bir kez indirilecek. İnternet bağlantısı gerekir, Wi-Fi önerilir. Sonrasında çeviri internetsiz, cihazın kendisinde yapılır.\n\nKüçük bir model olduğu için sonuç bir taslaktır; noktalama ve özel terimlerde hata olabilir.")
+                .setPositiveButton("İndir") { _, _ ->
+                    val d = progressDialog("Model indiriliyor")
+                    Thread {
+                        val err = Transcribe.download(this) { p -> runOnUiThread { d.setMessage("%" + p) } }
+                        runOnUiThread {
+                            d.dismiss()
+                            if (err == null) transcribeFlow(f)
+                            else android.app.AlertDialog.Builder(this).setTitle("İndirilemedi").setMessage(err).setPositiveButton("Tamam", null).show()
+                        }
+                    }.start()
                 }
+                .setNegativeButton("Vazgeç", null)
+                .show()
+            return
+        }
+        val d = progressDialog("Yazıya çevriliyor")
+        Thread {
+            val res = Transcribe.transcribe(this, f) { p -> runOnUiThread { d.setMessage("%" + p + " (uzun kayıtlar birkaç dakika sürebilir)") } }
+            runOnUiThread {
+                d.dismiss()
+                val t = res.getOrNull()
+                if (t != null) showTranscript(f, t)
+                else android.app.AlertDialog.Builder(this).setTitle("Yazıya çevrilemedi").setMessage(res.exceptionOrNull()?.message ?: "").setPositiveButton("Tamam", null).show()
+            }
+        }.start()
+    }
+
+    private fun showTranscript(f: File, text: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Kaydın metni")
+            .setMessage(text)
+            .setPositiveButton("Sayfaya ekle") { _, _ -> addTextBlock(text) }
+            .setNeutralButton("Kopyala") { _, _ ->
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("transkript", text))
+                Toast.makeText(this, "Kopyalandı", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Kapat", null)
             .show()
+    }
+
+    private fun addTextBlock(text: String) {
+        val it = PageItem(PageItem.TEXT, 60f, 120f)
+        it.text = text
+        it.size = 26f
+        it.color = Look.ink
+        PageRenderer().fitText(it, minOf(640f, draw.page.width - 90f).coerceAtLeast(300f))
+        draw.addItem(it, true)
+        scheduleSave()
     }
 
     private fun startRecording() {
@@ -1979,15 +2043,7 @@ class MainActivity : Activity() {
         if (resultCode != RESULT_OK) return
         if (requestCode == REQ_SPEECH) {
             val said = data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!said.isNullOrBlank()) {
-                val it = PageItem(PageItem.TEXT, 60f, 120f)
-                it.text = said
-                it.size = 30f
-                it.color = Look.ink
-                PageRenderer().fitText(it, minOf(640f, draw.page.width - 90f).coerceAtLeast(300f))
-                draw.addItem(it, true)
-                scheduleSave()
-            }
+            if (!said.isNullOrBlank()) addTextBlock(said)
             return
         }
         val uri = data?.data ?: return
