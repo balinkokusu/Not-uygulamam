@@ -259,7 +259,10 @@ class PageRenderer {
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
                     val down = Math.max(0.0, Math.sin(ang))
-                    w *= (0.10 + 0.90 * Math.pow(down, 1.4)).toFloat()
+                    var f = 0.10 + 0.90 * Math.pow(down, 1.4)
+                    // çizginin ilk birkaç noktasında yön henüz belli değil; başlangıç noktası (damla) oluşmasın diye ince başlar
+                    if (i < 7) f = 0.10 + (f - 0.10) * (i / 7.0)
+                    w *= f.toFloat()
                 }
             }
         }
@@ -879,7 +882,7 @@ class PageRenderer {
             3 -> floatArrayOf(6f, 0.15f, 14f, 0.05f)
             4 -> floatArrayOf(1f, 0.85f, 3f, 0.55f)
             14 -> floatArrayOf(1.5f, 0.7f, 3f, 0.4f)
-            5 -> floatArrayOf(3f, 0.4f, 6f, 0.2f)
+            5 -> floatArrayOf(1f, 1f, 6f, 0.2f)
             else -> return 1f
         }
         val w = max(1f, s.width)
