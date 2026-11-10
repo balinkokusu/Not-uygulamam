@@ -256,14 +256,16 @@ class PageRenderer {
                 val j = max(0, i - 6)
                 val dx = s.xs[i] - s.xs[j]
                 val dy = s.ys[i] - s.ys[j]
+                // hareket yoksa (kalem yeni indiğinde noktalar üst üste gelir) çizgi ince kalır; ilk noktada damla oluşmaz
+                var f = 0.10
                 if (dx != 0f || dy != 0f) {
                     val ang = Math.atan2(dy.toDouble(), dx.toDouble())
                     val down = Math.max(0.0, Math.sin(ang))
-                    var f = 0.10 + 0.90 * Math.pow(down, 1.4)
-                    // çizginin ilk birkaç noktasında yön henüz belli değil; başlangıç noktası (damla) oluşmasın diye ince başlar
+                    f = 0.10 + 0.90 * Math.pow(down, 1.4)
+                    // çizginin ilk birkaç noktasında yön henüz belli değil; ince başlar
                     if (i < 7) f = 0.10 + (f - 0.10) * (i / 7.0)
-                    w *= f.toFloat()
                 }
+                w *= f.toFloat()
             }
         }
         return w
