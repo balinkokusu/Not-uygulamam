@@ -51,7 +51,7 @@ class PageRenderer {
         14 -> 0.45f
         3 -> 0.85f
         4 -> 0.9f
-        5 -> 1.9f
+        5 -> 1.25f
         15 -> 1f
         6, 7 -> 1f
         8 -> 1.15f
@@ -253,7 +253,7 @@ class PageRenderer {
             5 -> {
                 // Sivri uçlu kaligrafi: aşağı inen vuruş kalın, yukarı çıkan ve yatay vuruş kıl gibi ince.
                 // yön, birkaç nokta geriden ölçülür: titreşim kalınlığı sıçratmasın
-                val j = max(0, i - 6)
+                val j = max(0, i - 9)
                 val dx = s.xs[i] - s.xs[j]
                 val dy = s.ys[i] - s.ys[j]
                 // hareket yoksa (kalem yeni indiğinde noktalar üst üste gelir) çizgi ince kalır; ilk noktada damla oluşmaz
@@ -265,7 +265,9 @@ class PageRenderer {
                     // çizginin ilk birkaç noktasında yön henüz belli değil; ince başlar
                     if (i < 7) f = 0.10 + (f - 0.10) * (i / 7.0)
                 }
-                w *= f.toFloat()
+                // hızlı yazılan yerler hafifler; yavaş ve kasıtlı vuruşlar kalın kalır
+                val sp = (speedFactor(s, i) - 0.4f) / 0.6f
+                w *= f.toFloat() * (0.6f + 0.4f * sp)
             }
         }
         return w
