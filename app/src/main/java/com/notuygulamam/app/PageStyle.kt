@@ -289,7 +289,7 @@ class PageStyleChooser(
 /** Sayfa listesi için bir sayfanın küçük resmi. */
 class ThumbEntry(val bmp: Bitmap, val sig: Long)
 
-private val cache = android.util.LruCache<Int, ThumbEntry>(80)
+private val cache = android.util.LruCache<Int, ThumbEntry>(220)
 
 class PageThumb(context: Context, private val page: PageData) : View(context) {
     private val d = resources.displayMetrics.density

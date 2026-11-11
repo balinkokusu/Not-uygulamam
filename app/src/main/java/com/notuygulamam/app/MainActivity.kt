@@ -3133,9 +3133,10 @@ class MainActivity : Activity() {
     /** Sayfaları küçük resimleriyle listeler; yukarı/aşağı okla sıralanır, çoğaltılır ve silinir. */
     private fun showPagesDialog() {
         val keep = draw.page
-        val list = LinearLayout(this)
-        list.orientation = LinearLayout.VERTICAL
+        val list = android.widget.ListView(this)
+        list.divider = null
         list.setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+        list.clipToPadding = false
         var dlg: AlertDialog? = null
         lateinit var rebuild: () -> Unit
         fun glyph(label: String, on: Boolean, action: () -> Unit): TextView {
@@ -3153,9 +3154,9 @@ class MainActivity : Activity() {
             }
             return t
         }
-        rebuild = {
-            list.removeAllViews()
-            for ((i, pg) in nb.pages.withIndex()) {
+        fun rowFor(i: Int): View {
+            val pg = nb.pages[i]
+            run {
                 val row = LinearLayout(this)
                 row.orientation = LinearLayout.HORIZONTAL
                 row.gravity = Gravity.CENTER_VERTICAL
@@ -3190,12 +3191,19 @@ class MainActivity : Activity() {
                     nb.pages.add(i + 1, cp)
                 })
                 row.addView(glyph("✕", nb.pages.size > 1) { removePageAt(i) })
-                list.addView(row)
+                return row
             }
         }
-        rebuild()
-        val sv = ScrollView(this)
-        sv.addView(list)
+        // yüzlerce sayfada hepsini birden çizmek programı donduruyordu; liste yalnızca ekrandaki satırları oluşturur
+        val adapter = object : android.widget.BaseAdapter() {
+            override fun getCount() = nb.pages.size
+            override fun getItem(position: Int): Any = nb.pages[position]
+            override fun getItemId(position: Int) = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View = rowFor(position)
+        }
+        list.adapter = adapter
+        rebuild = { adapter.notifyDataSetChanged() }
+        val sv = list
         dlg = AlertDialog.Builder(this)
             .setTitle("Sayfalar (▲▼ sıralar, ⧉ çoğaltır, ✕ siler)")
             .setView(sv)
