@@ -21,9 +21,10 @@ object Transcribe {
     const val MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip"
 
     private fun root(ctx: Context) = File(ctx.filesDir, "vosk").also { it.mkdirs() }
-    /** Model klasörü: içinde "am" klasörü bulunan ilk klasör (zip'in iç düzeni sürüme göre değişebilir). */
+    /** Model klasörü: içinde "am" klasörü bulunan ilk klasör (zip'in iç düzeni modele göre değişir). */
     private fun findModel(dir: File, depth: Int): File? {
-        if (File(dir, "am").isDirectory) return dir
+        // iki düzen var: am/ klasörlü ve dosyaların doğrudan klasörde durduğu (Türkçe küçük model: final.mdl, HCLr.fst, Gr.fst)
+        if (File(dir, "am").isDirectory || File(dir, "final.mdl").isFile) return dir
         if (depth <= 0) return null
         for (c in dir.listFiles() ?: return null) if (c.isDirectory) findModel(c, depth - 1)?.let { return it }
         return null

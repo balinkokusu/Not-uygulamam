@@ -13,8 +13,8 @@ android {
         targetSdk = 34
         // yalnız 64 bit ARM (MatePad dahil güncel tabletler): ses tanıma kütüphanesinin diğer işlemci kopyaları gereksiz yer kaplamasın
         ndk { abiFilters += listOf("arm64-v8a") }
-        versionCode = 112
-        versionName = "1.12"
+        versionCode = 113
+        versionName = "1.13"
     }
 
     // Her derlemede aynı anahtarla imzalanır; böylece yeni sürüm eskisinin üstüne güncelleme olarak kurulur.
