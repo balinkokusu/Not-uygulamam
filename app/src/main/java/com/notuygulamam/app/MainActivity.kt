@@ -15,6 +15,8 @@ import android.view.Gravity
 import android.view.View
 import android.text.InputFilter
 import android.widget.ArrayAdapter
+import android.widget.FrameLayout
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.CheckBox
 import android.widget.EditText
@@ -339,6 +341,56 @@ class MainActivity : Activity() {
             st.load()
             st.touch(itemId)
         }
+    }
+
+    /** Kalem üç saniye basılı tutulunca, kalemin olduğu yerde yay biçiminde açılan hızlı araç menüsü. */
+    private fun showToolArc(x: Float, y: Float) {
+        val root = FrameLayout(this)
+        val pop = PopupWindow(root, draw.width, draw.height, true)
+        pop.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        pop.isOutsideTouchable = true
+        val items = listOf(
+            Triple(Icon.PEN, "Kalem", Tool.PEN), Triple(Icon.HIGHLIGHTER, "Fosforlu", Tool.HIGHLIGHTER),
+            Triple(Icon.ERASER, "Silgi", Tool.ERASER), Triple(Icon.LASSO, "Lasso", Tool.LASSO),
+            Triple(Icon.SELECT, "Nesne seç", Tool.OBJECT), Triple(Icon.LASER, "Lazer", Tool.LASER),
+            Triple(Icon.UNDO, "Geri al", null as Tool?)
+        )
+        val size = dp(46f)
+        val r = dp(96f).toFloat()
+        val dir = if (x > draw.width / 2f) -1f else 1f
+        val n = items.size
+        for ((i, it) in items.withIndex()) {
+            val ang = Math.toRadians((-78.0 + 156.0 * i / (n - 1)))
+            val cx = x + dir * (r * Math.cos(ang)).toFloat()
+            val cy = y + (r * Math.sin(ang)).toFloat()
+            val b = IconButton(this, it.first, it.second, true)
+            val bgd = android.graphics.drawable.GradientDrawable()
+            bgd.shape = android.graphics.drawable.GradientDrawable.OVAL
+            bgd.setColor(Color.argb(240, 250, 247, 245))
+            bgd.setStroke(dp(1f), Look.hairline)
+            b.background = bgd
+            b.elevation = dp(4f).toFloat()
+            val lp = FrameLayout.LayoutParams(size, size)
+            lp.leftMargin = (cx - size / 2f).toInt().coerceIn(0, (draw.width - size).coerceAtLeast(0))
+            lp.topMargin = (cy - size / 2f).toInt().coerceIn(0, (draw.height - size).coerceAtLeast(0))
+            b.layoutParams = lp
+            b.setOnClickListener {
+                pop.dismiss()
+                val t = it2Tool(items, b)
+                if (t == null) { draw.undo(); refresh() }
+                else if (draw.tool != t) toolButtons[t]?.performClick()
+            }
+            root.addView(b)
+        }
+        val loc = IntArray(2)
+        draw.getLocationOnScreen(loc)
+        pop.showAtLocation(draw, Gravity.NO_GRAVITY, loc[0], loc[1])
+    }
+
+    private fun it2Tool(items: List<Triple<Icon, String, Tool?>>, b: IconButton): Tool? {
+        val lp = b.layoutParams
+        val idx = (b.parent as? ViewGroup)?.indexOfChild(b) ?: -1
+        return if (idx in items.indices) items[idx].third else null
     }
 
     private fun iconBtn(icon: Icon, label: String, onClick: () -> Unit): IconButton {
@@ -3286,6 +3338,7 @@ class MainActivity : Activity() {
             markWritten()
             scheduleSave()
         }
+        draw.onToolMenu = { x, y -> runOnUiThread { showToolArc(x, y) } }
         draw.onToolToggled = {
             settingsPopup?.dismiss()
             refresh()
@@ -3469,18 +3522,28 @@ class MainActivity : Activity() {
         pageLabel.setPadding(dp(6f), 0, dp(6f), 0)
         toolRow.addView(pageLabel)
         toolRow.addView(iconBtn(Icon.NEXT, "Sonraki sayfa") { gotoPage(nb.current + step()) })
-        toolRow.addView(spacer())
-        toolRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
-        toolRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
+        // geri al, ileri al ve diğer işlemler kaydırılan alanın dışında, sağda sabit durur (dikey kullanımda da hep görünür)
+        val fixedRow = LinearLayout(this)
+        fixedRow.orientation = LinearLayout.HORIZONTAL
+        fixedRow.gravity = Gravity.CENTER_VERTICAL
+        fixedRow.setPadding(dp(4f), dp(2f), dp(8f), dp(2f))
+        fixedRow.addView(separator())
+        fixedRow.addView(iconBtn(Icon.UNDO, "Geri al") { draw.undo() })
+        fixedRow.addView(iconBtn(Icon.REDO, "İleri al") { draw.redo() })
         val moreBtn = iconBtn(Icon.MORE, "Diğer işlemler") { }
         moreBtn.setOnClickListener { showMoreMenu(moreBtn) }
-        toolRow.addView(moreBtn)
-        val toolScroll = HorizontalScrollView(this)
-        toolScroll.isFillViewport = true
+        fixedRow.addView(moreBtn)
+        val toolInner = HorizontalScrollView(this)
+        toolInner.isFillViewport = true
+        toolInner.isHorizontalScrollBarEnabled = false
+        toolInner.addView(toolRow)
+        val toolScroll = LinearLayout(this)
+        toolScroll.orientation = LinearLayout.HORIZONTAL
         toolScroll.background = bar(dp(24f).toFloat())
         toolScroll.elevation = dp(5f).toFloat()
         toolScroll.clipToOutline = true
-        toolScroll.addView(toolRow)
+        toolScroll.addView(toolInner, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        toolScroll.addView(fixedRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         val swatchScroll = HorizontalScrollView(this)
         swatchScroll.background = bar(dp(20f).toFloat())

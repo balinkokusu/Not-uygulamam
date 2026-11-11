@@ -479,6 +479,25 @@ class DrawView(context: Context) : View(context) {
     private var lastDrawTool = Tool.PEN
     var onToolToggled: (() -> Unit)? = null
 
+    /** Kalem ekranda üç saniye kıpırdamadan basılı tutulunca çağrılır (yay biçimli araç menüsü için). */
+    var onToolMenu: ((Float, Float) -> Unit)? = null
+    private var menuPending = false
+    private var menuFired = false
+    private val toolMenuRunnable = Runnable {
+        if (!menuPending) return@Runnable
+        menuPending = false
+        menuFired = true
+        current = null
+        strokeActive = false
+        holdHandler.removeCallbacks(holdRunnable)
+        rebuildBase()
+        onToolMenu?.invoke(downX, downY)
+    }
+    private fun cancelToolMenu() {
+        menuPending = false
+        holdHandler.removeCallbacks(toolMenuRunnable)
+    }
+
     /** Seçili metin/çıkartma/resim. */
     var selectedItem: PageItem? = null
         private set
@@ -2163,6 +2182,17 @@ class DrawView(context: Context) : View(context) {
             return true
         }
 
+        if (menuFired) {
+            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) menuFired = false
+            return true
+        }
+        if (menuPending) {
+            val a0 = e.actionMasked
+            if (a0 == MotionEvent.ACTION_UP || a0 == MotionEvent.ACTION_CANCEL ||
+                (a0 == MotionEvent.ACTION_MOVE && hypot(e.x - downX, e.y - downY) > 12f * density)
+            ) cancelToolMenu()
+        }
+
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = e.x
@@ -2179,6 +2209,11 @@ class DrawView(context: Context) : View(context) {
                 gestureRemoved.clear()
                 gestureAdded.clear()
                 gestureRemovedItems.clear()
+                cancelToolMenu()
+                if (isStylus && !gestureErasing && (tool == Tool.PEN || tool == Tool.HIGHLIGHTER) && onToolMenu != null) {
+                    menuPending = true
+                    holdHandler.postDelayed(toolMenuRunnable, 3000L)
+                }
                 val gx = pageX(e.x)
                 val gy = pageY(e.y)
                 if (gestureErasing) {
