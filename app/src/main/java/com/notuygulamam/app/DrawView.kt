@@ -62,24 +62,8 @@ class DrawView(context: Context) : View(context) {
      * hızlı ve bilerek yapılan hareketlerde neredeyse hiç gecikme olmaz; böylece harfin şekli bozulmaz, yalnız titreme gider.
      */
     private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
-        if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
-            if (s.xs.size == 1) { rawX = s.xs[0]; rawY = s.ys[0] }
-            val t = effStab(s.kind) / 100f
-            val dt = 0.008f
-            val spd = hypot(x - rawX, y - rawY) / dt * sc / density
-            rawX = x
-            rawY = y
-            // canlı süzgeç hafif tutulur (gecikme olmasın); asıl düzeltme kalem kalkınca yapılır
-            val fmin = 70f - 25f * t
-            val fc = fmin + 0.25f * spd
-            val tau = 1f / (2f * Math.PI.toFloat() * fc)
-            val a = 1f / (1f + tau / dt)
-            val lx = s.xs[s.xs.size - 1]
-            val ly = s.ys[s.ys.size - 1]
-            s.add(lx + (x - lx) * a, ly + (y - ly) * a, p)
-        } else {
-            s.add(x, y, p)
-        }
+        // Yazarken süzgeç yoktur: kalem ucu hiç geride kalmaz. Titreme yalnızca kalem kalkınca hafifçe giderilir.
+        s.add(x, y, p)
     }
 
     /** Kaligrafi ucunda kalın-ince farkı yön değişiminden doğar; fazla yumuşatma bu farkı eritir, bu yüzden etkisi azaltılır. */
@@ -96,7 +80,7 @@ class DrawView(context: Context) : View(context) {
         if (n < 4 || es < 3) return
         val tt = es / 100f
         // yumuşatma genişliği ekrandaki dp cinsinden; yakınlaştırma düzeyinden bağımsız aynı his
-        val sigma = (0.8f + 11.2f * Math.pow(tt.toDouble(), 1.3).toFloat()) * density / sc
+        val sigma = (0.5f + 3.5f * Math.pow(tt.toDouble(), 1.3).toFloat()) * density / sc
         val step = max(1f, sigma / 3f)
         // yay uzunluğuna göre eşit aralıklı örnekleme
         val px = ArrayList<Float>(); val py = ArrayList<Float>(); val pp = ArrayList<Float>()
