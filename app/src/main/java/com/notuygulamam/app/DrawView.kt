@@ -62,8 +62,21 @@ class DrawView(context: Context) : View(context) {
      * hızlı ve bilerek yapılan hareketlerde neredeyse hiç gecikme olmaz; böylece harfin şekli bozulmaz, yalnız titreme gider.
      */
     private fun addStab(s: Stroke, x: Float, y: Float, p: Float) {
-        // Yazarken süzgeç yoktur: kalem ucu hiç geride kalmaz. Titreme yalnızca kalem kalkınca hafifçe giderilir.
-        s.add(x, y, p)
+        if (stabilize > 0 && s.xs.isNotEmpty() && !rulerSnap) {
+            // "İpe bağlı uç": çizgi ucu, kalemin ucuna sabit uzunlukta bir iple bağlıdır. Kalem ipin boyundan fazla uzaklaşınca uç
+            // kalemin yönünde çekilir; titremeler ipin içinde kalır, köşeler yuvarlanır. Yazarken görünen çizgi son çizgidir, kalem kalkınca değişmez.
+            val t = effStab(s.kind) / 100f
+            val r = Math.pow(t.toDouble(), 1.2).toFloat() * 11f * density / sc
+            val lx = s.xs[s.xs.size - 1]
+            val ly = s.ys[s.ys.size - 1]
+            val d = hypot(x - lx, y - ly)
+            if (d > r && d > 0f) {
+                val k = (d - r) / d
+                s.add(lx + (x - lx) * k, ly + (y - ly) * k, p)
+            }
+        } else {
+            s.add(x, y, p)
+        }
     }
 
     /** Kaligrafi ucunda kalın-ince farkı yön değişiminden doğar; fazla yumuşatma bu farkı eritir, bu yüzden etkisi azaltılır. */
@@ -2341,7 +2354,7 @@ class DrawView(context: Context) : View(context) {
                             drawPenIncrement(s)
                         }
                     }
-                    if (s != null && stabilize > 0 && !straightLive && !shapeFrozen && !rulerSnap) { smoothStroke(s); s.resetArc() }
+                    if (s != null && stabilize > 0 && !straightLive && !shapeFrozen && !rulerSnap) { /* yumuşatma yazarken yapıldı */ }
                     else if (s != null && !s.highlighter && s.kind != 5 && s.kind != 15 && !straightLive && !shapeFrozen && !rulerSnap && s.xs.size >= 3) { densifyStroke(s); s.resetArc(); densified = true }
                     if (s != null && scribbleErase && !s.highlighter && !straightLive && !shapeFrozen &&
                         isScribble(s) && eraseUnderScribble(s)
@@ -2350,7 +2363,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = densified || s.highlighter || straightLive || stabilize >= 5 || s.kind == 2 || s.kind == 13 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
+                        var needsBake = densified || s.highlighter || straightLive || s.kind == 2 || s.kind == 13 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
