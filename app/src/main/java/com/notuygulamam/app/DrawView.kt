@@ -2189,7 +2189,7 @@ class DrawView(context: Context) : View(context) {
         if (menuPending) {
             val a0 = e.actionMasked
             if (a0 == MotionEvent.ACTION_UP || a0 == MotionEvent.ACTION_CANCEL ||
-                (a0 == MotionEvent.ACTION_MOVE && hypot(e.x - downX, e.y - downY) > 12f * density)
+                (a0 == MotionEvent.ACTION_MOVE && hypot(e.x - downX, e.y - downY) > 30f * density)
             ) cancelToolMenu()
         }
 
