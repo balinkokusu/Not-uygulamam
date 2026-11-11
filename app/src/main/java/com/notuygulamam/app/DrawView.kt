@@ -70,6 +70,34 @@ class DrawView(context: Context) : View(context) {
     private fun effStab(kind: Int): Int = if (kind == 5 || kind == 15) stabilize * 50 / 100 else stabilize
 
     /**
+     * Hızlı çizimde noktalar seyrek gelir ve çizgi köşeli görünür. Noktalar yerinde kalır, aralarına Catmull-Rom eğrisiyle
+     * ara noktalar eklenir; çizginin şekli değişmez, yalnızca eğriler pürüzsüz olur.
+     */
+    private fun densifyStroke(s: Stroke) {
+        val n = s.xs.size
+        if (n < 3) return
+        val xs = ArrayList<Float>(s.xs); val ys = ArrayList<Float>(s.ys); val ps = ArrayList<Float>(s.ps)
+        val ox = ArrayList<Float>(); val oy = ArrayList<Float>(); val op = ArrayList<Float>()
+        for (i in 0 until n - 1) {
+            ox.add(xs[i]); oy.add(ys[i]); op.add(ps[i])
+            val d = hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i])
+            val k = (d / 2.5f).toInt().coerceAtMost(12)
+            if (k < 1) continue
+            val i0 = max(0, i - 1); val i3 = min(n - 1, i + 2)
+            for (j in 1..k) {
+                val t = j / (k + 1f); val t2 = t * t; val t3 = t2 * t
+                fun cr(a: Float, b: Float, c: Float, d2: Float) =
+                    0.5f * ((2f * b) + (-a + c) * t + (2f * a - 5f * b + 4f * c - d2) * t2 + (-a + 3f * b - 3f * c + d2) * t3)
+                ox.add(cr(xs[i0], xs[i], xs[i + 1], xs[i3])); oy.add(cr(ys[i0], ys[i], ys[i + 1], ys[i3]))
+                op.add(ps[i] + (ps[i + 1] - ps[i]) * t)
+            }
+        }
+        ox.add(xs[n - 1]); oy.add(ys[n - 1]); op.add(ps[n - 1])
+        s.xs.clear(); s.ys.clear(); s.ps.clear()
+        for (i in ox.indices) s.add(ox[i], oy[i], op[i])
+    }
+
+    /**
      * Kalem kalkınca çizgi yay uzunluğuna göre yeniden örneklenir ve Gauss ağırlıklı ortalamayla yumuşatılır.
      * Yumuşatma yarıçapı yüzdeyle büyür (%100'de yaklaşık 9 sayfa birimi); uç noktalar yerinde kalır.
      * Yazarken gecikme olmaz, düzeltme kalem kalkınca uygulanır.
@@ -2296,6 +2324,7 @@ class DrawView(context: Context) : View(context) {
                 } else {
                     val s = current
                     val upBounds = newBounds()
+                    var densified = false
                     if (s != null) addStrokeBounds(upBounds, s)
                     if (s != null && stabilize > 0 && e.actionMasked == MotionEvent.ACTION_UP && !straightLive && !shapeFrozen && !rulerSnap) {
                         // dengeleme geride kaldığı için çizginin ucu kalemin bittiği noktaya tamamlanır
@@ -2313,6 +2342,7 @@ class DrawView(context: Context) : View(context) {
                         }
                     }
                     if (s != null && stabilize > 0 && !straightLive && !shapeFrozen && !rulerSnap) { smoothStroke(s); s.resetArc() }
+                    else if (s != null && !s.highlighter && s.kind != 5 && s.kind != 15 && !straightLive && !shapeFrozen && !rulerSnap && s.xs.size >= 3) { densifyStroke(s); s.resetArc(); densified = true }
                     if (s != null && scribbleErase && !s.highlighter && !straightLive && !shapeFrozen &&
                         isScribble(s) && eraseUnderScribble(s)
                     ) {
@@ -2320,7 +2350,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (s != null && scribbleErase && !s.highlighter && scribbleInfo.isNotEmpty()) onInfo?.invoke(scribbleInfo)
                     if (s != null) {
-                        var needsBake = s.highlighter || straightLive || stabilize >= 5 || s.kind == 2 || s.kind == 13 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
+                        var needsBake = densified || s.highlighter || straightLive || stabilize >= 5 || s.kind == 2 || s.kind == 13 || s.kind == 8 || s.kind == 9 || s.kind == 11 || s.kind == 12
                         if (s.highlighter && highlighterSnap && !straightLive && nearlyStraight(s)) {
                             straighten(s)
                             needsBake = true
