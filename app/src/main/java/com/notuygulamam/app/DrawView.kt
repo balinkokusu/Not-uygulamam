@@ -483,10 +483,12 @@ class DrawView(context: Context) : View(context) {
     var onToolMenu: ((Float, Float) -> Unit)? = null
     private var menuPending = false
     private var menuFired = false
+    private var menuT0 = 0L
     private val toolMenuRunnable = Runnable {
         if (!menuPending) return@Runnable
         menuPending = false
         menuFired = true
+        onInfo?.invoke("Yay menüsü ${System.currentTimeMillis() - menuT0} ms sonra açıldı")
         current = null
         strokeActive = false
         holdHandler.removeCallbacks(holdRunnable)
@@ -2190,7 +2192,10 @@ class DrawView(context: Context) : View(context) {
             val a0 = e.actionMasked
             if (a0 == MotionEvent.ACTION_UP || a0 == MotionEvent.ACTION_CANCEL ||
                 (a0 == MotionEvent.ACTION_MOVE && hypot(e.x - downX, e.y - downY) > 30f * density)
-            ) cancelToolMenu()
+            ) {
+                onInfo?.invoke("Yay menüsü iptal: " + (if (a0 == MotionEvent.ACTION_MOVE) "kalem ${(hypot(e.x - downX, e.y - downY) / density).toInt()} dp kaydı" else if (a0 == MotionEvent.ACTION_UP) "kalem kalktı" else "dokunuş iptal edildi") + ", ${System.currentTimeMillis() - menuT0} ms")
+                cancelToolMenu()
+            }
         }
 
         when (e.actionMasked) {
@@ -2212,6 +2217,7 @@ class DrawView(context: Context) : View(context) {
                 cancelToolMenu()
                 if (isStylus && !gestureErasing && (tool == Tool.PEN || tool == Tool.HIGHLIGHTER) && onToolMenu != null) {
                     menuPending = true
+                    menuT0 = System.currentTimeMillis()
                     holdHandler.postDelayed(toolMenuRunnable, 3000L)
                 }
                 val gx = pageX(e.x)
