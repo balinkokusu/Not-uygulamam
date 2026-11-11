@@ -70,8 +70,8 @@ class DrawView(context: Context) : View(context) {
             rawX = x
             rawY = y
             // canlı süzgeç hafif tutulur (gecikme olmasın); asıl düzeltme kalem kalkınca yapılır
-            val fmin = 30f - 14f * t
-            val fc = fmin + 0.08f * spd
+            val fmin = 70f - 25f * t
+            val fc = fmin + 0.25f * spd
             val tau = 1f / (2f * Math.PI.toFloat() * fc)
             val a = 1f / (1f + tau / dt)
             val lx = s.xs[s.xs.size - 1]
@@ -1138,8 +1138,37 @@ class DrawView(context: Context) : View(context) {
     private var playClock = 0L
     fun setPlayClock(v: Long) { playClock = v; rebuildBase() }
 
-    private fun rebuildBase() {
+    /** Sayfa koordinatındaki bir dikdörtgenin ekrandaki karşılığı (yeniden çizilecek bölge için). */
+    private fun dirtyView(l: Float, t: Float, r: Float, b: Float, padPage: Float): RectF {
+        return RectF(
+            ox + (l - padPage + offX) * sc, oy + (t - padPage) * sc,
+            ox + (r + padPage + offX) * sc, oy + (b + padPage) * sc
+        )
+    }
+
+    private fun addStrokeBounds(acc: FloatArray, s: Stroke) {
+        for (i in s.xs.indices) {
+            val x = s.xs[i]; val y = s.ys[i]
+            if (x < acc[0]) acc[0] = x
+            if (y < acc[1]) acc[1] = y
+            if (x > acc[2]) acc[2] = x
+            if (y > acc[3]) acc[3] = y
+        }
+        val w = s.width * 3f
+        acc[0] -= w; acc[1] -= w; acc[2] += w; acc[3] += w
+    }
+
+    private fun newBounds() = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+
+    /** Yalnız değişen bölgeyi yeniden çizer: kalem kalkınca ve silerken bütün defteri baştan çizmek yazıyı geciktiriyordu. */
+    private fun rebuildRegion(b: FloatArray) {
+        if (b[0] > b[2]) { rebuildBase(); return }
+        rebuildBase(dirtyView(b[0], b[1], b[2], b[3], 24f))
+    }
+
+    private fun rebuildBase(dirty: RectF? = null) {
         val c = baseCanvas ?: return
+        if (dirty != null) { c.save(); c.clipRect(dirty) }
         c.drawColor(Look.canvas)
         val list = listOfNotNull(leftPage, rightPage)
         val total = spreadW()
@@ -1180,7 +1209,20 @@ class DrawView(context: Context) : View(context) {
             c.scale(sc, sc)
             c.clipRect(-off, 0f, total - off, pg.height)
             spiralClip(c, off)
-            for (s in pg.strokes) if (playClock == 0L || s.t == 0L || s.t <= playClock) drawStroke(c, s)
+            for (s in pg.strokes) {
+                if (!(playClock == 0L || s.t == 0L || s.t <= playClock)) continue
+                if (dirty != null) {
+                    val pad = (s.width * 4f + 8f) * sc
+                    var lo = Float.MAX_VALUE; var hi = -Float.MAX_VALUE; var lt = Float.MAX_VALUE; var bt = -Float.MAX_VALUE
+                    for (i in s.xs.indices) {
+                        val vx = ox + (off + s.xs[i]) * sc; val vy = oy + s.ys[i] * sc
+                        if (vx < lo) lo = vx; if (vx > hi) hi = vx
+                        if (vy < lt) lt = vy; if (vy > bt) bt = vy
+                    }
+                    if (hi + pad < dirty.left || lo - pad > dirty.right || bt + pad < dirty.top || lt - pad > dirty.bottom) continue
+                }
+                drawStroke(c, s)
+            }
             c.restore()
         }
         for ((k, pg) in list.withIndex()) {
@@ -1194,7 +1236,10 @@ class DrawView(context: Context) : View(context) {
         }
         // cilt en üstte çizilir: gerçek bir ajandada tel ve dikiş yazının üzerindedir
         if (rightPage != null) drawBinding(c)
-        invalidate()
+        if (dirty != null) {
+            c.restore()
+            invalidate(dirty.left.toInt() - 2, dirty.top.toInt() - 2, dirty.right.toInt() + 2, dirty.bottom.toInt() + 2)
+        } else invalidate()
     }
 
     override fun onDraw(c: Canvas) {
@@ -2112,7 +2157,8 @@ class DrawView(context: Context) : View(context) {
                 val gx = pageX(e.x)
                 val gy = pageY(e.y)
                 if (gestureErasing) {
-                    if (eraseAt(gx, gy)) rebuildBase()
+                    eraseBounds = newBounds()
+                    if (eraseAt(gx, gy)) rebuildRegion(eraseBounds)
                 } else {
                     val hl = tool == Tool.HIGHLIGHTER
                     val sens = PreviewView.penSens(penKind, pressureSensitivity / 100f)
@@ -2147,11 +2193,12 @@ class DrawView(context: Context) : View(context) {
             MotionEvent.ACTION_MOVE -> {
                 if (gestureErasing) {
                     var removed = false
+                    eraseBounds = newBounds()
                     for (h in 0 until e.historySize) {
                         if (eraseAt(pageX(e.getHistoricalX(h)), pageY(e.getHistoricalY(h)))) removed = true
                     }
                     if (eraseAt(pageX(e.x), pageY(e.y))) removed = true
-                    if (removed) rebuildBase()
+                    if (removed) rebuildRegion(eraseBounds)
                 } else {
                     val s = current
                     if (s != null) {
@@ -2264,6 +2311,8 @@ class DrawView(context: Context) : View(context) {
                     gestureRemovedItems.clear()
                 } else {
                     val s = current
+                    val upBounds = newBounds()
+                    if (s != null) addStrokeBounds(upBounds, s)
                     if (s != null && stabilize > 0 && e.actionMasked == MotionEvent.ACTION_UP && !straightLive && !shapeFrozen && !rulerSnap) {
                         // dengeleme geride kaldığı için çizginin ucu kalemin bittiği noktaya tamamlanır
                         val ex = pageX(e.x)
@@ -2305,7 +2354,11 @@ class DrawView(context: Context) : View(context) {
                         redoStack.clear()
                         current = null
                         straightLive = false
-                        if (needsBake) rebuildBase()
+                        if (needsBake) {
+                            addStrokeBounds(upBounds, s)
+                            // cilt ya da ciltten geçen çizgi, gölge ve doğrultma gibi durumlarda bölge yeterli; emin olmak için pay bırakılır
+                            rebuildRegion(upBounds)
+                        }
                         onChanged?.invoke()
                     }
                 }
@@ -2467,6 +2520,8 @@ class DrawView(context: Context) : View(context) {
         return true
     }
 
+    private var eraseBounds = newBounds()
+
     private fun eraseAt(x: Float, y: Float): Boolean {
         val r = eraserRadiusDp * density / sc
         var removedAny = false
@@ -2478,6 +2533,7 @@ class DrawView(context: Context) : View(context) {
                 if (hits(s, x, y, rr)) {
                     val pieces = if (eraseWhole) emptyList() else cutStroke(s, x, y, rr)
                     if (pieces != null) {
+                        addStrokeBounds(eraseBounds, s)
                         strokes.removeAt(i)
                         // bu hareketin kendi parçasıysa özgün çizgi sayılmaz
                         if (!gestureAdded.remove(s)) gestureRemoved.add(Pair(i, s))
@@ -2501,6 +2557,11 @@ class DrawView(context: Context) : View(context) {
             }
             if (allowed && !it.isTemplateHeader() && itemNear(it, x, y, r)) {
                 gestureRemovedItems.add(Pair(k, it))
+                run {
+                    val m = max(it.w, it.h) * 0.75f + 20f
+                    eraseBounds[0] = min(eraseBounds[0], it.x - m); eraseBounds[1] = min(eraseBounds[1], it.y - m)
+                    eraseBounds[2] = max(eraseBounds[2], it.x + m); eraseBounds[3] = max(eraseBounds[3], it.y + m)
+                }
                 page.items.removeAt(k)
                 if (selectedItem === it) setSel(null)
                 removedAny = true
