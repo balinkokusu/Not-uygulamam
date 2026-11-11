@@ -830,7 +830,7 @@ class MainActivity : Activity() {
     private fun builtinTemplates() = listOf(
         PageTemplate("Günlük not", Paper.RULED, "Günlük not", true, true),
         PageTemplate("Alışveriş listesi", Paper.TODO, "Alışveriş listesi", true, true),
-        PageTemplate("Toplantı notu", Paper.CORNELL, "Toplantı notu", true, true),
+        PageTemplate("Toplantı notu", Paper.MEETING, "", true, true),
         PageTemplate("Günlük ajanda", Paper.DAILY, "", true, true),
         PageTemplate("Boş sayfa", Paper.BLANK, "", false, true)
     )

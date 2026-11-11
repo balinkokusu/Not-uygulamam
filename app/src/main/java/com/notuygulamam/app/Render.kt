@@ -325,6 +325,7 @@ class PageRenderer {
             Paper.WEEKLY -> drawWeekly(c, page)
             Paper.MONTHLY -> drawMonthly(c, page)
             Paper.CORNELL -> drawCornell(c, page)
+            Paper.MEETING -> drawMeeting(c, page)
             Paper.YEAR -> drawYear(c, page)
             Paper.COVER -> drawCover(c, page)
             Paper.WATER -> drawWater(c, page)
@@ -479,6 +480,26 @@ class PageRenderer {
                 val idx = off + d - 1
                 label(c, d.toString(), x0 + (idx % 7) * cw + 10f, gridTop + (idx / 7) * rh + 34f, 26f, ink)
             }
+        }
+    }
+
+    private fun drawMeeting(c: Canvas, page: PageData) {
+        title(c, "TOPLANTI NOTU", "Tarih:")
+        label(c, "Konu:", 80f, 200f, 28f, soft)
+        c.drawLine(170f, 204f, 1120f, 204f, paperPaint)
+        label(c, "Katılımcılar:", 80f, 256f, 28f, soft)
+        c.drawLine(250f, 260f, 1120f, 260f, paperPaint)
+        box(c, 70f, 290f, 1060f, 210f, "Gündem")
+        val notesH = DH - 290f - 210f - 40f - 410f
+        box(c, 70f, 520f, 1060f, notesH, "Notlar")
+        val ky = 520f + notesH + 20f
+        box(c, 70f, ky, 1060f, 170f, "Kararlar")
+        val ty = ky + 190f
+        box(c, 70f, ty, 1060f, 200f, "Yapılacaklar")
+        for (i in 0 until 3) {
+            val y = ty + 80f + i * 42f
+            c.drawRect(100f, y - 24f, 124f, y, boxPaint)
+            c.drawLine(140f, y, 1100f, y, paperPaint)
         }
     }
 

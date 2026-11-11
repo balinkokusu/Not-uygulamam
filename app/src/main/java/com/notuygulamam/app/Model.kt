@@ -18,7 +18,7 @@ enum class Paper(val label: String) {
     MEAL("yemek planı"), BUDGET("gider takibi"), READING("okuma günlüğü"),
     GOALS("hedefler"), SLEEP("uyku takibi"), STAFF("porte (nota kâğıdı)"),
     TIMETABLE("ders programı"), LITERATURE("literatür notu"), SHOPPING("alışveriş listesi"),
-    COVER("planlayıcı kapağı")
+    COVER("planlayıcı kapağı"), MEETING("toplantı notu")
 }
 
 /** Bir çizgi; koordinatlar ve kalınlık sayfa birimindedir, ekran çözünürlüğünden bağımsızdır. */
