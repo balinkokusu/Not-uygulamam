@@ -66,7 +66,7 @@ class DrawView(context: Context) : View(context) {
             // "İpe bağlı uç": çizgi ucu, kalemin ucuna sabit uzunlukta bir iple bağlıdır. Kalem ipin boyundan fazla uzaklaşınca uç
             // kalemin yönünde çekilir; titremeler ipin içinde kalır, köşeler yuvarlanır. Yazarken görünen çizgi son çizgidir, kalem kalkınca değişmez.
             val t = (if (s.kind == 5 || s.kind == 15) stabilize * 70 / 100 else stabilize) / 100f
-            val r = Math.pow(t.toDouble(), 1.1).toFloat() * 32f * density / sc
+            val r = Math.pow(t.toDouble(), 1.6).toFloat() * 5f * density / sc
             val lx = s.xs[s.xs.size - 1]
             val ly = s.ys[s.ys.size - 1]
             val d = hypot(x - lx, y - ly)
