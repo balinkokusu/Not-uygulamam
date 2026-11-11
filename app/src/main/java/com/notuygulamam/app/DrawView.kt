@@ -479,7 +479,7 @@ class DrawView(context: Context) : View(context) {
     private var lastDrawTool = Tool.PEN
     var onToolToggled: (() -> Unit)? = null
 
-    /** Kalem ekranda üç saniye kıpırdamadan basılı tutulunca çağrılır (yay biçimli araç menüsü için). */
+    /** Kalem ekranda kısa bir süre kıpırdamadan basılı tutulunca çağrılır (yay biçimli araç menüsü için). */
     var onToolMenu: ((Float, Float) -> Unit)? = null
     private var menuPending = false
     private var menuFired = false
@@ -2191,7 +2191,7 @@ class DrawView(context: Context) : View(context) {
         if (menuPending) {
             val a0 = e.actionMasked
             if (a0 == MotionEvent.ACTION_UP || a0 == MotionEvent.ACTION_CANCEL ||
-                (a0 == MotionEvent.ACTION_MOVE && hypot(e.x - downX, e.y - downY) > 30f * density)
+                (a0 == MotionEvent.ACTION_MOVE && hypot(e.x - downX, e.y - downY) > TOOL_MENU_SLOP_DP * density)
             ) {
                 onInfo?.invoke("Yay menüsü iptal: " + (if (a0 == MotionEvent.ACTION_MOVE) "kalem ${(hypot(e.x - downX, e.y - downY) / density).toInt()} dp kaydı" else if (a0 == MotionEvent.ACTION_UP) "kalem kalktı" else "dokunuş iptal edildi") + ", ${System.currentTimeMillis() - menuT0} ms")
                 cancelToolMenu()
@@ -2218,7 +2218,7 @@ class DrawView(context: Context) : View(context) {
                 if (isStylus && !gestureErasing && (tool == Tool.PEN || tool == Tool.HIGHLIGHTER) && onToolMenu != null) {
                     menuPending = true
                     menuT0 = System.currentTimeMillis()
-                    holdHandler.postDelayed(toolMenuRunnable, 3000L)
+                    holdHandler.postDelayed(toolMenuRunnable, TOOL_MENU_MS)
                 }
                 val gx = pageX(e.x)
                 val gy = pageY(e.y)
@@ -3477,6 +3477,10 @@ class DrawView(context: Context) : View(context) {
         const val STICKY_KIND = 77
         const val TAPE_KIND = 78
         const val HOLD_MS = 320L
+        /** Yay menüsünün açılması için kalemin kıpırdamadan basılı kalacağı süre. */
+        const val TOOL_MENU_MS = 650L
+        /** Bu mesafeden fazla kayarsa yazı yazılıyor sayılır ve menü açılmaz. */
+        const val TOOL_MENU_SLOP_DP = 12f
         const val TAB_OUT = 50f
         const val TAB_IN = 6f
         const val TAB_GUTTER = 68f

@@ -343,12 +343,22 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Kalem üç saniye basılı tutulunca, kalemin olduğu yerde yay biçiminde açılan hızlı araç menüsü. */
+    /**
+     * Kalem kısa bir süre kıpırdamadan basılı tutulunca, kalemin olduğu yerde yay biçiminde açılan hızlı araç menüsü.
+     * Düğmeler kalem değdiği anda (parmak/kalem kalkmasını beklemeden) çalışır; menünün dışında boş bir yere
+     * dokunmak menüyü kapatır.
+     */
     private fun showToolArc(x: Float, y: Float) {
         val root = FrameLayout(this)
-        val pop = PopupWindow(root, draw.width, draw.height, true)
+        val pop = PopupWindow(root, draw.width, draw.height, false)
         pop.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         pop.isOutsideTouchable = true
+        pop.isTouchable = true
+        // Menü penceresi tüm sayfayı kaplar; düğmeler dışındaki boşluğa her dokunuş menüyü kapatır.
+        root.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) pop.dismiss()
+            true
+        }
         val items = listOf(
             Triple(Icon.PEN, "Kalem", Tool.PEN), Triple(Icon.HIGHLIGHTER, "Fosforlu", Tool.HIGHLIGHTER),
             Triple(Icon.ERASER, "Silgi", Tool.ERASER), Triple(Icon.LASSO, "Lasso", Tool.LASSO),
@@ -374,12 +384,18 @@ class MainActivity : Activity() {
             lp.leftMargin = (cx - size / 2f).toInt().coerceIn(0, (draw.width - size).coerceAtLeast(0))
             lp.topMargin = (cy - size / 2f).toInt().coerceIn(0, (draw.height - size).coerceAtLeast(0))
             b.layoutParams = lp
-            b.setOnClickListener {
+            val act = {
                 pop.dismiss()
                 val t = it2Tool(items, b)
                 if (t == null) { draw.undo(); refresh() }
                 else if (draw.tool != t) toolButtons[t]?.performClick()
             }
+            // Seçim kalemin düğmeye değdiği anda yapılır; tıklamanın kalkışta algılanmasını beklemez.
+            b.setOnTouchListener { _, ev ->
+                if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) act()
+                true
+            }
+            b.setOnClickListener { act() }
             root.addView(b)
         }
         val loc = IntArray(2)
