@@ -535,26 +535,47 @@ class MainActivity : Activity() {
                 .setNegativeButton("Vazgeç", null).show()
         }
         action("Bu sayfayı sil") { confirmDeletePage() }
-        // silgi boyutu da burada: ayrı bir pencereye gitmeden ayarlanır
+        // Silgi boyutu: kaydırma çubuğu yatay kaydırılan satırın içinde sürüklenemediği için
+        // dokunarak seçilen boyut noktaları kullanılır; seçilen boyut sayfada kısa süre daire olarak gösterilir.
         val sizeLbl = TextView(this)
-        sizeLbl.text = "Boyut " + draw.eraserRadiusDp.toInt()
+        sizeLbl.text = "Boyut"
         sizeLbl.textSize = 13f
         sizeLbl.setTextColor(Look.inkSoft)
-        sizeLbl.setPadding(dp(18f), 0, dp(6f), 0)
+        sizeLbl.setPadding(dp(18f), 0, dp(4f), 0)
+        sizeLbl.gravity = Gravity.CENTER_VERTICAL
         swatchRow.addView(sizeLbl)
-        val sz = SeekBar(this)
-        sz.max = 24
-        sz.progress = (draw.eraserRadiusDp - 6f).toInt().coerceIn(0, 24)
-        sz.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar?, v: Int, fromUser: Boolean) {
-                if (!fromUser) return
-                draw.eraserRadiusDp = (6 + v).toFloat()
-                sizeLbl.text = "Boyut " + (6 + v)
+        val sizes = floatArrayOf(6f, 10f, 14f, 20f, 25f, 30f)
+        val cur = draw.eraserRadiusDp
+        val nearest = sizes.minByOrNull { kotlin.math.abs(it - cur) } ?: 14f
+        for ((k, v) in sizes.withIndex()) {
+            val frame = FrameLayout(this)
+            val box = dp(34f)
+            val flp = LinearLayout.LayoutParams(box, box)
+            flp.setMargins(dp(2f), 0, dp(2f), 0)
+            frame.layoutParams = flp
+            val on = v == nearest
+            if (on) {
+                val ring = GradientDrawable()
+                ring.shape = GradientDrawable.OVAL
+                ring.setColor(Look.accentSoft)
+                ring.setStroke(dp(1.5f), Look.accent)
+                frame.background = ring
             }
-            override fun onStartTrackingTouch(sb: SeekBar?) {}
-            override fun onStopTrackingTouch(sb: SeekBar?) { preview.invalidate() }
-        })
-        swatchRow.addView(sz, LinearLayout.LayoutParams(dp(180f), LinearLayout.LayoutParams.WRAP_CONTENT))
+            val dot = View(this)
+            val d = dp(6f + 18f * k / (sizes.size - 1))
+            val g = GradientDrawable()
+            g.shape = GradientDrawable.OVAL
+            g.setColor(if (on) Look.accent else Color.rgb(150, 154, 162))
+            dot.background = g
+            frame.addView(dot, FrameLayout.LayoutParams(d, d, Gravity.CENTER))
+            frame.contentDescription = "Silgi boyutu " + v.toInt()
+            frame.setOnClickListener {
+                draw.eraserRadiusDp = v
+                draw.showEraserPreview()
+                refresh()
+            }
+            swatchRow.addView(frame)
+        }
     }
 
     private var swatchHost: View? = null

@@ -40,6 +40,45 @@ class DrawView(context: Context) : View(context) {
     var hlColor = Color.rgb(255, 235, 0)
     var hlWidthDp = 14f
     var eraserRadiusDp = 14f
+
+    /** Silerken kalemin altında silginin gerçek boyutunu gösteren daire. */
+    private var eraserCursorOn = false
+    private var eraserCursorX = 0f
+    private var eraserCursorY = 0f
+    private val eraserCursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(170, 90, 94, 102)
+    }
+    private val eraserCursorFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(40, 255, 255, 255)
+    }
+    private val hideEraserCursor = Runnable {
+        eraserCursorOn = false
+        invalidate()
+    }
+
+    private fun moveEraserCursor(x: Float, y: Float) {
+        removeCallbacks(hideEraserCursor)
+        eraserCursorOn = true
+        eraserCursorX = x
+        eraserCursorY = y
+        invalidate()
+    }
+
+    /** Boyut değiştirildiğinde silginin büyüklüğünü sayfanın ortasında kısa süre gösterir. */
+    fun showEraserPreview() {
+        moveEraserCursor(width / 2f, height / 2f)
+        postDelayed(hideEraserCursor, 900L)
+    }
+
+    private fun drawEraserCursor(c: Canvas) {
+        if (!eraserCursorOn) return
+        val r = eraserRadiusDp * density
+        eraserCursorPaint.strokeWidth = 1.5f * density
+        c.drawCircle(eraserCursorX, eraserCursorY, r, eraserCursorFill)
+        c.drawCircle(eraserCursorX, eraserCursorY, r, eraserCursorPaint)
+    }
     var fingerDraw = false
 
     /** Kalem türü: 0 dolma, 1 tükenmez, 2 kurşun, 3 fırça. */
@@ -1319,6 +1358,7 @@ class DrawView(context: Context) : View(context) {
         drawLaser(c)
         drawCaptureRect(c)
         drawTapePreview(c)
+        drawEraserCursor(c)
     }
 
     private fun rad(deg: Float) = Math.toRadians(deg.toDouble())
@@ -2223,6 +2263,7 @@ class DrawView(context: Context) : View(context) {
                 val gx = pageX(e.x)
                 val gy = pageY(e.y)
                 if (gestureErasing) {
+                    moveEraserCursor(e.x, e.y)
                     eraseBounds = newBounds()
                     if (eraseAt(gx, gy)) rebuildRegion(eraseBounds)
                 } else {
@@ -2265,6 +2306,7 @@ class DrawView(context: Context) : View(context) {
                     }
                     if (eraseAt(pageX(e.x), pageY(e.y))) removed = true
                     if (removed) rebuildRegion(eraseBounds)
+                    moveEraserCursor(e.x, e.y)
                 } else {
                     val s = current
                     if (s != null) {
@@ -2366,6 +2408,7 @@ class DrawView(context: Context) : View(context) {
                     lastInkUp = e.eventTime
                 }
                 if (gestureErasing) {
+                    postDelayed(hideEraserCursor, 150L)
                     if (gestureRemoved.isNotEmpty() || gestureRemovedItems.isNotEmpty()) {
                         commitStrokeErase()
                         if (gestureRemovedItems.isNotEmpty()) undoStack.add(HistoryAction.ItemsErase(ArrayList(gestureRemovedItems)))
