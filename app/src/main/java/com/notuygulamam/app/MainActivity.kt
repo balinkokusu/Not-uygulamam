@@ -81,7 +81,29 @@ class MainActivity : Activity() {
     private var d = 1f
 
     private val handler = Handler(Looper.getMainLooper())
-    private val saveRunnable = Runnable { saveNow() }
+    /**
+     * Yazarken yapılan otomatik kayıt arka planda yürür; bütün defteri ana iş parçacığında yazmak,
+     * hızlı yazarken kısa donmalara yol açıyordu. Kayıt sırasında defter değişirse kayıt biraz sonra yinelenir.
+     */
+    private val saveExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val saveRunnable = Runnable { saveInBackground() }
+    private fun saveInBackground() {
+        val book = nb
+        val f = notebookFile()
+        saveExec.execute {
+            try {
+                Storage.save(book, f)
+            } catch (e: Exception) {
+                handler.post { scheduleSave() }
+            }
+        }
+    }
+    private var infoPending: String? = null
+    private val infoApply = Runnable {
+        val t = infoPending
+        infoPending = null
+        if (t != null && info.text.toString() != t) info.text = t
+    }
 
     private var itemId: String = ""
     private fun libraryDir(): File = File(filesDir, "library")
@@ -3371,7 +3393,12 @@ class MainActivity : Activity() {
         sliderLabel.setPadding(dp(8f), dp(2f), dp(8f), dp(2f))
         pageLabel.textSize = 16f
         pageLabel.gravity = Gravity.CENTER_VERTICAL
-        draw.onInfo = { msg -> info.text = "v$versionText · $msg" }
+        // Bilgi satırı en çok yarım saniyede bir yenilenir: her yenileme araç çubuğunu yeniden ölçtürür ve yazarken takılma yapar.
+        draw.onInfo = { msg ->
+            val first = infoPending == null
+            infoPending = "v$versionText · $msg"
+            if (first) handler.postDelayed(infoApply, 500L)
+        }
         val prefs = getSharedPreferences("ayar", MODE_PRIVATE)
         autoTabs = prefs.getBoolean("otoayrac_$itemId", true)
         draw.penDoubleTap = prefs.getBoolean("kalem_cift3", true)

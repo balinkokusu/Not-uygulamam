@@ -238,6 +238,8 @@ object Storage {
         }
     }
 
+    /** Arka planda ve ön planda yapılan kayıtlar aynı geçici dosyaya aynı anda yazmasın diye tek tek yürütülür. */
+    @Synchronized
     fun save(nb: Notebook, file: File) {
         dailyBackup(file)
         val tmp = File(file.parentFile, file.name + ".tmp")

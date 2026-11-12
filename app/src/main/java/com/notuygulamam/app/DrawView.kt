@@ -2168,9 +2168,9 @@ class DrawView(context: Context) : View(context) {
         val isStylus = type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER
         if (rulerOn && !isStylus && handleRulerTouch(e)) return true
 
-        // Bilgi satırı her olayda değil, yaklaşık 6 kez/saniye güncellenir; aksi hâlde yazı gecikir.
+        // Bilgi satırı yazarken değil, kalem kalkınca ve en çok saniyede bir güncellenir; aksi hâlde hızlı yazı takılır.
         val now = e.eventTime
-        if (now - lastInfoMs > 160L || e.actionMasked != MotionEvent.ACTION_MOVE) {
+        if (e.actionMasked == MotionEvent.ACTION_UP && now - lastInfoMs > 1000L) {
             lastInfoMs = now
             onInfo?.invoke(
                 String.format(
