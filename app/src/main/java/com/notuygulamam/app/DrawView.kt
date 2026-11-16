@@ -694,12 +694,15 @@ class DrawView(context: Context) : View(context) {
     private var pinchAccum = 0f
     private var maxFingers = 0
     private var swipeDone = false
+
+    /** Sayfa kilidi: açıkken parmakla kaydırma, yakınlaştırma ve sayfa çevirme çalışmaz; yazarken sayfa yerinden oynamaz. */
+    var viewLocked = false
     private val gm = Matrix()
     private val scaleDetector = ScaleGestureDetector(
         context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                if (!gestureActive || maxFingers >= 3 || swipeDone) return true
+                if (viewLocked || !gestureActive || maxFingers >= 3 || swipeDone) return true
                 zoomAt(detector.scaleFactor, detector.focusX, detector.focusY)
                 pinchAccum += abs(detector.scaleFactor - 1f)
                 return true
@@ -2028,7 +2031,7 @@ class DrawView(context: Context) : View(context) {
                 lastCy = c[1]
                 totalDx += dx
                 totalDy += dy
-                if (!swipeDone) {
+                if (!swipeDone && !viewLocked) {
                     val zoomed = sc > fitSc * 1.02f
                     if (e.pointerCount >= 3) {
                         if (abs(totalDx) > 90f * density && abs(totalDx) > 1.5f * abs(totalDy)) {

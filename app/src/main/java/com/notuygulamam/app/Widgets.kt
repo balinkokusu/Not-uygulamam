@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class Icon {
-    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE, RULER, HAND, IMAGE, MIC, SELECT
+    PEN, HIGHLIGHTER, ERASER, PICKER, UNDO, REDO, PAPER, FINGER, TRASH, PREV, NEXT, ADD, PAGES, PALETTE, IMPORT, THICKNESS, SAVE, EXPORT, ARCHIVE, HOME, TAB, MORE, SPREAD, TEXT, STICKER, LASSO, LASER, CALC, TIMER, TAPE, RULER, HAND, IMAGE, MIC, SELECT, LOCK, UNLOCK
 }
 
 /** Düğme yerine simge gösteren basit görünüm; simgeler kodla çizilir. */
@@ -51,16 +51,20 @@ class IconButton(
     override fun onDraw(c: Canvas) {
         if (compact) {
             rect.set(4 * d, 4 * d, width - 4 * d, height - 4 * d)
+            val tint = tintOf(icon)
+            bg.setColor(Color.argb(if (active) 70 else 26, Color.red(tint), Color.green(tint), Color.blue(tint)))
+            c.drawRoundRect(rect, 11 * d, 11 * d, bg)
             if (active) {
-                bg.setColor(Look.accentSoft)
-                c.drawRoundRect(rect, 10 * d, 10 * d, bg)
+                p.setColor(tint)
+                p.strokeWidth = 1.6f * d
+                c.drawRoundRect(rect, 11 * d, 11 * d, p)
             }
             p.setColor(if (active) Look.accent else Look.ink)
             val uc = width * 0.5f
             p.strokeWidth = maxOf(1.3f * d, uc * 0.075f)
             c.save()
             c.translate((width - uc) / 2f, (height - uc) / 2f)
-            drawIcon(c, uc, if (active) Look.accent else Look.ink)
+            drawIcon(c, uc, tint)
             c.restore()
             return
         }
@@ -84,6 +88,36 @@ class IconButton(
     private val vec: android.graphics.drawable.Drawable? by lazy {
         val id = resources.getIdentifier("ic_" + icon.name.lowercase(java.util.Locale.ROOT), "drawable", context.packageName)
         if (id != 0) context.getDrawable(id)?.mutate() else null
+    }
+
+    /** Her aracın kendi rengi vardır; böylece simgeler bir bakışta ayırt edilir. */
+    private fun tintOf(i: Icon): Int = when (i) {
+        Icon.PEN -> Color.rgb(47, 111, 196)
+        Icon.HIGHLIGHTER -> Color.rgb(214, 150, 20)
+        Icon.ERASER -> Color.rgb(214, 92, 128)
+        Icon.PICKER -> Color.rgb(22, 150, 150)
+        Icon.TEXT -> Color.rgb(86, 84, 190)
+        Icon.LASSO, Icon.SELECT -> Color.rgb(132, 82, 184)
+        Icon.LASER -> Color.rgb(222, 66, 58)
+        Icon.IMAGE -> Color.rgb(52, 150, 88)
+        Icon.MIC -> Color.rgb(205, 70, 96)
+        Icon.STICKER -> Color.rgb(232, 126, 44)
+        Icon.TAPE -> Color.rgb(196, 84, 160)
+        Icon.RULER -> Color.rgb(150, 108, 66)
+        Icon.CALC -> Color.rgb(78, 104, 138)
+        Icon.TIMER -> Color.rgb(226, 96, 62)
+        Icon.PAPER, Icon.SPREAD -> Color.rgb(30, 140, 132)
+        Icon.TAB -> Color.rgb(190, 148, 56)
+        Icon.FINGER, Icon.HAND -> Color.rgb(196, 124, 84)
+        Icon.HOME -> Color.rgb(166, 98, 106)
+        Icon.SAVE, Icon.IMPORT, Icon.EXPORT, Icon.ARCHIVE -> Color.rgb(54, 124, 178)
+        Icon.PAGES -> Color.rgb(110, 110, 170)
+        Icon.ADD -> Color.rgb(52, 150, 88)
+        Icon.TRASH -> Color.rgb(200, 62, 62)
+        Icon.PALETTE -> Color.rgb(176, 86, 170)
+        Icon.LOCK -> Color.rgb(200, 62, 62)
+        Icon.UNLOCK -> Color.rgb(110, 120, 130)
+        else -> Look.ink
     }
 
     private fun drawIcon(c: Canvas, u: Float, color: Int) {

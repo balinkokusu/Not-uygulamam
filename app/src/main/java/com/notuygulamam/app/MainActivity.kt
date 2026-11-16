@@ -3584,6 +3584,21 @@ class MainActivity : Activity() {
             refresh()
         }
         toolRow.addView(fingerBtn)
+        draw.viewLocked = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("sayfaKilidi", false)
+        fun lockBtn(): IconButton {
+            lateinit var b: IconButton
+            b = iconBtn(if (draw.viewLocked) Icon.LOCK else Icon.UNLOCK, "Sayfa kilidi: açıkken sayfa parmakla kaymaz, yakınlaşmaz, çevrilmez") {
+                draw.viewLocked = !draw.viewLocked
+                getSharedPreferences("ayar", MODE_PRIVATE).edit().putBoolean("sayfaKilidi", draw.viewLocked).apply()
+                val at = toolRow.indexOfChild(b)
+                toolRow.removeViewAt(at)
+                toolRow.addView(lockBtn(), at)
+                Toast.makeText(this, if (draw.viewLocked) "Sayfa kilitlendi: parmakla kaymaz ve yakınlaşmaz. Sayfa değiştirmek için okları kullanın." else "Sayfa kilidi açıldı", Toast.LENGTH_SHORT).show()
+            }
+            b.active = draw.viewLocked
+            return b
+        }
+        toolRow.addView(lockBtn())
         spreadBtn = iconBtn(Icon.SPREAD, "Sayfa görünümü, cilt, sayfa boyutu") { showViewDialog() }
         toolRow.addView(spreadBtn)
         toolRow.addView(spacer())
