@@ -368,6 +368,7 @@ class IconButton(
                 c.drawCircle(0.5f * u, 0.28f * u, 0.07f * u, p)
                 c.drawCircle(0.7f * u, 0.4f * u, 0.07f * u, p)
             }
+            else -> {}
         }
     }
 }
