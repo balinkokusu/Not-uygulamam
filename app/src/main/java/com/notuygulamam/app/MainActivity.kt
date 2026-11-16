@@ -1695,8 +1695,16 @@ class MainActivity : Activity() {
         tapeRow.setPadding(dp(4f), dp(6f), dp(4f), dp(12f))
         tapeRow.setOnClickListener { dlg?.dismiss(); showTapeDialog() }
         var row: LinearLayout? = null
-        for (k in Stickers.names.indices) {
-            if (k % 4 == 0) {
+        for ((gName, gIds) in Stickers.groups) {
+        val gh = TextView(this)
+        gh.text = gName
+        gh.textSize = 14f
+        gh.setTextColor(Look.ink)
+        gh.setTypeface(null, android.graphics.Typeface.BOLD)
+        gh.setPadding(dp(4f), dp(14f), dp(4f), dp(4f))
+        grid.addView(gh)
+        for ((gi, k) in gIds.withIndex()) {
+            if (gi % 4 == 0) {
                 row = LinearLayout(this)
                 row.orientation = LinearLayout.HORIZONTAL
                 grid.addView(row)
@@ -1741,6 +1749,7 @@ class MainActivity : Activity() {
                 dlg?.dismiss()
             }
             row?.addView(v)
+        }
         }
         val mine = StickerCatalog.list(this)
         val hd = TextView(this)

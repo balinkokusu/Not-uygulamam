@@ -25,6 +25,16 @@ object Stickers {
         "RANDEVU", "DİŞÇİ", "DOKTOR", "HASTANE", "DATE", "GIRLS DATE", "KAMP", "BAYRAM",
         "SUNUM", "BAŞVURU", "SON GÜN", "RAPOR", "SPOR", "ÖDEME", "PROJE"
     )
+    /** Çıkartma penceresindeki konu grupları. */
+    val groups = listOf(
+        Pair("Yazılı etiketler", intArrayOf(62, 63, 64, 65, 66, 67, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95)),
+        Pair("İş, okul ve proje", intArrayOf(23, 24, 25, 26, 31, 32, 30, 76, 77, 78, 54, 55, 48, 15, 9)),
+        Pair("İşaretler ve süsler", intArrayOf(0, 16, 1, 80, 10, 52, 53, 50, 51, 11, 27, 28, 19, 6, 7, 8, 18, 34, 21)),
+        Pair("Doğa ve hava", intArrayOf(2, 3, 40, 13, 36, 37, 38, 39, 17, 14, 58, 59, 4, 5, 12, 20, 35, 60, 61)),
+        Pair("Yiyecek ve içecek", intArrayOf(22, 45, 33, 44, 41, 42, 43, 75, 79)),
+        Pair("Sağlık ve spor", intArrayOf(68, 69, 70, 73, 74)),
+        Pair("Gezi, kutlama ve eğlence", intArrayOf(71, 72, 47, 56, 57, 46, 29, 49))
+    )
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
 
     private fun tri(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) {
