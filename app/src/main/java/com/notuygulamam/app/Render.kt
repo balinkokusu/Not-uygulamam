@@ -326,6 +326,10 @@ class PageRenderer {
             Paper.MONTHLY -> drawMonthly(c, page)
             Paper.CORNELL -> drawCornell(c, page)
             Paper.MEETING -> drawMeeting(c, page)
+            Paper.MONTH_L -> drawMonthHalf(c, page, false)
+            Paper.MONTH_R -> drawMonthHalf(c, page, true)
+            Paper.WEEK_V -> drawWeekAgenda(c, page, false)
+            Paper.WEEK_H -> drawWeekAgenda(c, page, true)
             Paper.YEAR -> drawYear(c, page)
             Paper.COVER -> drawCover(c, page)
             Paper.WATER -> drawWater(c, page)
@@ -480,6 +484,114 @@ class PageRenderer {
                 val idx = off + d - 1
                 label(c, d.toString(), x0 + (idx % 7) * cw + 10f, gridTop + (idx / 7) * rh + 34f, 26f, ink)
             }
+        }
+    }
+
+    /** İki sayfaya yayılan aylık görünüm: solda Pzt–Per, sağda Cum–Paz ve not sütunu. */
+    private fun drawMonthHalf(c: Canvas, page: PageData, right: Boolean) {
+        val nowCal = Calendar.getInstance()
+        val calY = if (page.calYear > 0) page.calYear else nowCal.get(Calendar.YEAR)
+        val calM = if (page.calMonth in 1..12) page.calMonth else nowCal.get(Calendar.MONTH) + 1
+        if (!right) label(c, Planner.MONTHS[calM - 1] + " " + calY, 70f, 125f, 60f, ink, true)
+        else label(c, Planner.MONTHS[calM - 1] + " " + calY, 1130f, 125f, 34f, soft, false, Paint.Align.RIGHT)
+        val x0 = 70f
+        val cw = 1060f / 4f
+        val top = 190f
+        val headH = 50f
+        val rh = (DH - 70f - top - headH) / 6f
+        val gridTop = top + headH
+        val first = if (right) 4 else 0
+        val cols = if (right) 3 else 4
+        fillPaint.setColor(Color.rgb(238, 240, 244))
+        c.drawRect(x0, top, x0 + 1060f, top + headH, fillPaint)
+        if (right) {
+            fillPaint.setColor(Color.argb(60, 240, 200, 200))
+            c.drawRect(x0 + cw, gridTop, x0 + 3 * cw, gridTop + 6 * rh, fillPaint)
+        }
+        val full = arrayOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+        for (i in 0 until cols) label(c, full[first + i], x0 + cw * (i + 0.5f), top + 34f, 26f, soft, false, Paint.Align.CENTER)
+        if (right) label(c, "Notlar", x0 + cw * 3.5f, top + 34f, 26f, soft, false, Paint.Align.CENTER)
+        for (r in 0..6) c.drawLine(x0, gridTop + r * rh, x0 + cols * cw, gridTop + r * rh, boxPaint)
+        c.drawLine(x0, top, x0 + 1060f, top, boxPaint)
+        for (i in 0..4) c.drawLine(x0 + i * cw, top, x0 + i * cw, gridTop + 6 * rh, boxPaint)
+        if (right) {
+            c.drawLine(x0 + 3 * cw, gridTop + 6 * rh, x0 + 4 * cw, gridTop + 6 * rh, boxPaint)
+            var ly = gridTop + 56f
+            while (ly < gridTop + 6 * rh - 10f) { c.drawLine(x0 + 3 * cw + 14f, ly, x0 + 4 * cw - 14f, ly, paperPaint); ly += 56f }
+        }
+        val (off, n) = monthShape(calY, calM)
+        for (d in 1..n) {
+            val idx = off + d - 1
+            val col = idx % 7 - first
+            if (col < 0 || col >= cols) continue
+            label(c, d.toString(), x0 + col * cw + 12f, gridTop + (idx / 7) * rh + 38f, 30f, ink, true)
+        }
+    }
+
+    /** Tarihli haftalık ajanda. calMonth alanı ay*100+gün olarak haftanın pazartesisini taşır; yoksa tarihsiz çizilir. */
+    private fun drawWeekAgenda(c: Canvas, page: PageData, horizontal: Boolean) {
+        val full = arrayOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+        val dayNo = IntArray(7)
+        val monNo = IntArray(7)
+        var titleTxt = "HAFTALIK AJANDA"
+        val dated = page.calYear > 0 && page.calMonth > 100
+        if (dated) {
+            val cal = Calendar.getInstance()
+            cal.clear()
+            cal.set(page.calYear, page.calMonth / 100 - 1, page.calMonth % 100)
+            for (i in 0 until 7) {
+                dayNo[i] = cal.get(Calendar.DAY_OF_MONTH); monNo[i] = cal.get(Calendar.MONTH)
+                if (i < 6) cal.add(Calendar.DAY_OF_MONTH, 1)
+            }
+            titleTxt = if (monNo[0] == monNo[6]) "${dayNo[0]} – ${dayNo[6]} ${Planner.MONTHS[monNo[6]]} ${cal.get(Calendar.YEAR)}"
+            else "${dayNo[0]} ${Planner.MONTHS[monNo[0]]} – ${dayNo[6]} ${Planner.MONTHS[monNo[6]]} ${cal.get(Calendar.YEAR)}"
+        }
+        label(c, titleTxt, 70f, 120f, 50f, ink, true)
+        c.drawLine(70f, 150f, 1130f, 150f, boxPaint)
+        val top = 180f
+        val bottom = DH - 70f
+        if (!horizontal) {
+            val rh = (bottom - top) / 7f
+            for (i in 0 until 7) {
+                val y = top + i * rh
+                if (i >= 5) { fillPaint.setColor(Color.argb(50, 240, 200, 200)); c.drawRect(70f, y, 1130f, y + rh, fillPaint) }
+                fillPaint.setColor(Color.rgb(238, 240, 244))
+                c.drawRect(70f, y, 250f, y + rh, fillPaint)
+                if (dated) {
+                    label(c, dayNo[i].toString(), 160f, y + rh * 0.48f, 64f, ink, true, Paint.Align.CENTER)
+                    label(c, full[i], 160f, y + rh * 0.48f + 40f, 24f, soft, false, Paint.Align.CENTER)
+                    label(c, Planner.SHORT[monNo[i]], 160f, y + 36f, 22f, soft, false, Paint.Align.CENTER)
+                } else label(c, full[i], 160f, y + rh * 0.55f, 28f, ink, true, Paint.Align.CENTER)
+                var ly = y + rh / 4f
+                for (k in 0 until 3) { c.drawLine(270f, ly, 1110f, ly, paperPaint); ly += rh / 4f }
+                c.drawLine(70f, y, 1130f, y, boxPaint)
+            }
+            c.drawLine(70f, bottom, 1130f, bottom, boxPaint)
+            c.drawLine(70f, top, 70f, bottom, boxPaint)
+            c.drawLine(250f, top, 250f, bottom, boxPaint)
+            c.drawLine(1130f, top, 1130f, bottom, boxPaint)
+        } else {
+            val gx = 130f
+            val cw = (1130f - gx) / 7f
+            val headH = 86f
+            val hours = 14
+            val rh = (bottom - top - headH) / hours
+            fillPaint.setColor(Color.rgb(238, 240, 244))
+            c.drawRect(gx, top, 1130f, top + headH, fillPaint)
+            fillPaint.setColor(Color.argb(50, 240, 200, 200))
+            c.drawRect(gx + 5 * cw, top + headH, 1130f, bottom, fillPaint)
+            for (i in 0 until 7) {
+                val x = gx + (i + 0.5f) * cw
+                label(c, Planner.DAYS[i], x, top + 32f, 24f, soft, false, Paint.Align.CENTER)
+                if (dated) label(c, dayNo[i].toString(), x, top + 72f, 34f, ink, true, Paint.Align.CENTER)
+            }
+            for (k in 0..hours) {
+                val y = top + headH + k * rh
+                c.drawLine(gx, y, 1130f, y, if (k == 0 || k == hours) boxPaint else paperPaint)
+                if (k < hours) label(c, String.format("%02d:00", 8 + k), gx - 12f, y + 28f, 22f, soft, false, Paint.Align.RIGHT)
+            }
+            c.drawLine(gx, top, 1130f, top, boxPaint)
+            for (i in 0..7) c.drawLine(gx + i * cw, top, gx + i * cw, bottom, boxPaint)
         }
     }
 

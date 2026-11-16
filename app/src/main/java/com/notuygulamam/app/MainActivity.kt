@@ -877,7 +877,7 @@ class MainActivity : Activity() {
     /** Kuru bir sayfaya ilk kez yazılınca sayfaya o günün tarihini verir ve gün ayracını oluşturur. */
     private fun markWritten() {
         val pg = draw.page
-        if (autoTabs && pg.dateKey == 0 && pg.pdfName == null && pg.paper != Paper.YEAR && pg.paper != Paper.MONTHLY) {
+        if (autoTabs && pg.dateKey == 0 && pg.pdfName == null && !pg.paper.isCalendar()) {
             pg.dateKey = todayKey()
             ensureDateTab(pg)
             rebuildTabs()
@@ -1201,7 +1201,7 @@ class MainActivity : Activity() {
             val cur = draw.page
             val pg = if (cur.pdfName == null) PageData(cur.width, cur.height, papers[i]) else PageData(1200f, 1697f, papers[i])
             if (cur.pdfName == null) pg.paperColor = cur.paperColor
-            if (pg.paper == Paper.YEAR || pg.paper == Paper.MONTHLY || pg.paper == Paper.COVER) askCalendar(listOf(pg)) { askPlacement { m -> insertNewPage(cur, pg, m) } }
+            if (pg.paper == Paper.YEAR || pg.paper.isMonthly() || pg.paper == Paper.COVER) askCalendar(listOf(pg)) { askPlacement { m -> insertNewPage(cur, pg, m) } }
             else askPlacement { m -> insertNewPage(cur, pg, m) }
         })
         head("Diğer")
@@ -1211,7 +1211,7 @@ class MainActivity : Activity() {
         link("Planlayıcıyı bu deftere ekle") { showAddPlannerDialog() }
         link("Açık sayfanın takvim yılını/ayını seç (yıllık, aylık, kapak)") {
             val p = draw.page
-            if (p.paper == Paper.YEAR || p.paper == Paper.MONTHLY || p.paper == Paper.COVER) askCalendar(listOf(p)) {}
+            if (p.paper == Paper.YEAR || p.paper.isMonthly() || p.paper == Paper.COVER) askCalendar(listOf(p)) {}
             else Toast.makeText(this, "Bu sayfa yıllık, aylık takvim ya da kapak değil", Toast.LENGTH_LONG).show()
         }
         val sv = ScrollView(this)
@@ -3313,7 +3313,7 @@ class MainActivity : Activity() {
                     refresh()
                     done()
                 }
-                if (first.paper == Paper.MONTHLY) {
+                if (first.paper.isMonthly()) {
                     AlertDialog.Builder(this)
                         .setTitle("Hangi ay?")
                         .setItems(Planner.MONTHS) { _, m -> apply(m + 1) }
@@ -3322,7 +3322,7 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Bugünkü tarih") { _, _ ->
                 val now = java.util.Calendar.getInstance()
-                for (t in targets) { t.calYear = now.get(java.util.Calendar.YEAR); if (first.paper == Paper.MONTHLY) t.calMonth = now.get(java.util.Calendar.MONTH) + 1 }
+                for (t in targets) { t.calYear = now.get(java.util.Calendar.YEAR); if (first.paper.isMonthly()) t.calMonth = now.get(java.util.Calendar.MONTH) + 1 }
                 if (nb.pages.contains(first)) draw.setPaperFor(targets, first.paper)
                 refresh()
                 done()
@@ -3338,7 +3338,7 @@ class MainActivity : Activity() {
             draw.setPaperFor(targets, chosen)
             refresh()
             dlg?.dismiss()
-            if (chosen == Paper.YEAR || chosen == Paper.MONTHLY || chosen == Paper.COVER) askCalendar(targets) {}
+            if (chosen == Paper.YEAR || chosen.isMonthly() || chosen == Paper.COVER) askCalendar(targets) {}
         }
         val sv = android.widget.ScrollView(this)
         sv.addView(grid)

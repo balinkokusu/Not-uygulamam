@@ -15,12 +15,46 @@ object Stickers {
         "Başlık şeridi", "Yer imi", "Onay işareti", "Ok", "Ay", "Yaprak", "Kelebek", "Not kâğıdı",
         "Altın yıldız", "Mantar", "Elmas", "Konuşma balonu",
         "Gökkuşağı", "Şimşek", "Kahve", "Kitap", "Kalem", "Ataş", "Raptiye", "Bayrak",
-        "Zil", "Hediye", "Ampul", "Takvim", "Saat", "Pasta", "Taç", "Damla"
+        "Zil", "Hediye", "Ampul", "Takvim", "Saat", "Pasta", "Taç", "Damla",
+        "Çam ağacı", "Ağaç", "Dağ", "Kaktüs", "Lale", "Kiraz", "Elma", "Karpuz",
+        "Dondurma", "Çay", "Balon", "Kâğıt uçak", "Zarf", "Nota", "Ünlem", "Soru",
+        "Tamam", "İptal", "Hedef", "Kupa", "Roket", "Gezegen", "Uğur böceği", "Arı",
+        "Kar tanesi", "Şemsiye", "ÖNEMLİ", "YAPILACAK", "TOPLANTI", "SINAV", "TESLİM", "TATİL"
     )
+    private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+
+    private fun tri(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) {
+        path.reset(); path.moveTo(x1, y1); path.lineTo(x2, y2); path.lineTo(x3, y3); path.close()
+        c.drawPath(path, fill)
+    }
+
+    private fun oval(c: Canvas, l: Float, t: Float, r: Float, b: Float) {
+        rect.set(l, t, r, b); c.drawOval(rect, fill)
+    }
+
+    private fun badge(c: Canvas, u: Float, color: Int) {
+        f(c, color); c.drawCircle(0f, 0f, u * 0.92f, fill)
+        line.setColor(Color.WHITE); line.strokeWidth = u * 0.17f
+    }
+
+    private fun banner(c: Canvas, w: Float, h: Float, color: Int, text: String) {
+        f(c, color)
+        rect.set(-w / 2f, -h * 0.42f, w / 2f, h * 0.42f)
+        c.drawRoundRect(rect, h * 0.42f, h * 0.42f, fill)
+        line.setColor(Color.argb(170, 255, 255, 255)); line.strokeWidth = h * 0.04f
+        rect.inset(h * 0.09f, h * 0.09f)
+        c.drawRoundRect(rect, h * 0.33f, h * 0.33f, line)
+        txt.setColor(Color.WHITE)
+        txt.textSize = h * 0.4f
+        val tw = txt.measureText(text)
+        if (tw > w * 0.8f) txt.textSize = h * 0.4f * w * 0.8f / tw
+        c.drawText(text, 0f, txt.textSize * 0.36f, txt)
+    }
 
     /** Çıkartmanın genişlik/yükseklik oranı. */
     fun aspect(kind: Int): Float = when (kind) {
         6, 7 -> 3.2f
+        in 62..67 -> 3.2f
         8 -> 2.6f
         9 -> 0.55f
         11 -> 1.8f
@@ -414,6 +448,174 @@ object Stickers {
                 f(c, Color.WHITE, 140)
                 c.drawCircle(-u * 0.18f, u * 0.3f, u * 0.12f, fill)
             }
+            36 -> { // çam
+                f(c, Color.rgb(132, 96, 66)); c.drawRect(-u * 0.1f, u * 0.55f, u * 0.1f, u * 0.95f, fill)
+                f(c, Color.rgb(52, 124, 90))
+                tri(c, -u * 0.7f, u * 0.6f, 0f, -u * 0.2f, u * 0.7f, u * 0.6f)
+                f(c, Color.rgb(70, 146, 104)); tri(c, -u * 0.56f, u * 0.15f, 0f, -u * 0.6f, u * 0.56f, u * 0.15f)
+                f(c, Color.rgb(96, 168, 120)); tri(c, -u * 0.4f, -u * 0.3f, 0f, -u * 0.98f, u * 0.4f, -u * 0.3f)
+            }
+            37 -> { // ağaç
+                f(c, Color.rgb(132, 96, 66)); c.drawRect(-u * 0.1f, u * 0.2f, u * 0.1f, u * 0.95f, fill)
+                f(c, Color.rgb(96, 168, 110)); c.drawCircle(0f, -u * 0.3f, u * 0.6f, fill)
+                c.drawCircle(-u * 0.42f, u * 0.0f, u * 0.36f, fill); c.drawCircle(u * 0.42f, u * 0.0f, u * 0.36f, fill)
+                f(c, Color.WHITE, 60); c.drawCircle(-u * 0.2f, -u * 0.5f, u * 0.2f, fill)
+            }
+            38 -> { // dağ
+                f(c, Color.rgb(140, 160, 190)); tri(c, -u * 0.2f, u * 0.7f, u * 0.4f, -u * 0.3f, u * 0.98f, u * 0.7f)
+                f(c, Color.rgb(104, 128, 168)); tri(c, -u * 0.98f, u * 0.7f, -u * 0.25f, -u * 0.75f, u * 0.5f, u * 0.7f)
+                f(c, Color.WHITE); tri(c, -u * 0.47f, -u * 0.32f, -u * 0.25f, -u * 0.75f, -u * 0.03f, -u * 0.32f)
+            }
+            39 -> { // kaktüs
+                f(c, Color.rgb(96, 168, 120))
+                rect.set(-u * 0.22f, -u * 0.9f, u * 0.22f, u * 0.5f); c.drawRoundRect(rect, u * 0.22f, u * 0.22f, fill)
+                rect.set(-u * 0.68f, -u * 0.3f, -u * 0.4f, u * 0.2f); c.drawRoundRect(rect, u * 0.14f, u * 0.14f, fill)
+                c.drawRect(-u * 0.55f, u * 0.02f, -u * 0.1f, u * 0.22f, fill)
+                rect.set(u * 0.4f, -u * 0.55f, u * 0.68f, u * 0.0f); c.drawRoundRect(rect, u * 0.14f, u * 0.14f, fill)
+                c.drawRect(u * 0.1f, -u * 0.2f, u * 0.55f, u * 0.0f, fill)
+                f(c, Color.rgb(214, 140, 96)); path.reset(); path.moveTo(-u * 0.45f, u * 0.45f); path.lineTo(u * 0.45f, u * 0.45f); path.lineTo(u * 0.34f, u * 0.95f); path.lineTo(-u * 0.34f, u * 0.95f); path.close(); c.drawPath(path, fill)
+                f(c, Color.rgb(244, 143, 166)); c.drawCircle(0f, -u * 0.9f, u * 0.12f, fill)
+            }
+            40 -> { // lale
+                line.setColor(Color.rgb(96, 168, 110)); line.strokeWidth = u * 0.1f
+                c.drawLine(0f, -u * 0.1f, 0f, u * 0.95f, line)
+                f(c, Color.rgb(96, 168, 110)); path.reset(); path.moveTo(0f, u * 0.8f); path.quadTo(-u * 0.7f, u * 0.5f, -u * 0.5f, u * 0.0f); path.quadTo(-u * 0.1f, u * 0.4f, 0f, u * 0.8f); c.drawPath(path, fill)
+                f(c, Color.rgb(232, 90, 110)); path.reset(); path.moveTo(-u * 0.42f, -u * 0.85f); path.lineTo(-u * 0.2f, -u * 0.55f); path.lineTo(0f, -u * 0.95f); path.lineTo(u * 0.2f, -u * 0.55f); path.lineTo(u * 0.42f, -u * 0.85f)
+                path.quadTo(u * 0.6f, u * 0.0f, 0f, u * 0.05f); path.quadTo(-u * 0.6f, u * 0.0f, -u * 0.42f, -u * 0.85f); c.drawPath(path, fill)
+            }
+            41 -> { // kiraz
+                line.setColor(Color.rgb(110, 150, 80)); line.strokeWidth = u * 0.07f
+                path.reset(); path.moveTo(-u * 0.4f, u * 0.3f); path.quadTo(-u * 0.2f, -u * 0.5f, u * 0.2f, -u * 0.85f); path.quadTo(u * 0.4f, -u * 0.3f, u * 0.42f, u * 0.4f); c.drawPath(path, line)
+                f(c, Color.rgb(210, 50, 70)); c.drawCircle(-u * 0.42f, u * 0.5f, u * 0.38f, fill); c.drawCircle(u * 0.44f, u * 0.58f, u * 0.38f, fill)
+                f(c, Color.WHITE, 130); c.drawCircle(-u * 0.55f, u * 0.38f, u * 0.09f, fill); c.drawCircle(u * 0.31f, u * 0.46f, u * 0.09f, fill)
+            }
+            42 -> { // elma
+                f(c, Color.rgb(226, 70, 70)); c.drawCircle(-u * 0.26f, u * 0.15f, u * 0.6f, fill); c.drawCircle(u * 0.26f, u * 0.15f, u * 0.6f, fill)
+                line.setColor(Color.rgb(120, 84, 60)); line.strokeWidth = u * 0.08f; c.drawLine(0f, -u * 0.4f, u * 0.08f, -u * 0.85f, line)
+                f(c, Color.rgb(110, 176, 100)); oval(c, u * 0.1f, -u * 0.85f, u * 0.6f, -u * 0.55f)
+                f(c, Color.WHITE, 110); c.drawCircle(-u * 0.45f, -u * 0.1f, u * 0.13f, fill)
+            }
+            43 -> { // karpuz dilimi
+                f(c, Color.rgb(96, 168, 110)); rect.set(-u * 0.95f, -u * 1.1f, u * 0.95f, u * 0.8f); c.drawArc(rect, 0f, 180f, true, fill)
+                f(c, Color.rgb(240, 244, 230)); rect.inset(u * 0.1f, u * 0.1f); c.drawArc(rect, 0f, 180f, true, fill)
+                f(c, Color.rgb(236, 88, 100)); rect.inset(u * 0.08f, u * 0.08f); c.drawArc(rect, 0f, 180f, true, fill)
+                f(c, Color.rgb(50, 40, 40)); for (i in -2..2) oval(c, i * u * 0.27f - u * 0.04f, u * 0.1f + (if (i % 2 == 0) u * 0.18f else 0f), i * u * 0.27f + u * 0.04f, u * 0.22f + (if (i % 2 == 0) u * 0.18f else 0f))
+            }
+            44 -> { // dondurma
+                f(c, Color.rgb(226, 178, 120)); tri(c, -u * 0.4f, u * 0.0f, u * 0.4f, u * 0.0f, 0f, u * 0.98f)
+                f(c, Color.rgb(250, 190, 212)); c.drawCircle(0f, -u * 0.3f, u * 0.48f, fill)
+                f(c, Color.rgb(255, 240, 200)); c.drawCircle(-u * 0.3f, -u * 0.02f, u * 0.2f, fill); c.drawCircle(u * 0.3f, -u * 0.02f, u * 0.2f, fill); c.drawCircle(0f, u * 0.02f, u * 0.2f, fill)
+                f(c, Color.rgb(210, 50, 70)); c.drawCircle(0f, -u * 0.82f, u * 0.13f, fill)
+            }
+            45 -> { // çay bardağı
+                f(c, Color.rgb(240, 244, 248)); oval(c, -u * 0.85f, u * 0.55f, u * 0.85f, u * 0.92f)
+                f(c, Color.rgb(176, 58, 46))
+                path.reset(); path.moveTo(-u * 0.42f, -u * 0.6f); path.quadTo(-u * 0.2f, -u * 0.1f, -u * 0.45f, u * 0.35f); path.quadTo(0f, u * 0.95f, u * 0.45f, u * 0.35f); path.quadTo(u * 0.2f, -u * 0.1f, u * 0.42f, -u * 0.6f); path.close(); c.drawPath(path, fill)
+                line.setColor(Color.argb(200, 235, 240, 246)); line.strokeWidth = u * 0.06f
+                path.reset(); path.moveTo(-u * 0.44f, -u * 0.85f); path.quadTo(-u * 0.2f, -u * 0.1f, -u * 0.47f, u * 0.35f); path.quadTo(0f, u * 0.98f, u * 0.47f, u * 0.35f); path.quadTo(u * 0.2f, -u * 0.1f, u * 0.44f, -u * 0.85f); c.drawPath(path, line)
+            }
+            46 -> { // balon
+                line.setColor(Color.rgb(150, 150, 160)); line.strokeWidth = u * 0.04f
+                path.reset(); path.moveTo(0f, u * 0.3f); path.quadTo(u * 0.2f, u * 0.6f, -u * 0.05f, u * 0.98f); c.drawPath(path, line)
+                f(c, Color.rgb(232, 96, 116)); oval(c, -u * 0.55f, -u * 0.98f, u * 0.55f, u * 0.3f)
+                tri(c, -u * 0.1f, u * 0.38f, u * 0.1f, u * 0.38f, 0f, u * 0.25f)
+                f(c, Color.WHITE, 130); oval(c, -u * 0.35f, -u * 0.75f, -u * 0.15f, -u * 0.4f)
+            }
+            47 -> { // kâğıt uçak
+                f(c, Color.rgb(150, 196, 240)); tri(c, -u * 0.95f, -u * 0.1f, u * 0.95f, -u * 0.75f, -u * 0.1f, u * 0.25f)
+                f(c, Color.rgb(110, 160, 220)); tri(c, -u * 0.1f, u * 0.25f, u * 0.95f, -u * 0.75f, u * 0.25f, u * 0.75f)
+                f(c, Color.rgb(84, 128, 190)); tri(c, -u * 0.1f, u * 0.25f, u * 0.12f, u * 0.42f, -u * 0.05f, u * 0.7f)
+            }
+            48 -> { // zarf
+                f(c, Color.rgb(250, 236, 214)); rect.set(-u * 0.92f, -u * 0.6f, u * 0.92f, u * 0.6f); c.drawRoundRect(rect, u * 0.08f, u * 0.08f, fill)
+                line.setColor(Color.rgb(206, 170, 130)); line.strokeWidth = u * 0.06f
+                c.drawRoundRect(rect, u * 0.08f, u * 0.08f, line)
+                path.reset(); path.moveTo(-u * 0.9f, -u * 0.55f); path.lineTo(0f, u * 0.1f); path.lineTo(u * 0.9f, -u * 0.55f); c.drawPath(path, line)
+                f(c, Color.rgb(226, 80, 96)); heart(c, 0f, u * 0.12f, u * 0.18f)
+            }
+            49 -> { // nota
+                f(c, Color.rgb(70, 70, 90)); oval(c, -u * 0.7f, u * 0.4f, -u * 0.2f, u * 0.82f); oval(c, u * 0.2f, u * 0.22f, u * 0.7f, u * 0.64f)
+                line.setColor(Color.rgb(70, 70, 90)); line.strokeWidth = u * 0.1f
+                c.drawLine(-u * 0.24f, u * 0.6f, -u * 0.24f, -u * 0.7f, line); c.drawLine(u * 0.66f, u * 0.42f, u * 0.66f, -u * 0.88f, line)
+                line.strokeWidth = u * 0.2f; c.drawLine(-u * 0.24f, -u * 0.64f, u * 0.66f, -u * 0.82f, line)
+            }
+            50 -> { badge(c, u, Color.rgb(232, 96, 76)); c.drawLine(0f, -u * 0.5f, 0f, u * 0.12f, line); f(c, Color.WHITE); c.drawCircle(0f, u * 0.48f, u * 0.1f, fill) }
+            51 -> {
+                badge(c, u, Color.rgb(96, 140, 220))
+                path.reset(); path.moveTo(-u * 0.28f, -u * 0.25f); path.quadTo(-u * 0.25f, -u * 0.6f, u * 0.02f, -u * 0.58f); path.quadTo(u * 0.36f, -u * 0.55f, u * 0.28f, -u * 0.22f); path.quadTo(u * 0.2f, -u * 0.02f, 0f, u * 0.14f); c.drawPath(path, line)
+                f(c, Color.WHITE); c.drawCircle(0f, u * 0.5f, u * 0.1f, fill)
+            }
+            52 -> { badge(c, u, Color.rgb(80, 176, 120)); path.reset(); path.moveTo(-u * 0.42f, u * 0.02f); path.lineTo(-u * 0.12f, u * 0.34f); path.lineTo(u * 0.44f, -u * 0.32f); c.drawPath(path, line) }
+            53 -> { badge(c, u, Color.rgb(214, 80, 80)); c.drawLine(-u * 0.34f, -u * 0.34f, u * 0.34f, u * 0.34f, line); c.drawLine(u * 0.34f, -u * 0.34f, -u * 0.34f, u * 0.34f, line) }
+            54 -> { // hedef
+                f(c, Color.rgb(226, 76, 76)); c.drawCircle(0f, 0f, u * 0.95f, fill)
+                f(c, Color.WHITE); c.drawCircle(0f, 0f, u * 0.7f, fill)
+                f(c, Color.rgb(226, 76, 76)); c.drawCircle(0f, 0f, u * 0.45f, fill)
+                f(c, Color.WHITE); c.drawCircle(0f, 0f, u * 0.2f, fill)
+            }
+            55 -> { // kupa
+                f(c, Color.rgb(246, 196, 70))
+                path.reset(); path.moveTo(-u * 0.5f, -u * 0.85f); path.lineTo(u * 0.5f, -u * 0.85f); path.quadTo(u * 0.5f, u * 0.2f, 0f, u * 0.25f); path.quadTo(-u * 0.5f, u * 0.2f, -u * 0.5f, -u * 0.85f); c.drawPath(path, fill)
+                c.drawRect(-u * 0.08f, u * 0.2f, u * 0.08f, u * 0.6f, fill)
+                rect.set(-u * 0.4f, u * 0.58f, u * 0.4f, u * 0.88f); c.drawRoundRect(rect, u * 0.06f, u * 0.06f, fill)
+                line.setColor(Color.rgb(246, 196, 70)); line.strokeWidth = u * 0.1f
+                rect.set(-u * 0.85f, -u * 0.7f, -u * 0.3f, -u * 0.1f); c.drawArc(rect, 90f, 180f, false, line)
+                rect.set(u * 0.3f, -u * 0.7f, u * 0.85f, -u * 0.1f); c.drawArc(rect, 270f, 180f, false, line)
+                f(c, Color.WHITE, 200); star(c, 0f, -u * 0.35f, u * 0.24f, 0.46f, 5)
+            }
+            56 -> { // roket
+                c.rotate(35f)
+                f(c, Color.rgb(246, 150, 60)); tri(c, -u * 0.2f, u * 0.55f, u * 0.2f, u * 0.55f, 0f, u * 0.98f)
+                f(c, Color.rgb(226, 80, 90)); tri(c, -u * 0.3f, u * 0.1f, -u * 0.6f, u * 0.6f, -u * 0.3f, u * 0.5f); tri(c, u * 0.3f, u * 0.1f, u * 0.6f, u * 0.6f, u * 0.3f, u * 0.5f)
+                f(c, Color.rgb(232, 236, 242)); path.reset(); path.moveTo(0f, -u * 0.98f); path.quadTo(u * 0.5f, -u * 0.4f, u * 0.3f, u * 0.55f); path.lineTo(-u * 0.3f, u * 0.55f); path.quadTo(-u * 0.5f, -u * 0.4f, 0f, -u * 0.98f); c.drawPath(path, fill)
+                f(c, Color.rgb(110, 170, 230)); c.drawCircle(0f, -u * 0.2f, u * 0.17f, fill)
+            }
+            57 -> { // gezegen
+                f(c, Color.rgb(240, 170, 110)); c.drawCircle(0f, 0f, u * 0.55f, fill)
+                f(c, Color.rgb(226, 140, 90)); oval(c, -u * 0.35f, -u * 0.25f, u * 0.1f, -u * 0.05f); oval(c, -u * 0.05f, u * 0.15f, u * 0.38f, u * 0.32f)
+                c.rotate(-20f)
+                line.setColor(Color.rgb(150, 130, 200)); line.strokeWidth = u * 0.09f
+                rect.set(-u * 0.95f, -u * 0.22f, u * 0.95f, u * 0.22f); c.drawArc(rect, -20f, 220f, false, line)
+            }
+            58 -> { // uğur böceği
+                f(c, Color.rgb(40, 36, 40)); c.drawCircle(0f, -u * 0.55f, u * 0.32f, fill)
+                f(c, Color.rgb(222, 60, 56)); oval(c, -u * 0.7f, -u * 0.5f, u * 0.7f, u * 0.9f)
+                line.setColor(Color.rgb(40, 36, 40)); line.strokeWidth = u * 0.06f; c.drawLine(0f, -u * 0.48f, 0f, u * 0.9f, line)
+                c.drawLine(-u * 0.12f, -u * 0.8f, -u * 0.3f, -u * 0.98f, line); c.drawLine(u * 0.12f, -u * 0.8f, u * 0.3f, -u * 0.98f, line)
+                f(c, Color.rgb(40, 36, 40)); c.drawCircle(-u * 0.35f, -u * 0.05f, u * 0.13f, fill); c.drawCircle(u * 0.35f, -u * 0.05f, u * 0.13f, fill); c.drawCircle(-u * 0.28f, u * 0.48f, u * 0.11f, fill); c.drawCircle(u * 0.28f, u * 0.48f, u * 0.11f, fill)
+                f(c, Color.WHITE); c.drawCircle(-u * 0.13f, -u * 0.6f, u * 0.06f, fill); c.drawCircle(u * 0.13f, -u * 0.6f, u * 0.06f, fill)
+            }
+            59 -> { // arı
+                f(c, Color.rgb(200, 226, 246), 220); oval(c, -u * 0.5f, -u * 0.9f, u * 0.05f, -u * 0.15f); oval(c, -u * 0.05f, -u * 0.9f, u * 0.5f, -u * 0.15f)
+                f(c, Color.rgb(250, 204, 70)); oval(c, -u * 0.75f, -u * 0.3f, u * 0.75f, u * 0.6f)
+                c.save(); path.reset(); rect.set(-u * 0.75f, -u * 0.3f, u * 0.75f, u * 0.6f); path.addOval(rect, Path.Direction.CW); c.clipPath(path)
+                f(c, Color.rgb(50, 44, 44)); c.drawRect(-u * 0.25f, -u * 0.4f, -u * 0.02f, u * 0.7f, fill); c.drawRect(u * 0.22f, -u * 0.4f, u * 0.45f, u * 0.7f, fill)
+                c.restore()
+                f(c, Color.rgb(50, 44, 44)); c.drawCircle(-u * 0.52f, u * 0.08f, u * 0.07f, fill)
+            }
+            60 -> { // kar tanesi
+                line.setColor(Color.rgb(120, 180, 230)); line.strokeWidth = u * 0.1f
+                for (k in 0 until 6) {
+                    val an = Math.toRadians(k * 60.0)
+                    val ex = (cos(an) * u * 0.92f).toFloat(); val ey = (sin(an) * u * 0.92f).toFloat()
+                    c.drawLine(0f, 0f, ex, ey, line)
+                    val mx = ex * 0.6f; val my = ey * 0.6f
+                    c.drawLine(mx, my, mx + (cos(an + 0.8) * u * 0.28f).toFloat(), my + (sin(an + 0.8) * u * 0.28f).toFloat(), line)
+                    c.drawLine(mx, my, mx + (cos(an - 0.8) * u * 0.28f).toFloat(), my + (sin(an - 0.8) * u * 0.28f).toFloat(), line)
+                }
+            }
+            61 -> { // şemsiye
+                f(c, Color.rgb(110, 160, 226)); rect.set(-u * 0.92f, -u * 0.9f, u * 0.92f, u * 0.7f); c.drawArc(rect, 180f, 180f, true, fill)
+                f(c, Color.rgb(150, 196, 240)); rect.set(-u * 0.32f, -u * 0.9f, u * 0.32f, u * 0.7f); c.drawArc(rect, 180f, 180f, true, fill)
+                line.setColor(Color.rgb(90, 80, 90)); line.strokeWidth = u * 0.08f
+                path.reset(); path.moveTo(0f, -u * 0.1f); path.lineTo(0f, u * 0.7f); path.quadTo(0f, u * 0.95f, u * 0.25f, u * 0.92f); path.quadTo(u * 0.4f, u * 0.9f, u * 0.4f, u * 0.7f); c.drawPath(path, line)
+            }
+            62 -> banner(c, w, h, Color.rgb(226, 76, 76), "ÖNEMLİ")
+            63 -> banner(c, w, h, Color.rgb(96, 140, 220), "YAPILACAK")
+            64 -> banner(c, w, h, Color.rgb(132, 96, 196), "TOPLANTI")
+            65 -> banner(c, w, h, Color.rgb(232, 140, 50), "SINAV")
+            66 -> banner(c, w, h, Color.rgb(40, 150, 140), "TESLİM")
+            67 -> banner(c, w, h, Color.rgb(80, 176, 120), "TATİL")
             else -> {
                 f(c, Color.rgb(246, 218, 224))
                 rect.set(-w / 2f, -h / 2f, w / 2f, h * 0.28f)

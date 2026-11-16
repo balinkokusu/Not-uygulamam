@@ -668,11 +668,17 @@ class LibraryActivity : Activity() {
     private fun showNewMenu() {
         AlertDialog.Builder(this)
             .setTitle("Yeni")
-            .setItems(arrayOf("Yeni defter", "Planlayıcı $plannerYear (hazır defter)", "Planlayıcı ${plannerYear + 1}", "Yeni klasör")) { _, which ->
+            .setItems(arrayOf("Yeni defter", "Planlayıcı $plannerYear (hazır defter)", "Planlayıcı ${plannerYear + 1}",
+                "Ajanda $plannerYear · dikey haftalık", "Ajanda $plannerYear · yatay haftalık (saatli)",
+                "Ajanda ${plannerYear + 1} · dikey haftalık", "Ajanda ${plannerYear + 1} · yatay haftalık (saatli)", "Yeni klasör")) { _, which ->
                 when (which) {
                     0 -> showEditor(null, false)
                     1 -> showEditor(null, false, plannerYear)
                     2 -> showEditor(null, false, plannerYear + 1)
+                    3 -> showEditor(null, false, plannerYear + 10000)
+                    4 -> showEditor(null, false, plannerYear + 20000)
+                    5 -> showEditor(null, false, plannerYear + 1 + 10000)
+                    6 -> showEditor(null, false, plannerYear + 1 + 20000)
                     else -> showEditor(null, true)
                 }
             }
@@ -753,8 +759,9 @@ class LibraryActivity : Activity() {
         val draft = existing?.copy() ?: LibraryItem(store.newId(), isFolder, "", folderId)
         if (existing == null) draft.color = palette[if (isFolder) 4 else 0]
         var paperIdx = if (presetPlanner > 0) Paper.values().size else Paper.RULED.ordinal
-        val plannerYear = if (presetPlanner > 0) presetPlanner else this.plannerYear
-        if (existing == null && presetPlanner > 0) draft.title = "Planlayıcı $presetPlanner"
+        val plannerKind = presetPlanner / 10000
+        val plannerYear = if (presetPlanner > 0) presetPlanner % 10000 else this.plannerYear
+        if (existing == null && presetPlanner > 0) draft.title = (if (plannerKind > 0) "Ajanda " else "Planlayıcı ") + plannerYear
         var committed = false
         val chooser = PageStyleChooser(this, 1200f, 1697f, Color.WHITE)
         val thumbs = ArrayList<View>()
@@ -908,7 +915,7 @@ class LibraryActivity : Activity() {
                     if (!isFolder) {
                         val nb: Notebook
                         if (paperIdx >= Paper.values().size) {
-                            nb = Planner.build(plannerYear)
+                            nb = if (plannerKind > 0) Planner.buildAgenda(plannerYear, plannerKind == 2) else Planner.build(plannerYear)
                         } else {
                             nb = Notebook()
                             nb.pages.add(PageData(paper = Paper.values()[paperIdx]))

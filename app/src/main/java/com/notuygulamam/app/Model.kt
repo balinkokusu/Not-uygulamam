@@ -18,7 +18,14 @@ enum class Paper(val label: String) {
     MEAL("yemek planı"), BUDGET("gider takibi"), READING("okuma günlüğü"),
     GOALS("hedefler"), SLEEP("uyku takibi"), STAFF("porte (nota kâğıdı)"),
     TIMETABLE("ders programı"), LITERATURE("literatür notu"), SHOPPING("alışveriş listesi"),
-    COVER("planlayıcı kapağı"), MEETING("toplantı notu")
+    COVER("planlayıcı kapağı"), MEETING("toplantı notu"),
+    MONTH_L("aylık, 2 sayfa (sol yarı)"), MONTH_R("aylık, 2 sayfa (sağ yarı)"),
+    WEEK_V("haftalık ajanda (dikey)"), WEEK_H("haftalık ajanda (yatay, saatli)");
+
+    /** Ay seçimi isteyen takvim kâğıtları. */
+    fun isMonthly() = this == MONTHLY || this == MONTH_L || this == MONTH_R
+    /** Tarihini kendi taşıyan kâğıtlar; bunlara otomatik tarih ayracı eklenmez. */
+    fun isCalendar() = isMonthly() || this == YEAR || this == WEEK_V || this == WEEK_H || this == COVER
 }
 
 /** Bir çizgi; koordinatlar ve kalınlık sayfa birimindedir, ekran çözünürlüğünden bağımsızdır. */
