@@ -208,10 +208,25 @@ object CoverCache {
 
 /** Kapak şablonları; hepsi kodla çizilir, kullanıcı şablon ve rengi seçer. */
 object CoverArt {
-    const val STYLE_COUNT = 13
+    const val STYLE_COUNT = 34
     val names = arrayOf(
         "Düz", "Geçişli", "Noktalı", "Çizgili", "Dalga", "Kareli", "Çiçek", "Gece", "Gün batımı", "Kraft",
-        "Petek", "Deri", "Arı ve bal"
+        "Petek", "Deri", "Arı ve bal",
+        "Üçgenler", "Daireler", "Zikzak", "Elmas", "Art deco",
+        "Kedi", "Tilki", "Baykuş", "Kuşlar", "Balıklar",
+        "İlkbahar", "Yaz", "Sonbahar", "Kış",
+        "Dağlar", "Orman", "Deniz",
+        "Dikişli deri", "Lastikli defter", "Köşebentli", "Spiralli kraft"
+    )
+
+    /** Kapak seçiminde gösterilen konu grupları. */
+    val groups = listOf(
+        Pair("Sade ve desenli", intArrayOf(0, 1, 2, 3, 4, 5, 6, 10, 12)),
+        Pair("Geometrik", intArrayOf(13, 14, 15, 16, 17)),
+        Pair("Hayvanlar", intArrayOf(18, 19, 20, 21, 22)),
+        Pair("Mevsimler", intArrayOf(23, 24, 25, 26)),
+        Pair("Manzaralar", intArrayOf(27, 28, 29, 7, 8)),
+        Pair("Deri ve defter görünümü", intArrayOf(11, 30, 31, 32, 33, 9))
     )
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -243,6 +258,11 @@ object CoverArt {
         val h = r.height()
         paint.style = Paint.Style.FILL
         paint.shader = null
+        if (style >= 13) {
+            CoverExtra.draw(c, r, style, color)
+            c.restore()
+            return
+        }
         when (style) {
             1 -> {
                 paint.shader = LinearGradient(r.left, r.top, r.right, r.bottom, light, dark, Shader.TileMode.CLAMP)

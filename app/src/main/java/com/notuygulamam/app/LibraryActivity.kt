@@ -834,10 +834,11 @@ class LibraryActivity : Activity() {
             iconScroll.addView(iconRow)
             content.addView(iconScroll)
         } else {
-            content.addView(label("Kapak şablonu"))
+            for ((gName, gIds) in CoverArt.groups) {
+            content.addView(label("Kapak: " + gName))
             val styleRow = LinearLayout(this)
             styleRow.orientation = LinearLayout.HORIZONTAL
-            for (i in 0 until CoverArt.STYLE_COUNT) {
+            for (i in gIds) {
                 val t = ArtThumb(this, 66, 90, { draft.coverImage == null && draft.coverStyle == i }) { cv, r ->
                     CoverArt.draw(cv, r, i, draft.color)
                 }
@@ -852,6 +853,7 @@ class LibraryActivity : Activity() {
             val styleScroll = HorizontalScrollView(this)
             styleScroll.addView(styleRow)
             content.addView(styleScroll)
+            }
 
             content.addView(label("Kendi fotoğrafınız"))
             val photoRow = LinearLayout(this)

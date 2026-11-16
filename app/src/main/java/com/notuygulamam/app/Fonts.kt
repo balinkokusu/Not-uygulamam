@@ -14,6 +14,27 @@ object Fonts {
         null, "caveat.ttf", "patrickhand.ttf", "dancingscript.ttf", "pacifico.ttf",
         "playfair.ttf", "lora.ttf", "courierprime.ttf", "oswald.ttf"
     )
+    /** Sonradan eklenen hazır yazı tipleri. Kayıtlı defterlerdeki numaralar kaymasın diye 200'den başlayan ayrı numaralar alırlar. */
+    const val EXTRA_BASE = 200
+    val extraNames = arrayOf(
+        "Modern", "Yuvarlak", "Yumuşak", "Geometrik", "İnce zarif", "Not yazısı", "Mimar yazısı",
+        "İnce el yazısı", "Uzun başlık", "Mürekkep", "İmza", "Davetiye", "Tabela", "Afiş"
+    )
+    private val extraFiles = arrayOf(
+        "poppins.ttf", "nunito.ttf", "quicksand.ttf", "comfortaa.ttf", "josefinsans.ttf", "kalam.ttf", "architectsdaughter.ttf",
+        "shadowsintolighttwo.ttf", "amaticsc.ttf", "marckscript.ttf", "sacramento.ttf", "greatvibes.ttf", "lobster.ttf", "bebasneue.ttf"
+    )
+
+    /** Seçim listesi: (kayıt numarası, görünen ad). Önce hazır yazı tipleri, sonra kullanıcının ekledikleri. */
+    fun choices(): List<Pair<Int, String>> {
+        val out = ArrayList<Pair<Int, String>>()
+        for (i in names.indices) out.add(Pair(i, names[i]))
+        for (i in extraNames.indices) out.add(Pair(EXTRA_BASE + i, extraNames[i]))
+        val cf = customFiles()
+        for (i in cf.indices) if (names.size + i < EXTRA_BASE) out.add(Pair(names.size + i, cf[i].nameWithoutExtension))
+        return out
+    }
+
     private var assets: AssetManager? = null
     private var customDir: File? = null
 
@@ -52,6 +73,17 @@ object Fonts {
     /** style: Typeface.NORMAL, BOLD, ITALIC ya da BOLD_ITALIC. */
     @Synchronized
     fun get(idx: Int, style: Int): Typeface {
+        if (idx >= EXTRA_BASE && idx - EXTRA_BASE < extraFiles.size) {
+            val k = idx * 4 + style
+            val h = cache[k]
+            if (h != null) return h
+            var b: Typeface = Typeface.SANS_SERIF
+            val am = assets
+            if (am != null) try { b = Typeface.createFromAsset(am, "fonts/" + extraFiles[idx - EXTRA_BASE]) } catch (e: Exception) {}
+            val tf = Typeface.create(b, style)
+            cache[k] = tf
+            return tf
+        }
         val custom = customFiles()
         val i = idx.coerceIn(0, files.size + custom.size - 1)
         val key = i * 4 + style

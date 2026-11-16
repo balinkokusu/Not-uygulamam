@@ -1459,8 +1459,10 @@ class MainActivity : Activity() {
         val fontRow = LinearLayout(this)
         fontRow.orientation = LinearLayout.HORIZONTAL
         val fontChips = ArrayList<TextView>()
+        val fontIds = ArrayList<Int>()
         fun paintFonts() {
-            for ((i, t) in fontChips.withIndex()) {
+            for ((ci, t) in fontChips.withIndex()) {
+                val i = fontIds[ci]
                 val g = GradientDrawable()
                 g.cornerRadius = dp(10f).toFloat()
                 g.setColor(if (i == fontIdx) Look.accentSoft else Color.TRANSPARENT)
@@ -1471,10 +1473,11 @@ class MainActivity : Activity() {
         fun fillFonts() {
             fontRow.removeAllViews()
             fontChips.clear()
-            val all = Fonts.allNames()
-            for (i in all.indices) {
+            fontIds.clear()
+            for ((i, nm) in Fonts.choices()) {
+                fontIds.add(i)
                 val t = TextView(this)
-                t.text = "Aa Ğş\n" + all[i]
+                t.text = "Aa Ğş\n" + nm
                 t.gravity = Gravity.CENTER
                 t.textSize = 15f
                 t.typeface = Fonts.get(i, android.graphics.Typeface.NORMAL)

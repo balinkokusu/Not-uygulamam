@@ -1,3 +1,5 @@
 Bu klasördeki yazı tipleri SIL Open Font License 1.1 ile dağıtılan Google Fonts yazı tipleridir:
-Caveat, Patrick Hand, Dancing Script, Pacifico, Playfair Display, Lora, Courier Prime, Oswald.
+Caveat, Patrick Hand, Dancing Script, Pacifico, Playfair Display, Lora, Courier Prime, Oswald,
+Poppins, Nunito, Quicksand, Comfortaa, Josefin Sans, Kalam, Architects Daughter, Shadows Into Light Two,
+Amatic SC, Marck Script, Sacramento, Great Vibes, Lobster, Bebas Neue.
 Lisans metni: https://openfontlicense.org
