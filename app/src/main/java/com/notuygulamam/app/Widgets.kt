@@ -56,11 +56,11 @@ class IconButton(
                 c.drawRoundRect(rect, 10 * d, 10 * d, bg)
             }
             p.setColor(if (active) Look.accent else Look.ink)
-            val uc = width * 0.44f
+            val uc = width * 0.5f
             p.strokeWidth = maxOf(1.3f * d, uc * 0.075f)
             c.save()
             c.translate((width - uc) / 2f, (height - uc) / 2f)
-            glyph(c, uc)
+            drawIcon(c, uc, if (active) Look.accent else Look.ink)
             c.restore()
             return
         }
@@ -75,9 +75,23 @@ class IconButton(
         p.strokeWidth = u * 0.115f
         c.save()
         c.translate((width - u) / 2f, 5 * d + (areaH - u) / 2f)
-        glyph(c, u)
+        drawIcon(c, u, fg)
         c.restore()
         c.drawText(label, width / 2f, height - 8 * d, textPaint)
+    }
+
+    // Simgeler evrensel bir takımdan (Lucide, ISC lisansı) vektör olarak gelir; bulunamazsa eski elle çizim kullanılır.
+    private val vec: android.graphics.drawable.Drawable? by lazy {
+        val id = resources.getIdentifier("ic_" + icon.name.lowercase(java.util.Locale.ROOT), "drawable", context.packageName)
+        if (id != 0) context.getDrawable(id)?.mutate() else null
+    }
+
+    private fun drawIcon(c: Canvas, u: Float, color: Int) {
+        val v = vec
+        if (v == null) { glyph(c, u); return }
+        v.setTint(color)
+        v.setBounds(0, 0, u.toInt(), u.toInt())
+        v.draw(c)
     }
 
     private fun line(c: Canvas, u: Float, x0: Float, y0: Float, x1: Float, y1: Float) {
