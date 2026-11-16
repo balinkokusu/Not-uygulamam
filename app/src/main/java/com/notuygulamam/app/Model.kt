@@ -20,7 +20,9 @@ enum class Paper(val label: String) {
     TIMETABLE("ders programı"), LITERATURE("literatür notu"), SHOPPING("alışveriş listesi"),
     COVER("planlayıcı kapağı"), MEETING("toplantı notu"),
     MONTH_L("aylık, 2 sayfa (sol yarı)"), MONTH_R("aylık, 2 sayfa (sağ yarı)"),
-    WEEK_V("haftalık ajanda (dikey)"), WEEK_H("haftalık ajanda (yatay, saatli)");
+    WEEK_V("haftalık ajanda (dikey)"), WEEK_H("haftalık ajanda (yatay, saatli)"),
+    PROJECT("proje takibi"), PAYMENTS("ödeme planı"), EXPENSE("proje harcama sayfası"),
+    VISION("hayal panosu"), MANIFEST("manifest sayfası"), FUTURE("gelecek planlayıcı");
 
     /** Ay seçimi isteyen takvim kâğıtları. */
     fun isMonthly() = this == MONTHLY || this == MONTH_L || this == MONTH_R

@@ -326,6 +326,12 @@ class PageRenderer {
             Paper.MONTHLY -> drawMonthly(c, page)
             Paper.CORNELL -> drawCornell(c, page)
             Paper.MEETING -> drawMeeting(c, page)
+            Paper.PROJECT -> drawProject(c)
+            Paper.PAYMENTS -> drawTable(c, "ÖDEME PLANI", "Proje:", arrayOf("No", "Ödeme / taksit", "Planlanan tarih", "Tutar", "Ödendi", "Not"), floatArrayOf(0.07f, 0.3f, 0.2f, 0.16f, 0.1f, 0.17f), 4, false)
+            Paper.EXPENSE -> drawTable(c, "HARCAMA SAYFASI", "Proje:", arrayOf("Tarih", "Harcama kalemi", "Fatura / belge no", "Tutar", "Kalan"), floatArrayOf(0.14f, 0.36f, 0.2f, 0.15f, 0.15f), -1, true)
+            Paper.VISION -> drawVision(c)
+            Paper.MANIFEST -> drawManifest(c)
+            Paper.FUTURE -> drawFuture(c)
             Paper.MONTH_L -> drawMonthHalf(c, page, false)
             Paper.MONTH_R -> drawMonthHalf(c, page, true)
             Paper.WEEK_V -> drawWeekAgenda(c, page, false)
@@ -485,6 +491,128 @@ class PageRenderer {
                 label(c, d.toString(), x0 + (idx % 7) * cw + 10f, gridTop + (idx / 7) * rh + 34f, 26f, ink)
             }
         }
+    }
+
+    private fun field(c: Canvas, name: String, x: Float, y: Float, x2: Float) {
+        label(c, name, x, y, 26f, soft)
+        textPaint.textSize = 26f
+        c.drawLine(x + textPaint.measureText(name) + 12f, y + 4f, x2, y + 4f, paperPaint)
+    }
+
+    private fun drawProject(c: Canvas) {
+        title(c, "PROJE TAKİBİ", "No:")
+        field(c, "Proje adı:", 80f, 200f, 1120f)
+        field(c, "Program / kurum:", 80f, 250f, 600f); field(c, "Danışman:", 620f, 250f, 1120f)
+        field(c, "Başlangıç:", 80f, 300f, 420f); field(c, "Bitiş:", 440f, 300f, 760f); field(c, "Süre:", 780f, 300f, 1120f)
+        box(c, 70f, 330f, 520f, 470f, "Önemli tarihler")
+        val rows = arrayOf("Başvuru", "Kabul / sözleşme", "1. ödeme", "Ara rapor", "2. ödeme", "Sonuç raporu", "Kapanış")
+        for ((i, r) in rows.withIndex()) {
+            val y = 330f + 96f + i * 54f
+            c.drawRect(92f, y - 24f, 116f, y, boxPaint)
+            label(c, r, 130f, y - 2f, 24f, ink)
+            c.drawLine(360f, y, 570f, y, paperPaint)
+        }
+        box(c, 610f, 330f, 520f, 470f, "Bütçe özeti")
+        val b = arrayOf("Toplam bütçe", "Gelen ödeme", "Harcanan", "Kalan", "İade edilecek")
+        for ((i, r) in b.withIndex()) {
+            val y = 330f + 100f + i * 70f
+            label(c, r, 632f, y - 2f, 24f, ink)
+            c.drawLine(850f, y, 1108f, y, paperPaint)
+        }
+        box(c, 70f, 820f, 1060f, 400f, "Yapılacaklar")
+        for (i in 0 until 6) {
+            val y = 820f + 100f + i * 54f
+            c.drawRect(92f, y - 24f, 116f, y, boxPaint)
+            c.drawLine(130f, y, 820f, y, paperPaint)
+            c.drawLine(850f, y, 1108f, y, paperPaint)
+        }
+        label(c, "son tarih", 850f, 820f + 52f, 20f, soft)
+        box(c, 70f, 1240f, 1060f, DH - 1240f - 70f, "Notlar")
+        var ly = 1340f
+        while (ly < DH - 90f) { c.drawLine(92f, ly, 1108f, ly, paperPaint); ly += 54f }
+    }
+
+    /** Başlıklı çizelge: checkCol sütununa onay kutusu çizilir; summary=true ise üstte bütçe/harcanan/kalan kutuları olur. */
+    private fun drawTable(c: Canvas, name: String, fieldName: String, heads: Array<String>, widths: FloatArray, checkCol: Int, summary: Boolean) {
+        title(c, name, fieldName)
+        var top = 180f
+        if (summary) {
+            val s = arrayOf("Bütçe", "Harcanan", "Kalan")
+            for (i in 0 until 3) box(c, 70f + i * 360f, 180f, 340f, 110f, s[i])
+            top = 320f
+        }
+        val headH = 54f
+        val rowH = 62f
+        val rows = ((DH - 150f - top - headH) / rowH).toInt()
+        fillPaint.setColor(Color.rgb(238, 240, 244))
+        c.drawRect(70f, top, 1130f, top + headH, fillPaint)
+        var x = 70f
+        for (i in heads.indices) {
+            val w = 1060f * widths[i]
+            label(c, heads[i], x + w / 2f, top + 36f, 22f, ink, true, Paint.Align.CENTER)
+            c.drawLine(x, top, x, top + headH + rows * rowH, boxPaint)
+            if (i == checkCol) for (r in 0 until rows) {
+                val cy = top + headH + r * rowH + rowH / 2f
+                c.drawRect(x + w / 2f - 14f, cy - 14f, x + w / 2f + 14f, cy + 14f, boxPaint)
+            }
+            x += w
+        }
+        c.drawLine(1130f, top, 1130f, top + headH + rows * rowH, boxPaint)
+        for (r in 0..rows) c.drawLine(70f, top + headH + r * rowH, 1130f, top + headH + r * rowH, boxPaint)
+        c.drawLine(70f, top, 1130f, top, boxPaint)
+        label(c, "Toplam:", 760f, DH - 90f, 28f, ink, true)
+        c.drawLine(880f, DH - 86f, 1130f, DH - 86f, boxPaint)
+    }
+
+    private fun drawVision(c: Canvas) {
+        title(c, "HAYAL PANOSU", "Yıl:")
+        val names = arrayOf("Kariyer ve akademi", "Sağlık ve spor", "Sevdiklerim", "Seyahat ve keşif", "Kendim için", "Para ve birikim")
+        val cols = intArrayOf(Color.rgb(226, 236, 250), Color.rgb(228, 244, 232), Color.rgb(252, 232, 238), Color.rgb(252, 240, 220), Color.rgb(238, 230, 250), Color.rgb(246, 244, 220))
+        val bw = 520f
+        val bh = (DH - 180f - 210f - 2 * 20f) / 3f
+        for (i in 0 until 6) {
+            val x = 70f + (i % 2) * (bw + 20f)
+            val y = 180f + (i / 2) * (bh + 20f)
+            band(c, x, y, bw, 60f, cols[i])
+            box(c, x, y, bw, bh, names[i])
+        }
+        field(c, "Bu yılın sözü:", 80f, DH - 150f, 1120f)
+        field(c, "Kendime hatırlatma:", 80f, DH - 90f, 1120f)
+    }
+
+    private fun drawManifest(c: Canvas) {
+        title(c, "MANİFEST", "Tarih:")
+        box(c, 70f, 180f, 1060f, 250f, "Şükrettiklerim")
+        for (i in 0 until 3) { label(c, "♡", 96f, 290f + i * 54f, 26f, soft); c.drawLine(130f, 294f + i * 54f, 1108f, 294f + i * 54f, paperPaint) }
+        box(c, 70f, 450f, 1060f, 640f, "Niyetlerim (olmuş gibi, şimdiki zamanla)")
+        for (i in 0 until 10) {
+            val y = 450f + 108f + i * 54f
+            label(c, (i + 1).toString() + ".", 96f, y - 2f, 24f, soft)
+            c.drawLine(140f, y, 1108f, y, paperPaint)
+        }
+        box(c, 70f, 1110f, 520f, DH - 1110f - 150f, "Gerçekleşince hissedeceklerim")
+        box(c, 610f, 1110f, 520f, DH - 1110f - 150f, "Bıraktıklarım")
+        field(c, "Bugün atacağım adım:", 80f, DH - 90f, 1120f)
+    }
+
+    private fun drawFuture(c: Canvas) {
+        title(c, "GELECEK PLANLAYICI", null)
+        val names = arrayOf("1 ay sonra", "3 ay sonra", "6 ay sonra", "1 yıl sonra", "3 yıl sonra", "5 yıl sonra")
+        val bw = 520f
+        val bh = (DH - 180f - 150f - 2 * 20f) / 3f
+        for (i in 0 until 6) {
+            val x = 70f + (i % 2) * (bw + 20f)
+            val y = 180f + (i / 2) * (bh + 20f)
+            band(c, x, y, bw, 60f, Planner.MONTH_COLORS[i * 2].let { Color.argb(70, Color.red(it), Color.green(it), Color.blue(it)) })
+            box(c, x, y, bw, bh, names[i])
+            label(c, "Hedef", x + 20f, y + 100f, 20f, soft)
+            var ly = y + 150f
+            var k = 0
+            while (ly < y + bh - 70f) { c.drawLine(x + 20f, ly, x + bw - 20f, ly, paperPaint); ly += 50f; k++ }
+            label(c, "İlk adım:", x + 20f, y + bh - 24f, 20f, soft)
+            c.drawLine(x + 120f, y + bh - 20f, x + bw - 20f, y + bh - 20f, paperPaint)
+        }
+        field(c, "Bu planı gözden geçireceğim tarih:", 80f, DH - 90f, 1120f)
     }
 
     /** İki sayfaya yayılan aylık görünüm: solda Pzt–Per, sağda Cum–Paz ve not sütunu. */
