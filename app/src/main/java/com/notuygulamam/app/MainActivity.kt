@@ -358,6 +358,7 @@ class MainActivity : Activity() {
         super.onPause()
         handler.removeCallbacks(saveRunnable)
         saveNow()
+        handler.postDelayed({ AutoBackup.maybeRun(applicationContext) }, 1500L)
         if (itemId.isNotEmpty()) {
             val st = LibraryStore(libraryDir())
             st.load()

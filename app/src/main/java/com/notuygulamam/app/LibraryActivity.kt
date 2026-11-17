@@ -492,6 +492,7 @@ class LibraryActivity : Activity() {
         store.load()
         refresh()
         if (::board.isInitialized) board.refresh()
+        AutoBackup.maybeRun(this)
     }
 
     override fun onBackPressed() {
@@ -532,9 +533,29 @@ class LibraryActivity : Activity() {
     }
 
     private fun showLibraryBackup() {
+        val last = AutoBackup.lastTime(this)
+        val info = if (last == 0L) "Günlük dış yedek henüz alınmadı."
+        else "Son günlük dış yedek: " + java.text.SimpleDateFormat("d MMMM yyyy HH:mm", java.util.Locale("tr")).format(java.util.Date(last)) + ", " + AutoBackup.lastPlace(this)
         AlertDialog.Builder(this)
             .setTitle("Tüm kütüphane yedeği")
-            .setItems(arrayOf("Yedek dosyası oluştur (yeri siz seçersiniz)", "Yedek dosyasından geri yükle", "Otomatik yedeklerden defter kurtar")) { _, which ->
+            .setItems(arrayOf("Yedek dosyası oluştur (yeri siz seçersiniz)", "Yedek dosyasından geri yükle", "Otomatik yedeklerden defter kurtar",
+                "Günlük dış yedeği şimdi al", "Günlük yedek klasörünü seç (bulutla eşitlenen bir klasör de olabilir)",
+                "Günlük yedeği Belgeler/NotUygulamam klasörüne geri al", info)) { _, which ->
+                if (which == 3) {
+                    Toast.makeText(this, "Yedek alınıyor...", Toast.LENGTH_SHORT).show()
+                    AutoBackup.runNow(this) { ok, m -> Toast.makeText(this, if (ok) "Yedek kaydedildi: $m" else m, Toast.LENGTH_LONG).show() }
+                    return@setItems
+                }
+                if (which == 4) {
+                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_AUTO_FOLDER)
+                    return@setItems
+                }
+                if (which == 5) {
+                    AutoBackup.setFolder(this, null)
+                    Toast.makeText(this, "Günlük yedek Belgeler/NotUygulamam klasörüne alınacak", Toast.LENGTH_LONG).show()
+                    return@setItems
+                }
+                if (which == 6) return@setItems
                 if (which == 2) {
                     showAutoBackups()
                 } else if (which == 0) {
@@ -956,6 +977,19 @@ class LibraryActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_AUTO_FOLDER) {
+            val u = data?.data
+            if (resultCode == RESULT_OK && u != null) {
+                try {
+                    contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                } catch (_: Exception) {}
+                AutoBackup.setFolder(this, u)
+                AutoBackup.runNow(this) { ok, m ->
+                    Toast.makeText(this, if (ok) "Klasör seçildi, ilk yedek kaydedildi: $m" else "Klasör seçildi ama yedek yazılamadı: $m", Toast.LENGTH_LONG).show()
+                }
+            }
+            return
+        }
         if (resultCode == RESULT_OK && data?.data != null) {
             if (requestCode == REQ_LIB_BACKUP) {
                 libraryBackupTo(data.data!!)
@@ -992,6 +1026,7 @@ class LibraryActivity : Activity() {
     companion object {
         private const val REQ_COVER = 201
         private const val REQ_LIB_BACKUP = 202
+        private const val REQ_AUTO_FOLDER = 205
         private const val REQ_LIB_RESTORE = 203
     }
 }
