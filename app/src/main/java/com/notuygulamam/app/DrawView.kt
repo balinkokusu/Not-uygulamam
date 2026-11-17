@@ -758,8 +758,9 @@ class DrawView(context: Context) : View(context) {
 
     private val tabSides = Array(4) { ArrayList<Tab>() }
 
-    private fun gl() = if (tabSides[0].isEmpty()) 0f else TAB_GUTTER
-    private fun gr() = if (tabSides[1].isEmpty()) 0f else TAB_GUTTER
+    // sol ve sağ ayraç payı her zaman ayrılır: ilk ayraç (ör. tarih ayracı) eklenince sayfa yerinden kaymasın
+    private fun gl() = TAB_GUTTER
+    private fun gr() = TAB_GUTTER
     private fun gt() = if (tabSides[2].isEmpty()) 0f else TAB_GUTTER
     private fun gb() = if (tabSides[3].isEmpty()) 0f else TAB_GUTTER
     private fun gutterKey() = gl() + 2 * gr() + 3 * gt() + 5 * gb()
