@@ -208,6 +208,8 @@ class LibraryActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Crash.install(this)
+        window.decorView.post { Crash.showIfAny(this) }
         d = resources.displayMetrics.density
         store = LibraryStore(File(filesDir, "library"))
         coverDir = File(filesDir, "covers")

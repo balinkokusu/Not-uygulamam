@@ -3360,6 +3360,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Crash.install(this)
         itemId = intent.getStringExtra("id") ?: ""
         spread = getSharedPreferences("ayar", MODE_PRIVATE).getBoolean("cift_$itemId", false)
         d = resources.displayMetrics.density
