@@ -86,7 +86,47 @@ class IconButton(
 
     // Simgeler evrensel bir takımdan (Lucide, ISC lisansı) vektör olarak gelir; bulunamazsa eski elle çizim kullanılır.
     private val vec: android.graphics.drawable.Drawable? by lazy {
-        val id = resources.getIdentifier("ic_" + icon.name.lowercase(java.util.Locale.ROOT), "drawable", context.packageName)
+        // kaynak adla aranmaz (getIdentifier), doğrudan eşlenir
+        val id = when (icon) {
+            Icon.ADD -> R.drawable.ic_add
+            Icon.ARCHIVE -> R.drawable.ic_archive
+            Icon.CALC -> R.drawable.ic_calc
+            Icon.ERASER -> R.drawable.ic_eraser
+            Icon.EXPORT -> R.drawable.ic_export
+            Icon.FINGER -> R.drawable.ic_finger
+            Icon.HAND -> R.drawable.ic_hand
+            Icon.HIGHLIGHTER -> R.drawable.ic_highlighter
+            Icon.HOME -> R.drawable.ic_home
+            Icon.IMAGE -> R.drawable.ic_image
+            Icon.IMPORT -> R.drawable.ic_import
+            Icon.LASER -> R.drawable.ic_laser
+            Icon.LASSO -> R.drawable.ic_lasso
+            Icon.LOCK -> R.drawable.ic_lock
+            Icon.MIC -> R.drawable.ic_mic
+            Icon.MORE -> R.drawable.ic_more
+            Icon.NEXT -> R.drawable.ic_next
+            Icon.PAGES -> R.drawable.ic_pages
+            Icon.PALETTE -> R.drawable.ic_palette
+            Icon.PAPER -> R.drawable.ic_paper
+            Icon.PEN -> R.drawable.ic_pen
+            Icon.PICKER -> R.drawable.ic_picker
+            Icon.PREV -> R.drawable.ic_prev
+            Icon.REDO -> R.drawable.ic_redo
+            Icon.RULER -> R.drawable.ic_ruler
+            Icon.SAVE -> R.drawable.ic_save
+            Icon.SELECT -> R.drawable.ic_select
+            Icon.SPREAD -> R.drawable.ic_spread
+            Icon.STICKER -> R.drawable.ic_sticker
+            Icon.TAB -> R.drawable.ic_tab
+            Icon.TAPE -> R.drawable.ic_tape
+            Icon.TEXT -> R.drawable.ic_text
+            Icon.THICKNESS -> R.drawable.ic_thickness
+            Icon.TIMER -> R.drawable.ic_timer
+            Icon.TRASH -> R.drawable.ic_trash
+            Icon.UNDO -> R.drawable.ic_undo
+            Icon.UNLOCK -> R.drawable.ic_unlock
+            else -> 0
+        }
         if (id != 0) context.getDrawable(id)?.mutate() else null
     }
 
