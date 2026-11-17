@@ -127,7 +127,8 @@ class IconButton(
             Icon.UNLOCK -> R.drawable.ic_unlock
             else -> 0
         }
-        if (id != 0) context.getDrawable(id)?.mutate() else null
+        // bozuk bir simge uygulamayı çökertmesin: yüklenemezse eski elle çizilen simge kullanılır
+        if (id != 0) try { context.getDrawable(id)?.mutate() } catch (e: Exception) { null } else null
     }
 
     /** Her aracın kendi rengi vardır; böylece simgeler bir bakışta ayırt edilir. */
